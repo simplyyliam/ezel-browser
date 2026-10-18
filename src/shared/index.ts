@@ -1,4 +1,6 @@
 export type { PageChanged } from "./page"
+export type { WindowRadius } from "./tauri"
+export { useWindowRadius } from "./window-radius"
 export {
   getPage,
   navigate,
@@ -12,4 +14,6 @@ export {
   toggleMaximizeWindow,
   closeWindow,
   onPageChanged,
+  getWindowRadius,
+  onWindowRadiusChanged,
 } from "./tauri"

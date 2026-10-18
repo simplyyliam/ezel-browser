@@ -9,6 +9,7 @@ fn main() {
       "set_content_bounds",
       "set_content_visible",
       "set_content_radius",
+      "get_window_radius",
     ]),
   ))
   .expect("failed to run tauri-build");

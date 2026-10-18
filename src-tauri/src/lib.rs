@@ -1,3 +1,5 @@
+mod window_radius;
+
 use std::sync::Mutex;
 
 use serde::Serialize;
@@ -31,6 +33,13 @@ struct ContentShape {
   height: f64,
   /// CSS order: top-left, top-right, bottom-right, bottom-left.
   radii: [f64; 4],
+}
+
+/// Cached Windhawk settings (re-read only when the registry changes) and the last reported radius.
+#[derive(Default)]
+struct RadiusState {
+  settings: window_radius::ModSettings,
+  current: window_radius::WindowRadius,
 }
 
 #[derive(Clone, Serialize)]
@@ -253,6 +262,40 @@ fn publish(app: &AppHandle, payload: PageChanged) {
   let _ = app.emit_to(EventTarget::webview(UI_LABEL), "page-changed", payload);
 }
 
+#[tauri::command]
+fn get_window_radius(state: State<Mutex<RadiusState>>) -> window_radius::WindowRadius {
+  state.lock().unwrap().current
+}
+
+fn window_state(window: &Window) -> window_radius::WindowState {
+  window_radius::WindowState {
+    fullscreen: window.is_fullscreen().unwrap_or(false),
+    maximized: window.is_maximized().unwrap_or(false),
+    #[cfg(windows)]
+    snapped: window.hwnd().map(window_radius::is_snapped).unwrap_or(false),
+    #[cfg(not(windows))]
+    snapped: false,
+  }
+}
+
+/// Recomputes the effective radius; emits "window-radius-changed" to the UI only when it changes.
+fn update_window_radius(window: &Window) {
+  // Query the window before locking: from the watcher thread these calls wait on the main thread.
+  let window_state = window_state(window);
+  let state: State<Mutex<RadiusState>> = window.state();
+  let mut s = state.lock().unwrap();
+  // The radius model is Windows 11's; elsewhere report "unknown" and let the UI keep its defaults.
+  let next = if cfg!(windows) {
+    window_radius::effective_radius(s.settings, window_state)
+  } else {
+    window_radius::WindowRadius::default()
+  };
+  if next != s.current {
+    s.current = next;
+    let _ = window.emit_to(EventTarget::webview(UI_LABEL), "window-radius-changed", next);
+  }
+}
+
 /// The UI webview covers the whole window (logical px). The content webview is placed by the frontend.
 fn ui_bounds(window: &Window) -> tauri::Result<Rect> {
   let size = window.inner_size()?.to_logical::<f64>(window.scale_factor()?);
@@ -315,12 +358,30 @@ fn build_window(app: &AppHandle) -> tauri::Result<()> {
     if matches!(event, WindowEvent::Resized(_) | WindowEvent::ScaleFactorChanged { .. }) {
       apply_layout(&w);
     }
+    // Maximize, restore, snap and fullscreen all arrive as resizes.
+    if matches!(event, WindowEvent::Resized(_)) {
+      update_window_radius(&w);
+    }
     // Logical bounds don't change with DPI, so the frontend won't re-report them; rebuild the physical clip here.
     if matches!(event, WindowEvent::ScaleFactorChanged { .. }) {
       if let Some(content) = w.get_webview(CONTENT_LABEL) {
         apply_content_shape(&content);
       }
     }
+  });
+
+  {
+    let state: State<Mutex<RadiusState>> = window.state();
+    state.lock().unwrap().settings = window_radius::read_settings();
+  }
+  update_window_radius(&window);
+  let w = window.clone();
+  window_radius::watch(move || {
+    {
+      let state: State<Mutex<RadiusState>> = w.state();
+      state.lock().unwrap().settings = window_radius::read_settings();
+    }
+    update_window_radius(&w);
   });
 
   Ok(())
@@ -331,6 +392,7 @@ pub fn run() {
   tauri::Builder::default()
     .manage(Mutex::new(PageState::default()))
     .manage(Mutex::new(ContentShape::default()))
+    .manage(Mutex::new(RadiusState::default()))
     .invoke_handler(tauri::generate_handler![
       navigate,
       get_page,
@@ -339,7 +401,8 @@ pub fn run() {
       reload,
       set_content_bounds,
       set_content_visible,
-      set_content_radius
+      set_content_radius,
+      get_window_radius
     ])
     .setup(|app| {
       if cfg!(debug_assertions) {

@@ -1,6 +1,6 @@
 import { useEffect, useRef } from "react"
 import { cn } from "@/lib/utils"
-import { setContentBounds, setContentRadius, setContentVisible } from "@/shared"
+import { setContentBounds, setContentRadius, setContentVisible, useWindowRadius } from "@/shared"
 
 type Rect = { x: number; y: number; width: number; height: number }
 type Radii = [number, number, number, number]
@@ -29,6 +29,9 @@ type ContentSlotProps = {
 /** Placeholder for the native content webview: Rust places the website over this div. */
 export function ContentSlot({ className }: ContentSlotProps) {
   const ref = useRef<HTMLDivElement>(null)
+  const scheduleRef = useRef<() => void>(undefined)
+  // The frame radius can change without a resize (mod toggled), so re-measure on change.
+  const { radius } = useWindowRadius()
 
   useEffect(() => {
     const el = ref.current
@@ -69,18 +72,22 @@ export function ContentSlot({ className }: ContentSlotProps) {
       if (mounted) setContentVisible(true)
     })
 
+    scheduleRef.current = schedule
     const observer = new ResizeObserver(schedule)
     observer.observe(el)
     window.addEventListener("resize", schedule)
 
     return () => {
       mounted = false
+      scheduleRef.current = undefined
       cancelAnimationFrame(frame)
       observer.disconnect()
       window.removeEventListener("resize", schedule)
       setContentVisible(false)
     }
   }, [])
+
+  useEffect(() => scheduleRef.current?.(), [radius])
 
   return <div ref={ref} className={cn("w-full flex-1", className)} />
 }

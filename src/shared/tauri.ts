@@ -21,6 +21,14 @@ export const minimizeWindow = () => getCurrentWindow().minimize()
 export const toggleMaximizeWindow = () => getCurrentWindow().toggleMaximize()
 export const closeWindow = () => getCurrentWindow().close()
 
+/** OS window corner radius in logical px; `radius: null` = unknown (not Windows). */
+export type WindowRadius = { radius: number | null; customized: boolean }
+export const getWindowRadius = () => invoke<WindowRadius>("get_window_radius")
+
+export function onWindowRadiusChanged(handler: (radius: WindowRadius) => void): Promise<UnlistenFn> {
+  return listen<WindowRadius>("window-radius-changed", (event) => handler(event.payload))
+}
+
 export function onPageChanged(handler: (page: PageChanged) => void): Promise<UnlistenFn> {
   return listen<PageChanged>("page-changed", (event) => handler(event.payload))
 }
