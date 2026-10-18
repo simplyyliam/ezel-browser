@@ -22,6 +22,8 @@ const CONTENT_LABEL: &str = "content";
 struct PageState {
   title: Option<String>,
   is_loading: bool,
+  /// Last payload emitted as "page-changed", returned by `get_page`.
+  last: Option<PageChanged>,
 }
 
 #[derive(Clone, Serialize)]
@@ -68,6 +70,17 @@ fn navigate(app: AppHandle, input: String) -> Result<(), String> {
   content(&app)?.navigate(url).map_err(|e| e.to_string())
 }
 
+/// Latest page state, so the UI can catch up on events emitted before it started listening.
+#[tauri::command]
+fn get_page(app: AppHandle, state: State<Mutex<PageState>>) -> PageChanged {
+  let s = state.lock().unwrap();
+  if let Some(last) = &s.last {
+    return last.clone();
+  }
+  let url = content(&app).ok().and_then(|w| w.url().ok()).map(|u| u.to_string()).unwrap_or_default();
+  PageChanged { url, title: s.title.clone(), can_go_back: false, can_go_forward: false, is_loading: s.is_loading }
+}
+
 #[tauri::command]
 fn go_back(app: AppHandle) -> Result<(), String> {
   content(&app)?.eval("history.back()").map_err(|e| e.to_string())
@@ -108,12 +121,19 @@ fn emit_page_changed(webview: &Webview, url: String) {
           }
         }
       }
-      let _ = app.emit_to(EventTarget::webview(UI_LABEL), "page-changed", payload);
+      publish(&app, payload);
     });
   }
 
   // TODO: read back/forward state on macOS (WKWebView) and Linux (WebKitGTK).
   #[cfg(not(windows))]
+  publish(&app, payload);
+}
+
+/// Stores the payload as the latest page state, then emits it to the UI webview.
+fn publish(app: &AppHandle, payload: PageChanged) {
+  let state: State<Mutex<PageState>> = app.state();
+  state.lock().unwrap().last = Some(payload.clone());
   let _ = app.emit_to(EventTarget::webview(UI_LABEL), "page-changed", payload);
 }
 
@@ -195,7 +215,7 @@ fn build_window(app: &AppHandle) -> tauri::Result<()> {
 pub fn run() {
   tauri::Builder::default()
     .manage(Mutex::new(PageState::default()))
-    .invoke_handler(tauri::generate_handler![navigate, go_back, go_forward, reload])
+    .invoke_handler(tauri::generate_handler![navigate, get_page, go_back, go_forward, reload])
     .setup(|app| {
       if cfg!(debug_assertions) {
         app.handle().plugin(

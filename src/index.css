@@ -127,4 +127,8 @@
   html {
     @apply font-sans;
     }
+  /* The ui webview is exactly the 48px toolbar strip: never scroll. */
+  html, body, #root {
+    @apply h-full overflow-hidden;
+    }
 }
