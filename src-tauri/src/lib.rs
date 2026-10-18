@@ -168,6 +168,7 @@ fn build_window(app: &AppHandle) -> tauri::Result<()> {
     .title("Ezel")
     .inner_size(1280.0, 800.0)
     .min_inner_size(400.0, 300.0)
+    .decorations(false)
     .build()?;
 
   let (ui_bounds, content_bounds) = layout(&window)?;
