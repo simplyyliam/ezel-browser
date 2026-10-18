@@ -11,19 +11,23 @@ A lightweight browser for designers.
 `npm run tauri dev`
 
 ## Architecture
-Rust owns the layout; UI only sends commands and listens to events.
+The frontend owns content geometry; Rust follows the reported bounds. The UI only sends commands and listens to events.
 
-One window (`main`), two webviews:
-- `ui`: the React app, a toolbar strip at the top, `TOOLBAR_HEIGHT` = 48 logical px
-- `content`: the website, fills the rest of the window; starts at https://duckduckgo.com
+One frameless window (`main`, `decorations(false)`), two webviews:
+- `ui`: the React app, covers the whole window (Rust re-applies full-window bounds on every resize). It draws its own titlebar, window controls and drag region.
+- `content`: the website, placed wherever the frontend reports via `set_content_bounds`; starts at https://duckduckgo.com, hidden until `set_content_visible(true)`.
 
-Rust recomputes both webviews' bounds on window resize. Only `ui` has IPC; `content` has none.
+Only `ui` has IPC; `content` has none.
 
 ## Contract (UI ↔ Rust)
 Commands (`invoke`):
 - `navigate(input: string)`: a URL is loaded (`https://` added if missing); anything else is searched on DuckDuckGo
 - `go_back()`, `go_forward()`, `reload()`
 - `get_page()`: returns the latest `page-changed` payload (same shape), so the UI can catch up on mount
+- `set_content_bounds(x: number, y: number, width: number, height: number)`: places the content webview; logical px relative to the window's top-left
+- `set_content_visible(visible: boolean)`: shows or hides the content webview. It starts hidden, so report bounds first, then show it.
+
+Window APIs (`@tauri-apps/api/window`): `minimize`, `toggleMaximize`, `close`, `startDragging`, `isMaximized`, `isFullscreen`.
 
 Event emitted to the `ui` webview:
 - `page-changed`: `{ url: string, title: string | null, canGoBack: boolean, canGoForward: boolean, isLoading: boolean }`

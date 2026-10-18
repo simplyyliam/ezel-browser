@@ -8,8 +8,6 @@ use tauri::{
   Webview, WebviewUrl, Window, WindowEvent,
 };
 
-/// Height of the UI (toolbar) webview, in logical px.
-const TOOLBAR_HEIGHT: f64 = 48.0;
 const HOME_URL: &str = "https://duckduckgo.com";
 const SEARCH_URL: &str = "https://duckduckgo.com/";
 
@@ -96,6 +94,26 @@ fn reload(app: AppHandle) -> Result<(), String> {
   content(&app)?.reload().map_err(|e| e.to_string())
 }
 
+/// Places the content webview. Logical px, relative to the window's top-left. Reported by the frontend.
+#[tauri::command]
+fn set_content_bounds(app: AppHandle, x: f64, y: f64, width: f64, height: f64) -> Result<(), String> {
+  if ![x, y, width, height].iter().all(|v| v.is_finite()) {
+    return Err("bounds must be finite numbers".into());
+  }
+  content(&app)?
+    .set_bounds(Rect {
+      position: LogicalPosition::new(x, y).into(),
+      size: LogicalSize::new(width.max(0.0), height.max(0.0)).into(),
+    })
+    .map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+fn set_content_visible(app: AppHandle, visible: bool) -> Result<(), String> {
+  let webview = content(&app)?;
+  if visible { webview.show() } else { webview.hide() }.map_err(|e| e.to_string())
+}
+
 /// Emits "page-changed" to the UI webview. Back/forward state comes from the native webview.
 fn emit_page_changed(webview: &Webview, url: String) {
   let app = webview.app_handle().clone();
@@ -137,29 +155,19 @@ fn publish(app: &AppHandle, payload: PageChanged) {
   let _ = app.emit_to(EventTarget::webview(UI_LABEL), "page-changed", payload);
 }
 
-/// Toolbar strip on top, content fills the rest. All values in logical px.
-fn layout(window: &Window) -> tauri::Result<(Rect, Rect)> {
-  let scale = window.scale_factor()?;
-  let size = window.inner_size()?.to_logical::<f64>(scale);
-  let toolbar_height = TOOLBAR_HEIGHT.min(size.height);
-  let ui = Rect {
+/// The UI webview covers the whole window (logical px). The content webview is placed by the frontend.
+fn ui_bounds(window: &Window) -> tauri::Result<Rect> {
+  let size = window.inner_size()?.to_logical::<f64>(window.scale_factor()?);
+  Ok(Rect {
     position: LogicalPosition::new(0.0, 0.0).into(),
-    size: LogicalSize::new(size.width, toolbar_height).into(),
-  };
-  let content = Rect {
-    position: LogicalPosition::new(0.0, toolbar_height).into(),
-    size: LogicalSize::new(size.width, size.height - toolbar_height).into(),
-  };
-  Ok((ui, content))
+    size: LogicalSize::new(size.width, size.height).into(),
+  })
 }
 
 fn apply_layout(window: &Window) {
-  let Ok((ui_bounds, content_bounds)) = layout(window) else { return };
+  let Ok(bounds) = ui_bounds(window) else { return };
   if let Some(ui) = window.get_webview(UI_LABEL) {
-    let _ = ui.set_bounds(ui_bounds);
-  }
-  if let Some(content) = window.get_webview(CONTENT_LABEL) {
-    let _ = content.set_bounds(content_bounds);
+    let _ = ui.set_bounds(bounds);
   }
 }
 
@@ -171,12 +179,11 @@ fn build_window(app: &AppHandle) -> tauri::Result<()> {
     .decorations(false)
     .build()?;
 
-  let (ui_bounds, content_bounds) = layout(&window)?;
-
+  let ui = ui_bounds(&window)?;
   window.add_child(
     WebviewBuilder::new(UI_LABEL, WebviewUrl::App("index.html".into())),
-    ui_bounds.position,
-    ui_bounds.size,
+    ui.position,
+    ui.size,
   )?;
 
   let content = WebviewBuilder::new(CONTENT_LABEL, WebviewUrl::External(HOME_URL.parse().unwrap()))
@@ -200,7 +207,10 @@ fn build_window(app: &AppHandle) -> tauri::Result<()> {
       let url = webview.url().map(|u| u.to_string()).unwrap_or_default();
       emit_page_changed(&webview, url);
     });
-  window.add_child(content, content_bounds.position, content_bounds.size)?;
+  // Starts zero-sized and hidden; it appears only once the frontend reports bounds and calls set_content_visible(true).
+  window
+    .add_child(content, LogicalPosition::new(0.0, 0.0), LogicalSize::new(0.0, 0.0))?
+    .hide()?;
 
   let w = window.clone();
   window.on_window_event(move |event| {
@@ -216,7 +226,15 @@ fn build_window(app: &AppHandle) -> tauri::Result<()> {
 pub fn run() {
   tauri::Builder::default()
     .manage(Mutex::new(PageState::default()))
-    .invoke_handler(tauri::generate_handler![navigate, get_page, go_back, go_forward, reload])
+    .invoke_handler(tauri::generate_handler![
+      navigate,
+      get_page,
+      go_back,
+      go_forward,
+      reload,
+      set_content_bounds,
+      set_content_visible
+    ])
     .setup(|app| {
       if cfg!(debug_assertions) {
         app.handle().plugin(

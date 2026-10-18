@@ -1,7 +1,7 @@
 {
   "$schema": "../gen/schemas/desktop-schema.json",
   "identifier": "default",
-  "description": "Toolbar UI webview: core APIs (incl. events) and the browser commands. The content webview gets no IPC.",
+  "description": "Full-window UI webview: core APIs (incl. events) and the browser commands. The content webview gets no IPC.",
   "webviews": ["ui"],
   "permissions": [
     "core:default",
@@ -9,6 +9,9 @@
     "allow-go-back",
     "allow-go-forward",
     "allow-reload",
+    "allow-get-page",
+    "allow-set-content-bounds",
+    "allow-set-content-visible",
     "core:window:allow-is-maximized",
     "core:window:allow-is-fullscreen",
     "core:window:allow-start-dragging",
