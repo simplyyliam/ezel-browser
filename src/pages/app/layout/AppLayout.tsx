@@ -1,10 +1,10 @@
 import { WindowFrame } from "@/shared/components"
-import { Apptitlebar } from "@/widgets/app-titlebar/AppTitlebar"
+import { AppTitlebar } from "@/widgets/app-titlebar/AppTitlebar"
 import { Outlet } from "react-router-dom"
 
 export default function AppLayout() {
   return (
-    <WindowFrame titlebar={<Apptitlebar />}>
+    <WindowFrame titlebar={<AppTitlebar />}>
       <Outlet />
     </WindowFrame>
   )

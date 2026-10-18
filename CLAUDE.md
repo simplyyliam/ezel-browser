@@ -25,6 +25,7 @@ Commands (`invoke`):
 - `go_back()`, `go_forward()`, `reload()`
 - `get_page()`: returns the latest `page-changed` payload (same shape), so the UI can catch up on mount
 - `set_content_bounds(x: number, y: number, width: number, height: number)`: places the content webview; logical px relative to the window's top-left
+- `set_content_radius(radii: [number, number, number, number])`: clips the content webview to rounded corners; logical px, CSS order (top-left, top-right, bottom-right, bottom-left). Windows only for now.
 - `set_content_visible(visible: boolean)`: shows or hides the content webview. It starts hidden, so report bounds first, then show it.
 
 Window APIs (`@tauri-apps/api/window`): `minimize`, `toggleMaximize`, `close`, `startDragging`, `isMaximized`, `isFullscreen`.
@@ -43,7 +44,10 @@ src/
 ```
 - Features never import from widgets or from other features. Code two features need goes in `shared/`.
 - Widgets may import from their own features and from `shared/`.
-- Current widget: `widgets/toolbar` composes `features/toolbar/{navigation,url-bar,loading-indicator}`.
+- Current widgets:
+  - `widgets/app-titlebar` composes `features/app-titlebar/window-controls`
+  - `widgets/browser-view` composes `features/browser-view/content-slot` (the placeholder the content webview is placed over)
+  - `widgets/toolbar` composes `features/toolbar/{navigation,url-bar,loading-indicator}` (temporary, until sidebar + command palette)
 
 ## Current scope
 MVP only. No tabs, no sidebar, no persistence.

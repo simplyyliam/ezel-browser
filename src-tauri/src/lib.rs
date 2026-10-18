@@ -24,6 +24,15 @@ struct PageState {
   last: Option<PageChanged>,
 }
 
+/// Last reported content size and corner radii, in logical px. Rust rebuilds the clip region from these.
+#[derive(Default)]
+struct ContentShape {
+  width: f64,
+  height: f64,
+  /// CSS order: top-left, top-right, bottom-right, bottom-left.
+  radii: [f64; 4],
+}
+
 #[derive(Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 struct PageChanged {
@@ -100,12 +109,101 @@ fn set_content_bounds(app: AppHandle, x: f64, y: f64, width: f64, height: f64) -
   if ![x, y, width, height].iter().all(|v| v.is_finite()) {
     return Err("bounds must be finite numbers".into());
   }
-  content(&app)?
+  let (width, height) = (width.max(0.0), height.max(0.0));
+  let webview = content(&app)?;
+  webview
     .set_bounds(Rect {
       position: LogicalPosition::new(x, y).into(),
-      size: LogicalSize::new(width.max(0.0), height.max(0.0)).into(),
+      size: LogicalSize::new(width, height).into(),
     })
-    .map_err(|e| e.to_string())
+    .map_err(|e| e.to_string())?;
+  {
+    let shape: State<Mutex<ContentShape>> = app.state();
+    let mut shape = shape.lock().unwrap();
+    shape.width = width;
+    shape.height = height;
+  }
+  apply_content_shape(&webview);
+  Ok(())
+}
+
+/// Rounds the content webview's corners. Logical px, CSS order: top-left, top-right, bottom-right, bottom-left.
+#[tauri::command]
+fn set_content_radius(app: AppHandle, radii: [f64; 4]) -> Result<(), String> {
+  if !radii.iter().all(|r| r.is_finite() && *r >= 0.0) {
+    return Err("radii must be finite, non-negative numbers".into());
+  }
+  {
+    let shape: State<Mutex<ContentShape>> = app.state();
+    shape.lock().unwrap().radii = radii;
+  }
+  apply_content_shape(&content(&app)?);
+  Ok(())
+}
+
+/// Clips the content webview to its rounded shape. CSS can't do this: the webview is a native window above the UI.
+fn apply_content_shape(webview: &Webview) {
+  #[cfg(windows)]
+  {
+    let Ok(scale) = webview.window().scale_factor() else { return };
+    let (width, height, radii) = {
+      let shape: State<Mutex<ContentShape>> = webview.state();
+      let s = shape.lock().unwrap();
+      (s.width, s.height, s.radii)
+    };
+    let w = (width * scale).round() as i32;
+    let h = (height * scale).round() as i32;
+    let max = w.min(h) / 2;
+    let radii = radii.map(|r| ((r * scale).round() as i32).clamp(0, max));
+
+    let _ = webview.with_webview(move |pw| {
+      use windows::Win32::{
+        Foundation::HWND,
+        Graphics::Gdi::{CombineRgn, CreateEllipticRgn, CreateRectRgn, DeleteObject, SetWindowRgn, RGN_DIFF, RGN_OR},
+      };
+      // SAFETY: called on the main thread with a live WebView2 controller. wry hosts each child
+      // webview in its own container HWND (the controller's parent window); clipping it clips the page.
+      unsafe {
+        let mut hwnd = HWND::default();
+        if pw.controller().ParentWindow(&mut hwnd).is_err() {
+          return;
+        }
+        if radii.iter().all(|r| *r == 0) {
+          SetWindowRgn(hwnd, None, true);
+          return;
+        }
+        // Full rect, minus an r×r square at each rounded corner, plus a quarter ellipse back in each square.
+        let region = CreateRectRgn(0, 0, w, h);
+        let [tl, tr, br, bl] = radii;
+        let corners = [
+          (tl, 0, 0),
+          (tr, w - tr, 0),
+          (br, w - br, h - br),
+          (bl, 0, h - bl),
+        ];
+        for (r, x, y) in corners {
+          if r == 0 {
+            continue;
+          }
+          let square = CreateRectRgn(x, y, x + r, y + r);
+          CombineRgn(Some(region), Some(region), Some(square), RGN_DIFF);
+          let _ = DeleteObject(square.into());
+          // The ellipse's box is the 2r×2r square anchored in this corner.
+          let ex = if x == 0 { 0 } else { w - 2 * r };
+          let ey = if y == 0 { 0 } else { h - 2 * r };
+          let ellipse = CreateEllipticRgn(ex, ey, ex + 2 * r + 1, ey + 2 * r + 1);
+          CombineRgn(Some(region), Some(region), Some(ellipse), RGN_OR);
+          let _ = DeleteObject(ellipse.into());
+        }
+        // The system owns the region from here on.
+        SetWindowRgn(hwnd, Some(region), true);
+      }
+    });
+  }
+
+  // TODO: clip on macOS (layer cornerRadius) and Linux (WebKitGTK).
+  #[cfg(not(windows))]
+  let _ = webview;
 }
 
 #[tauri::command]
@@ -217,6 +315,12 @@ fn build_window(app: &AppHandle) -> tauri::Result<()> {
     if matches!(event, WindowEvent::Resized(_) | WindowEvent::ScaleFactorChanged { .. }) {
       apply_layout(&w);
     }
+    // Logical bounds don't change with DPI, so the frontend won't re-report them; rebuild the physical clip here.
+    if matches!(event, WindowEvent::ScaleFactorChanged { .. }) {
+      if let Some(content) = w.get_webview(CONTENT_LABEL) {
+        apply_content_shape(&content);
+      }
+    }
   });
 
   Ok(())
@@ -226,6 +330,7 @@ fn build_window(app: &AppHandle) -> tauri::Result<()> {
 pub fn run() {
   tauri::Builder::default()
     .manage(Mutex::new(PageState::default()))
+    .manage(Mutex::new(ContentShape::default()))
     .invoke_handler(tauri::generate_handler![
       navigate,
       get_page,
@@ -233,7 +338,8 @@ pub fn run() {
       go_forward,
       reload,
       set_content_bounds,
-      set_content_visible
+      set_content_visible,
+      set_content_radius
     ])
     .setup(|app| {
       if cfg!(debug_assertions) {

@@ -3,7 +3,7 @@ import { AppLayout } from "../pages/app";
 import { StandaloneLayout } from "../pages/standalone";
 import { pages, type PageEntry } from "./pages";
 
-const DEFAULT_ROUTE = "/home";
+const DEFAULT_ROUTE = "/";
 
 // Without this guard, "*" redirects to a page that doesn't exist, which matches "*" again, forever.
 if (!pages.some((page) => page.path === DEFAULT_ROUTE)) {

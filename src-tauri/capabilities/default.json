@@ -12,6 +12,7 @@
     "allow-get-page",
     "allow-set-content-bounds",
     "allow-set-content-visible",
+    "allow-set-content-radius",
     "core:window:allow-is-maximized",
     "core:window:allow-is-fullscreen",
     "core:window:allow-start-dragging",

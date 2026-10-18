@@ -13,11 +13,11 @@ export const WindowFrame = ({
 }: WindowFrameProps) => {
   return (
     <div
-      className={cn("relative flex h-screen flex-col overflow-hidden", className)}
+      className={cn("relative flex h-full w-full flex-col p-1 overflow-hidden", className)}
       {...props}
     >
       {titlebar}
-      <div className="min-h-0 flex-1">
+      <div className="flex min-h-0 flex-1 flex-col overflow-hidden rounded-frame">
         {children}
       </div>
     </div>

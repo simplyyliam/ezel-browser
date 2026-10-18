@@ -8,6 +8,7 @@ fn main() {
       "reload",
       "set_content_bounds",
       "set_content_visible",
+      "set_content_radius",
     ]),
   ))
   .expect("failed to run tauri-build");

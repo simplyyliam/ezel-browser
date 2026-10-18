@@ -5,6 +5,11 @@
 
 @custom-variant dark (&:is(.dark *));
 
+@theme {
+    /* Corner radius of the window's inner content; the website webview is clipped to match. */
+    --radius-frame: 22px;
+}
+
 @theme inline {
     --font-heading: var(--font-sans);
     --font-sans: 'Inter Variable', sans-serif;
@@ -127,7 +132,7 @@
   html {
     @apply font-sans;
     }
-  /* The ui webview is exactly the 48px toolbar strip: never scroll. */
+  /* The ui webview covers the whole window: the page fills it and never scrolls. */
   html, body, #root {
     @apply h-full overflow-hidden;
     }
