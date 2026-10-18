@@ -47,9 +47,27 @@ src/
 - Features never import from widgets or from other features. Code two features need goes in `shared/`.
 - Widgets may import from their own features and from `shared/`.
 - Current widgets:
-  - `widgets/app-titlebar` composes `features/app-titlebar/window-controls`. It's a Zen-style peek: it overlays the top of the window (never moves the content) and opens from a 4px strip at the top edge.
+  - `widgets/app-titlebar` composes `features/app-titlebar/window-controls`. It's a Zen-style peek that opens from a 4px strip at the top edge. Unlike Zen it pushes the content down (animated height) instead of overlaying it: the native website webview is drawn above all UI, so an overlay would be hidden behind it. While the sidebar is collapsed it shows a sidebar toggle.
   - `widgets/browser-view` composes `features/browser-view/content-slot` (the placeholder the content webview is placed over)
-  - `widgets/toolbar` composes `features/toolbar/{navigation,url-bar,loading-indicator}` (temporary, until sidebar + command palette)
+  - `widgets/app-sidebar` composes `features/app-sidebar/*` (see Sidebar below)
+
+## Sidebar
+Built from `docs/design/sidebar-1.png` (a 1.5x export) with shadcn's `Sidebar` (`variant="inset"`, `collapsible="offcanvas"`, open by default).
+- Layout: `AppLayout` = `SidebarProvider` > `WindowFrame` (titlebar on top) > row (`relative`) > `AppSidebar` + `SidebarInset` > `<Outlet />`. The provider wraps the frame so the titlebar can use `useSidebar`. The browser page renders only the `BrowserView` (ContentSlot).
+- Positioning: the sidebar is `absolute h-full` against the row below the titlebar, not shadcn's viewport-fixed default. When the titlebar peeks, the row shrinks, so the sidebar and the website move down together. `components/ui/sidebar.tsx` is edited to be desktop-only: no mobile sheet, no `md:` breakpoints.
+- Width: `SIDEBAR_WIDTH` (212px) in `widgets/app-sidebar`, set via `--sidebar-width`: 4 swatches of 45px + 3 gaps of 4px + 10px padding each side (the sections' `px-2.5`).
+- Padding/corners: shadcn's inset padding is removed (sidebar `p-0`, inset `m-0`); the frame's `p-1` is the only gap. The inset sits flush in the frame, so it and the ContentSlot use `rounded-frame`. Small control radii (7.5px, 5px) are fixed design values.
+- Toggle: **Ctrl+B** (shadcn's shortcut; only while the `ui` webview has focus, not while the website has it) or `SidebarToggle` (`shared/components`, used in the sidebar and in the titlebar while collapsed). The ContentSlot's ResizeObserver re-measures every frame of the collapse/expand transition, so the website follows.
+- Features (`features/app-sidebar/`): `navigation`, `url-bar` (temporary block at the top, removed when the command palette lands), `swatches`, `space-switcher`, `folders`, `temp-tabs`, `bottom-actions`. All mock data lives in `features/app-sidebar/placeholder-data.ts`; the widget passes it down as props.
+- Shared: `shared/components/{tab-row,favicon,sidebar-toggle}`, `shared/types` (`Tab`, `Folder`, `SpaceItem`, `Space`, `Swatch`), `shared/motion.ts` (`PEEK_TRANSITION` = the titlebar peek's 150ms ease-in-out; use `INSTANT` under `useReducedMotion`).
+- **No overlap past the right edge**: the native website webview is drawn on top of the UI, so tooltips, popovers and menus must never extend past the sidebar's right edge or they are hidden. Pick `side`/`align` to keep them inside (e.g. the add menu uses `side="top" align="end"`).
+
+### Rules for the tabs step (documentation only, not implemented yet)
+- The top grid is called **Swatches** (max 8).
+- Temp tabs and pinned tabs both survive an app restart.
+- Closing a temp tab removes it immediately.
+- Closing a pinned tab only unloads the site; the pinned tab stays in its space and can be reopened.
+- Trash-all clears temp tabs only.
 
 ## Current scope
-MVP only. No tabs, no sidebar, no persistence.
+MVP only. Sidebar shell with placeholder data; no real tabs, folders, spaces, downloads or persistence.

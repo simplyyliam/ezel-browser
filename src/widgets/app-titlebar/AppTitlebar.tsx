@@ -1,12 +1,14 @@
 import { useEffect, useRef, useState } from "react";
 import { cn } from "@/lib/utils";
 import { WindowControls } from "@/features/app-titlebar/window-controls";
+import { useSidebar } from "@/components/ui/sidebar";
 import { getCursorPosition, getWindowClientRect } from "@/shared";
+import { SidebarToggle } from "@/shared/components";
 
 // Peek behaviour follows Zen's compact-mode toolbar (zen-browser/desktop, src/zen/compact-mode):
-// the bar floats over the page instead of pushing it down, opens as soon as the top edge is
-// hovered, closes on the next frame after the pointer leaves it, and stays open while the
-// pointer is just above the window.
+// the bar opens as soon as the top edge is hovered, closes on the next frame after the pointer
+// leaves it, and stays open while the pointer is just above the window. Unlike Zen it pushes the page down rather than floating over
+// it: the native website webview is drawn above all UI, so an overlay would be hidden behind it.
 
 /** How far above the window (logical px) the pointer may go before the bar closes. Zen: outside-window-edge-offset.vertical. */
 const OUTSIDE_TOP_OFFSET = 100;
@@ -19,6 +21,7 @@ const nextFrame = () => new Promise((resolve) => requestAnimationFrame(resolve))
 
 export const AppTitlebar = () => {
   const [open, setOpen] = useState(false);
+  const { open: sidebarOpen } = useSidebar();
   const zoneRef = useRef<HTMLDivElement>(null);
   const barRef = useRef<HTMLDivElement>(null);
 
@@ -123,26 +126,30 @@ export const AppTitlebar = () => {
   }, []);
 
   return (
-    // Overlays the top of the window (outside the frame's padding) so nothing below moves.
-    // Its 4px height is the strip along the top edge that opens the bar on hover.
-    <div ref={zoneRef} className="absolute inset-x-0 top-0 z-50 h-1">
+    // In flow above the content: opening grows its height and pushes the content (and the
+    // website webview, which is drawn over any UI it overlaps) down instead of covering it.
+    <div ref={zoneRef} className="relative z-50 shrink-0">
+      {/* The 4px strip along the window's top edge (the frame's padding) that opens the bar on hover. */}
+      <div aria-hidden className="absolute -inset-x-1 -top-1 h-1" />
       <div
-        ref={barRef}
         // Revealed top-down like Zen's height transition.
         className={cn(
-          "absolute inset-x-0 top-0 bg-background transition-[clip-path] duration-150 ease-in-out motion-reduce:transition-none",
-          open ? "[clip-path:inset(0)]" : "[clip-path:inset(0_0_100%_0)]",
+          "grid transition-[grid-template-rows] duration-150 ease-in-out motion-reduce:transition-none",
+          open ? "grid-rows-[1fr]" : "grid-rows-[0fr]",
         )}
       >
-        <div
-          data-tauri-drag-region
-          className={cn(
-            "flex w-full select-none items-center justify-between transition-opacity duration-150 ease-in-out motion-reduce:transition-none",
-            open ? "opacity-100" : "opacity-0",
-          )}
-        >
-          <span />
-          <WindowControls />
+        <div ref={barRef} className="min-h-0 overflow-hidden bg-background">
+          <div
+            data-tauri-drag-region
+            className={cn(
+              "flex w-full select-none items-center justify-between transition-opacity duration-150 ease-in-out motion-reduce:transition-none",
+              open ? "opacity-100" : "opacity-0",
+            )}
+          >
+            {/* The sidebar's own toggle is hidden while it's collapsed; this is the way back. */}
+            {sidebarOpen ? <span /> : <SidebarToggle />}
+            <WindowControls />
+          </div>
         </div>
       </div>
     </div>
