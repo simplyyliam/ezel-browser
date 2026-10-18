@@ -10,8 +10,8 @@ use tauri::{
   Webview, WebviewUrl, Window, WindowEvent,
 };
 
-const HOME_URL: &str = "https://duckduckgo.com";
-const SEARCH_URL: &str = "https://duckduckgo.com/";
+const HOME_URL: &str = "https://google.com";
+const SEARCH_URL: &str = "https://google.com/";
 
 const WINDOW_LABEL: &str = "main";
 const UI_LABEL: &str = "ui";
