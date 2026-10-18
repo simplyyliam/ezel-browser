@@ -15,9 +15,9 @@ export const setContentBounds = (x: number, y: number, width: number, height: nu
 /** Rounds the content webview's corners; logical px in CSS order (top-left, top-right, bottom-right, bottom-left). */
 export const setContentRadius = (radii: [number, number, number, number]) =>
   invoke<void>("set_content_radius", { radii })
-/** Cuts a window-relative rect (logical px) out of the content webview so the UI below shows through; null clears it. */
-export const setContentCutout = (rect: [number, number, number, number] | null) =>
-  invoke<void>("set_content_cutout", { rect })
+/** Cuts a window-relative rounded rect (logical px) out of the content webview under `id`; `rect: null` clears that hole. */
+export const setContentCutout = (id: string, rect: [number, number, number, number] | null, radius = 0) =>
+  invoke<void>("set_content_cutout", { id, rect, radius })
 export const setContentVisible = (visible: boolean) => invoke<void>("set_content_visible", { visible })
 
 export const minimizeWindow = () => getCurrentWindow().minimize()

@@ -8,18 +8,18 @@ import { AppTitlebar } from "@/widgets/app-titlebar/AppTitlebar"
 export default function AppLayout() {
   return (
     // Wraps the whole frame so the titlebar can toggle the sidebar too (Ctrl+B does the same).
-    // The window frame keeps its own background; only the row below the titlebar is sidebar-coloured.
+    // Starts collapsed: Zen's compact mode, where the sidebar peeks out from the left edge.
     <SidebarProvider
-      defaultOpen
+      defaultOpen={false}
       style={{ "--sidebar-width": SIDEBAR_WIDTH } as CSSProperties}
-      className="h-full min-h-0 has-data-[variant=inset]:bg-transparent"
+      className="h-full min-h-0"
     >
       <WindowFrame titlebar={<AppTitlebar />}>
         {/* relative: the sidebar positions itself against this area, below the titlebar. */}
-        <div className="relative flex min-h-0 flex-1 bg-sidebar">
+        <div className="relative flex min-h-0 flex-1">
           <AppSidebar />
-          {/* No margin of its own: the frame's p-1 is the only gap, so it uses the frame radius. */}
-          <SidebarInset className="min-h-0 min-w-0 md:peer-data-[variant=inset]:m-0 md:peer-data-[variant=inset]:rounded-frame md:peer-data-[variant=inset]:peer-data-[state=collapsed]:ml-0">
+          {/* Sits flush in the window frame, so it uses the frame radius. */}
+          <SidebarInset className="min-h-0 min-w-0 rounded-frame">
             <Outlet />
           </SidebarInset>
         </div>

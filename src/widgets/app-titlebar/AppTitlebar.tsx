@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { cn } from "@/lib/utils";
 import { WindowControls } from "@/features/app-titlebar/window-controls";
 import { SidebarTrigger, useSidebar } from "@/components/ui/sidebar";
-import { getCursorPosition, getWindowClientRect, setContentCutout } from "@/shared";
+import { getCursorPosition, getWindowClientRect, useContentCutout } from "@/shared";
 
 // Peek behaviour follows Zen's compact-mode toolbar (zen-browser/desktop, src/zen/compact-mode):
 // the bar opens as soon as the top edge is hovered, closes on the next frame after the pointer
@@ -10,7 +10,7 @@ import { getCursorPosition, getWindowClientRect, setContentCutout } from "@/shar
 // Look follows Zen's default (zen.view.shift-down-site-on-hover = false): the bar's height grows
 // from the edge strip over 150ms ease-in-out while its contents fade in, and the page does NOT
 // move; the bar covers its top. No shadow. The website is a native webview drawn above all UI,
-// so the bar's rect is cut out of it (setContentCutout) for the bar to show through.
+// so the bar's rect is cut out of it (useContentCutout) for the bar to show through.
 
 /** How far above the window (logical px) the pointer may go before the bar closes. Zen: outside-window-edge-offset.vertical. */
 const OUTSIDE_TOP_OFFSET = 100;
@@ -18,9 +18,6 @@ const OUTSIDE_TOP_OFFSET = 100;
 const EDGE_TOLERANCE = 10;
 /** Fallback when the cursor can't be read outside the window. Zen: toolbar-hide-after-hover.duration. */
 const HIDE_AFTER_EXIT = 1000;
-
-/** Height of the closed bar: the frame's top padding, the strip that opens it. Zen: --zen-element-separation. */
-const EDGE_STRIP = 4;
 
 const nextFrame = () => new Promise((resolve) => requestAnimationFrame(resolve));
 
@@ -131,36 +128,7 @@ export const AppTitlebar = () => {
   }, []);
 
   // Keep the bar's rect cut out of the website on every frame of its height transition.
-  useEffect(() => {
-    const bar = barRef.current;
-    if (!bar) return;
-
-    let frame = 0;
-    let last = "";
-    const report = () => {
-      frame = 0;
-      const r = bar.getBoundingClientRect();
-      const rect: [number, number, number, number] | null =
-        r.height > EDGE_STRIP ? [r.left, r.top, r.width, r.height] : null;
-      const key = JSON.stringify(rect);
-      if (key === last) return;
-      last = key;
-      setContentCutout(rect);
-    };
-    const schedule = () => {
-      if (!frame) frame = requestAnimationFrame(report);
-    };
-
-    const observer = new ResizeObserver(schedule);
-    observer.observe(bar);
-    window.addEventListener("resize", schedule);
-    return () => {
-      cancelAnimationFrame(frame);
-      observer.disconnect();
-      window.removeEventListener("resize", schedule);
-      setContentCutout(null);
-    };
-  }, []);
+  useContentCutout("titlebar", () => barRef.current);
 
   return (
     // Overlays the top of the window (outside the frame's padding) so nothing below moves.

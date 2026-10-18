@@ -1,6 +1,6 @@
 mod window_radius;
 
-use std::sync::Mutex;
+use std::{collections::BTreeMap, sync::Mutex};
 
 use serde::Serialize;
 use tauri::{
@@ -29,7 +29,7 @@ struct PageState {
   last: Option<PageChanged>,
 }
 
-/// Last reported content bounds, corner radii and cutout, in logical px. Rust rebuilds the clip region from these.
+/// Last reported content bounds, corner radii and cutouts, in logical px. Rust rebuilds the clip region from these.
 #[derive(Default)]
 struct ContentShape {
   x: f64,
@@ -38,8 +38,15 @@ struct ContentShape {
   height: f64,
   /// CSS order: top-left, top-right, bottom-right, bottom-left.
   radii: [f64; 4],
-  /// Window-relative `[x, y, width, height]` cut out of the page so the UI below shows through (the titlebar peek).
-  cutout: Option<[f64; 4]>,
+  /// Holes cut out of the page so the UI below shows through, keyed by owner ("titlebar", "sidebar").
+  cutouts: BTreeMap<String, Cutout>,
+}
+
+/// A window-relative rounded rect, logical px.
+#[derive(Clone, Copy)]
+struct Cutout {
+  rect: [f64; 4],
+  radius: f64,
 }
 
 /// Cached Windhawk settings (re-read only when the registry changes) and the last reported radius.
@@ -159,48 +166,66 @@ fn set_content_radius(app: AppHandle, radii: [f64; 4]) -> Result<(), String> {
   Ok(())
 }
 
-/// Cuts a window-relative rect (logical px) out of the content webview, or clears it with `None`.
-/// The page keeps its bounds (no reflow); the UI underneath shows through the hole.
+/// Cuts a window-relative rounded rect (logical px) out of the content webview under `id`, or clears
+/// that id's hole with `rect: None`. The page keeps its bounds (no reflow); the UI shows through.
 #[tauri::command]
-fn set_content_cutout(app: AppHandle, rect: Option<[f64; 4]>) -> Result<(), String> {
+fn set_content_cutout(app: AppHandle, id: String, rect: Option<[f64; 4]>, radius: f64) -> Result<(), String> {
   if let Some(r) = rect {
     if !r.iter().all(|v| v.is_finite()) {
       return Err("cutout must be finite numbers".into());
     }
   }
+  if !radius.is_finite() || radius < 0.0 {
+    return Err("radius must be a finite, non-negative number".into());
+  }
   {
     let shape: State<Mutex<ContentShape>> = app.state();
-    shape.lock().unwrap().cutout = rect.filter(|r| r[2] > 0.0 && r[3] > 0.0);
+    let mut shape = shape.lock().unwrap();
+    match rect.filter(|r| r[2] > 0.0 && r[3] > 0.0) {
+      Some(rect) => shape.cutouts.insert(id, Cutout { rect, radius }),
+      None => shape.cutouts.remove(&id),
+    };
   }
   apply_content_shape(&content(&app)?);
   Ok(())
 }
 
-/// Clips the content webview to its rounded shape, minus the cutout. CSS can't do this: the webview is a native window above the UI.
+/// Clips the content webview to its rounded shape, minus the cutouts. CSS can't do this: the webview is a native window above the UI.
 fn apply_content_shape(webview: &Webview) {
   #[cfg(windows)]
   {
     let Ok(scale) = webview.window().scale_factor() else { return };
-    let (x, y, width, height, radii, cutout) = {
+    let (x, y, width, height, radii, cutouts) = {
       let shape: State<Mutex<ContentShape>> = webview.state();
       let s = shape.lock().unwrap();
-      (s.x, s.y, s.width, s.height, s.radii, s.cutout)
+      (s.x, s.y, s.width, s.height, s.radii, s.cutouts.values().copied().collect::<Vec<_>>())
     };
     let w = (width * scale).round() as i32;
     let h = (height * scale).round() as i32;
     let max = w.min(h) / 2;
     let radii = radii.map(|r| ((r * scale).round() as i32).clamp(0, max));
-    // The cutout in the webview's own physical px.
-    let cutout = cutout.map(|[cx, cy, cw, ch]| {
-      let left = ((cx - x) * scale).round() as i32;
-      let top = ((cy - y) * scale).round() as i32;
-      [left, top, left + (cw * scale).round() as i32, top + (ch * scale).round() as i32]
-    });
+    // The cutouts in the webview's own physical px: [left, top, right, bottom, radius].
+    let cutouts: Vec<[i32; 5]> = cutouts
+      .iter()
+      .map(|c| {
+        let [cx, cy, cw, ch] = c.rect;
+        let left = ((cx - x) * scale).round() as i32;
+        let top = ((cy - y) * scale).round() as i32;
+        let right = left + (cw * scale).round() as i32;
+        let bottom = top + (ch * scale).round() as i32;
+        [left, top, right, bottom, (c.radius * scale).round() as i32]
+      })
+      // Holes that miss the page change nothing.
+      .filter(|[l, t, r, b, _]| *r > 0 && *b > 0 && *l < w && *t < h)
+      .collect();
 
     let _ = webview.with_webview(move |pw| {
       use windows::Win32::{
         Foundation::HWND,
-        Graphics::Gdi::{CombineRgn, CreateEllipticRgn, CreateRectRgn, DeleteObject, SetWindowRgn, RGN_DIFF, RGN_OR},
+        Graphics::Gdi::{
+          CombineRgn, CreateEllipticRgn, CreateRectRgn, CreateRoundRectRgn, DeleteObject, SetWindowRgn, RGN_DIFF,
+          RGN_OR,
+        },
       };
       // SAFETY: called on the main thread with a live WebView2 controller. wry hosts each child
       // webview in its own container HWND (the controller's parent window); clipping it clips the page.
@@ -209,7 +234,7 @@ fn apply_content_shape(webview: &Webview) {
         if pw.controller().ParentWindow(&mut hwnd).is_err() {
           return;
         }
-        if radii.iter().all(|r| *r == 0) && cutout.is_none() {
+        if radii.iter().all(|r| *r == 0) && cutouts.is_empty() {
           SetWindowRgn(hwnd, None, true);
           return;
         }
@@ -236,8 +261,13 @@ fn apply_content_shape(webview: &Webview) {
           CombineRgn(Some(region), Some(region), Some(ellipse), RGN_OR);
           let _ = DeleteObject(ellipse.into());
         }
-        if let Some([left, top, right, bottom]) = cutout {
-          let hole = CreateRectRgn(left, top, right, bottom);
+        for [left, top, right, bottom, radius] in cutouts {
+          let hole = if radius > 0 {
+            // The last two args are the corner ellipse's width and height.
+            CreateRoundRectRgn(left, top, right + 1, bottom + 1, radius * 2, radius * 2)
+          } else {
+            CreateRectRgn(left, top, right, bottom)
+          };
           CombineRgn(Some(region), Some(region), Some(hole), RGN_DIFF);
           let _ = DeleteObject(hole.into());
         }

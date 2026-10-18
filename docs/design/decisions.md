@@ -22,6 +22,22 @@ Ours copies that exactly:
 - No shadow; the bar uses the window background.
 - The website is a native webview above the UI, so the frontend reports the bar's rect every frame and Rust cuts it out of the webview's clip region (`set_content_cutout`). The page never reflows or moves.
 
+## Sidebar peek (2026-10-18)
+Studied Zen's compact mode (`src/zen/compact-mode/sidebar.inc.css`, `ZenCompactMode.mjs`, `prefs/zen/compact-mode.yaml`, `zen-theme.css`):
+- **Layouts** (Settings › Browser Layout): *Only Sidebar* (`zen.view.use-single-toolbar = true`, default: URL bar and nav live in the sidebar), *Sidebar and Top Toolbar*, *Collapsed Sidebar*. Compact mode's own menu adds *Hide sidebar* (default), *Hide toolbar*, *Hide both*. Ezel follows **Only Sidebar** with compact mode hiding the sidebar.
+- **Geometry**: the sidebar is fixed and floats 8px from the window edges (`--zen-element-separation`, default 8). Hidden, it's moved off by `-(100% − 8px − 1px)`.
+- **Motion**: reveal is `translate 0.25s` on a spring-like `linear()` curve (overshoots to 1.011 at about 73%, settles). Hide is `0.15s ease`.
+- **Look**: a rounded card (`--zen-native-inner-radius`) with a 1px outline and `rgba(0,0,0,.24) 0 3px 8px` shadow.
+- **Hover**: opens on mouseover of the edge strip or sidebar. On leave it keeps 150ms (`sidebar-keep-hover`) before closing. Leaving through the window's left edge keeps it open while the cursor is within 200px outside (native mouse tracker), falling back to 1000ms. It stays open while a popup is open (`has-popup-menu`).
+
+Ours:
+- shadcn `variant="floating"` gives the card (its `p-2` = Zen's 8px float). Collapsed + peeking overrides the off-canvas `left` back to 0. Timing and curve match Zen (`--ease-zen-peek` samples Zen's curve).
+- The trigger is the frame's 4px left padding: the only UI the website doesn't cover there. The 150ms keep-hover covers crossing the 8px gap to the card.
+- Also stays open while the sidebar holds focus (typing in the URL bar must not be cut off by a mouse twitch).
+- Out of the tab order (`inert`) while hidden off-canvas.
+- The card + 1px ring is cut out of the website (`useContentCutout("sidebar")`, rounded). The shadow outside it can't be drawn over the page (it would sit on the UI's placeholder, not the site), so over the page the card shows its ring only.
+- Open (Ctrl+B / trigger) docks it beside the page, like turning compact mode off. Docked it switches to shadcn's flat `variant="sidebar"`: no border, ring, shadow, radius or padding; the window frame's 4px is the only gap. The card look is only for floating over the page.
+
 ## Scrollbar (2026-10-18)
 **App scroll areas** (`shared/components/scroll-area`, used for the sidebar body):
 - Native scrolling stays: wheel, keyboard, touch and momentum behave exactly as the OS does. Only the visual scrollbar is replaced.

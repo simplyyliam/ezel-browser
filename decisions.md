@@ -14,3 +14,6 @@ Copies Zen's default peek: the page stays still and the bar covers its top. The 
 
 ## 2026-10-18: Scrollbars
 App scroll areas use a custom elastic pill thumb (`ScrollArea`); websites use WebView2 Fluent overlay scrollbars. Details: docs/design/decisions.md.
+
+## 2026-10-18: Sidebar works like Zen's compact mode
+Floating sidebar, collapsed by default; hovering the left edge peeks it over the page, Ctrl+B docks it. Follows Zen's "Only Sidebar" layout. The cutout command became keyed rounded rects (`set_content_cutout(id, rect, radius)`), so the titlebar and sidebar can each cut a hole in the website.
