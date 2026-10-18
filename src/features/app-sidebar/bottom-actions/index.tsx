@@ -5,35 +5,40 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
+import { SidebarMenu, SidebarMenuButton, SidebarMenuItem } from "@/components/ui/sidebar"
 
-const action =
-  "flex h-5 w-[26px] items-center justify-center rounded-[6px] bg-sidebar-foreground/5 text-sidebar-foreground outline-none transition-colors hover:bg-sidebar-foreground/8 focus-visible:ring-2 focus-visible:ring-sidebar-ring aria-expanded:bg-sidebar-foreground/8 [&_svg]:size-3"
+/** Small icon-only pills, as in the design. */
+const action = "h-6 w-7 justify-center bg-sidebar-foreground/5 p-0 hover:bg-sidebar-foreground/8 [&_svg]:size-3.5"
 
-/** Pinned to the bottom of the sidebar. None of these do anything yet. */
+/** Pinned to the bottom of the sidebar (render inside SidebarFooter). None of these do anything yet. */
 export function BottomActions() {
   return (
-    <div className="flex items-center justify-between">
-      <div className="flex items-center gap-1.5">
+    <SidebarMenu className="flex-row items-center gap-1.5">
+      <SidebarMenuItem>
         {/* TODO: open the downloads list. */}
-        <button type="button" aria-label="Downloads" className={action}>
+        <SidebarMenuButton size="sm" aria-label="Downloads" className={action}>
           <Download aria-hidden />
-        </button>
+        </SidebarMenuButton>
+      </SidebarMenuItem>
+      <SidebarMenuItem>
         {/* TODO: trash-all closes TEMP tabs only, never pinned ones. */}
-        <button type="button" aria-label="Close all temporary tabs" className={action}>
+        <SidebarMenuButton size="sm" aria-label="Close all temporary tabs" className={action}>
           <Trash2 aria-hidden />
-        </button>
-      </div>
-      <DropdownMenu>
-        <DropdownMenuTrigger aria-label="Add" className={action}>
-          <Plus aria-hidden />
-        </DropdownMenuTrigger>
-        {/* The website webview is drawn over everything right of the sidebar: open upwards, end-aligned, so the menu stays inside it. */}
-        <DropdownMenuContent side="top" align="end" className="w-auto min-w-32">
-          {/* TODO: create a space / a tab. */}
-          <DropdownMenuItem>Add space</DropdownMenuItem>
-          <DropdownMenuItem>Add tab</DropdownMenuItem>
-        </DropdownMenuContent>
-      </DropdownMenu>
-    </div>
+        </SidebarMenuButton>
+      </SidebarMenuItem>
+      <SidebarMenuItem className="ml-auto">
+        <DropdownMenu>
+          <DropdownMenuTrigger render={<SidebarMenuButton size="sm" aria-label="Add" className={action} />}>
+            <Plus aria-hidden />
+          </DropdownMenuTrigger>
+          {/* The website webview is drawn over everything right of the sidebar: open upwards, end-aligned, so the menu stays inside it. */}
+          <DropdownMenuContent side="top" align="end">
+            {/* TODO: create a space / a tab. */}
+            <DropdownMenuItem>Add space</DropdownMenuItem>
+            <DropdownMenuItem>Add tab</DropdownMenuItem>
+          </DropdownMenuContent>
+        </DropdownMenu>
+      </SidebarMenuItem>
+    </SidebarMenu>
   )
 }

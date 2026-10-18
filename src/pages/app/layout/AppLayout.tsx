@@ -19,7 +19,7 @@ export default function AppLayout() {
         <div className="relative flex min-h-0 flex-1 bg-sidebar">
           <AppSidebar />
           {/* No margin of its own: the frame's p-1 is the only gap, so it uses the frame radius. */}
-          <SidebarInset className="min-h-0 min-w-0 peer-data-[variant=inset]:m-0 peer-data-[variant=inset]:rounded-frame peer-data-[variant=inset]:peer-data-[state=collapsed]:ml-0">
+          <SidebarInset className="min-h-0 min-w-0 md:peer-data-[variant=inset]:m-0 md:peer-data-[variant=inset]:rounded-frame md:peer-data-[variant=inset]:peer-data-[state=collapsed]:ml-0">
             <Outlet />
           </SidebarInset>
         </div>

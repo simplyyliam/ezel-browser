@@ -1,5 +1,5 @@
 import { useState, type KeyboardEvent } from "react"
-import { Input } from "@/components/ui/input"
+import { SidebarInput } from "@/components/ui/sidebar"
 import { cn } from "@/lib/utils"
 import { navigate } from "@/shared"
 import { LoadingIndicator } from "./loading-indicator"
@@ -26,7 +26,7 @@ export function UrlBar({ url, isLoading, className }: UrlBarProps) {
 
   return (
     <div className={cn("relative min-w-0", className)}>
-      <Input
+      <SidebarInput
         aria-label="Address"
         placeholder="Search or enter address"
         spellCheck={false}
@@ -40,11 +40,11 @@ export function UrlBar({ url, isLoading, className }: UrlBarProps) {
         }}
         onBlur={() => setDraft(null)}
         onKeyDown={handleKeyDown}
-        className="h-8 rounded-[9px] bg-sidebar-foreground/5 px-2.5 pr-8 text-[13px] md:text-[13px]"
+        className="pr-8"
       />
       <LoadingIndicator
         isLoading={isLoading}
-        className="pointer-events-none absolute top-1/2 right-2.5 -translate-y-1/2 [&_svg]:size-3.5"
+        className="pointer-events-none absolute top-1/2 right-2.5 -translate-y-1/2"
       />
     </div>
   )

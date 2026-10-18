@@ -1,9 +1,8 @@
 import { useEffect, useRef, useState } from "react";
 import { cn } from "@/lib/utils";
 import { WindowControls } from "@/features/app-titlebar/window-controls";
-import { useSidebar } from "@/components/ui/sidebar";
+import { SidebarTrigger, useSidebar } from "@/components/ui/sidebar";
 import { getCursorPosition, getWindowClientRect, setContentCutout } from "@/shared";
-import { SidebarToggle } from "@/shared/components";
 
 // Peek behaviour follows Zen's compact-mode toolbar (zen-browser/desktop, src/zen/compact-mode):
 // the bar opens as soon as the top edge is hovered, closes on the next frame after the pointer
@@ -183,7 +182,7 @@ export const AppTitlebar = () => {
             )}
           >
             {/* The sidebar's own toggle is hidden while it's collapsed; this is the way back. */}
-            {sidebarOpen ? <span /> : <SidebarToggle />}
+            {sidebarOpen ? <span /> : <SidebarTrigger />}
             <WindowControls />
           </div>
         </div>

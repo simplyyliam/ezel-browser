@@ -1,6 +1,15 @@
 import { useState } from "react"
 import { AnimatePresence, motion, useReducedMotion } from "motion/react"
 import { Folder as FolderClosedIcon, FolderOpen } from "lucide-react"
+import {
+  SidebarGroup,
+  SidebarGroupContent,
+  SidebarMenu,
+  SidebarMenuButton,
+  SidebarMenuItem,
+  SidebarMenuSub,
+  SidebarMenuSubItem,
+} from "@/components/ui/sidebar"
 import { TabRow } from "@/shared/components"
 import { INSTANT, PEEK_TRANSITION, type Folder, type SpaceItem } from "@/shared"
 
@@ -25,33 +34,36 @@ export function Folders({ items, defaultActiveTabId }: FoldersProps) {
     })
 
   return (
-    <ul className="flex flex-col gap-0.5">
-      {items.map((item) =>
-        item.kind === "folder" ? (
-          <li key={item.folder.id}>
-            <FolderGroup
-              folder={item.folder}
-              open={!closed.has(item.folder.id)}
-              onToggle={() => toggle(item.folder.id)}
-              activeTabId={activeTabId}
-              onSelectTab={setActiveTabId}
-            />
-          </li>
-        ) : (
-          <li key={item.tab.id}>
-            <TabRow
-              tab={item.tab}
-              active={item.tab.id === activeTabId}
-              onSelect={() => setActiveTabId(item.tab.id)}
-            />
-          </li>
-        ),
-      )}
-    </ul>
+    <SidebarGroup>
+      <SidebarGroupContent>
+        <SidebarMenu>
+          {items.map((item) =>
+            item.kind === "folder" ? (
+              <FolderItem
+                key={item.folder.id}
+                folder={item.folder}
+                open={!closed.has(item.folder.id)}
+                onToggle={() => toggle(item.folder.id)}
+                activeTabId={activeTabId}
+                onSelectTab={setActiveTabId}
+              />
+            ) : (
+              <SidebarMenuItem key={item.tab.id}>
+                <TabRow
+                  tab={item.tab}
+                  active={item.tab.id === activeTabId}
+                  onSelect={() => setActiveTabId(item.tab.id)}
+                />
+              </SidebarMenuItem>
+            ),
+          )}
+        </SidebarMenu>
+      </SidebarGroupContent>
+    </SidebarGroup>
   )
 }
 
-type FolderGroupProps = {
+type FolderItemProps = {
   folder: Folder
   open: boolean
   onToggle: () => void
@@ -59,40 +71,43 @@ type FolderGroupProps = {
   onSelectTab: (tabId: string) => void
 }
 
-function FolderGroup({ folder, open, onToggle, activeTabId, onSelectTab }: FolderGroupProps) {
+function FolderItem({ folder, open, onToggle, activeTabId, onSelectTab }: FolderItemProps) {
   const reduceMotion = useReducedMotion()
   const transition = reduceMotion ? INSTANT : PEEK_TRANSITION
   const Icon = open ? FolderOpen : FolderClosedIcon
 
   return (
-    <>
-      <button
-        type="button"
+    <SidebarMenuItem>
+      <SidebarMenuButton
+        size="sm"
         aria-expanded={open}
         onClick={onToggle}
-        className="flex h-7 w-full min-w-0 items-center gap-2 rounded-[7px] text-left text-xs text-muted-foreground outline-none focus-visible:ring-2 focus-visible:ring-sidebar-ring"
+        className="text-sidebar-foreground/70 [&_svg]:text-sidebar-foreground"
       >
-        <Icon aria-hidden className="size-3.5 shrink-0 text-sidebar-foreground" />
-        <span className="truncate">{folder.name}</span>
-      </button>
+        <Icon aria-hidden />
+        <span>{folder.name}</span>
+      </SidebarMenuButton>
       <AnimatePresence initial={false}>
         {open && (
-          <motion.ul
+          <motion.div
             key="tabs"
             initial={{ height: 0, opacity: 0 }}
             animate={{ height: "auto", opacity: 1 }}
             exit={{ height: 0, opacity: 0 }}
             transition={transition}
-            className="flex flex-col gap-0.5 overflow-hidden px-3 pt-1"
+            className="overflow-hidden"
           >
-            {folder.tabs.map((tab) => (
-              <li key={tab.id}>
-                <TabRow tab={tab} active={tab.id === activeTabId} onSelect={() => onSelectTab(tab.id)} />
-              </li>
-            ))}
-          </motion.ul>
+            {/* Indented without the default tree line, as in the design. */}
+            <SidebarMenuSub className="mx-0 translate-x-0 gap-0 border-l-0 py-0 pr-0 pl-3">
+              {folder.tabs.map((tab) => (
+                <SidebarMenuSubItem key={tab.id}>
+                  <TabRow tab={tab} active={tab.id === activeTabId} onSelect={() => onSelectTab(tab.id)} />
+                </SidebarMenuSubItem>
+              ))}
+            </SidebarMenuSub>
+          </motion.div>
         )}
       </AnimatePresence>
-    </>
+    </SidebarMenuItem>
   )
 }

@@ -1,3 +1,10 @@
+import {
+  SidebarGroup,
+  SidebarGroupContent,
+  SidebarMenu,
+  SidebarMenuButton,
+  SidebarMenuItem,
+} from "@/components/ui/sidebar"
 import { Favicon } from "@/shared/components"
 import type { Swatch } from "@/shared"
 
@@ -11,19 +18,22 @@ type SwatchesProps = {
 /** The top grid of pinned favourites. Placeholder only: clicking does nothing yet. */
 export function Swatches({ swatches }: SwatchesProps) {
   return (
-    <ul aria-label="Swatches" className="grid grid-cols-[repeat(4,52px)] justify-between gap-y-1">
-      {swatches.slice(0, MAX_SWATCHES).map((swatch) => (
-        <li key={swatch.id}>
-          {/* TODO: open the swatch's tab once real tab state exists. */}
-          <button
-            type="button"
-            aria-label={swatch.tab?.title ?? "Empty swatch"}
-            className="flex h-[31px] w-[52px] items-center justify-center rounded-[9px] bg-sidebar-foreground/5 outline-none transition-colors hover:bg-sidebar-foreground/8 focus-visible:ring-2 focus-visible:ring-sidebar-ring"
-          >
-            {swatch.tab && <Favicon src={swatch.tab.favicon} className="size-[18px]" />}
-          </button>
-        </li>
-      ))}
-    </ul>
+    <SidebarGroup>
+      <SidebarGroupContent>
+        <SidebarMenu aria-label="Swatches" className="grid grid-cols-4 gap-1">
+          {swatches.slice(0, MAX_SWATCHES).map((swatch) => (
+            <SidebarMenuItem key={swatch.id}>
+              {/* TODO: open the swatch's tab once real tab state exists. */}
+              <SidebarMenuButton
+                aria-label={swatch.tab?.title ?? "Empty swatch"}
+                className="justify-center bg-sidebar-foreground/5 p-0 hover:bg-sidebar-foreground/8"
+              >
+                {swatch.tab && <Favicon src={swatch.tab.favicon} className="size-[18px]" />}
+              </SidebarMenuButton>
+            </SidebarMenuItem>
+          ))}
+        </SidebarMenu>
+      </SidebarGroupContent>
+    </SidebarGroup>
   )
 }

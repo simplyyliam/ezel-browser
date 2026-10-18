@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react"
-import { Sidebar, SidebarContent, SidebarFooter, SidebarHeader } from "@/components/ui/sidebar"
+import { Sidebar, SidebarContent, SidebarFooter, SidebarHeader, SidebarTrigger } from "@/components/ui/sidebar"
 import { BottomActions } from "@/features/app-sidebar/bottom-actions"
 import { Folders } from "@/features/app-sidebar/folders"
 import { Navigation } from "@/features/app-sidebar/navigation"
@@ -14,11 +14,11 @@ import { Swatches } from "@/features/app-sidebar/swatches"
 import { TempTabs } from "@/features/app-sidebar/temp-tabs"
 import { UrlBar } from "@/features/app-sidebar/url-bar"
 import { getPage, onPageChanged, type PageChanged } from "@/shared"
-import { ScrollArea, SidebarToggle } from "@/shared/components"
+import { ScrollArea } from "@/shared/components"
 
 /**
  * docs/design/sidebar-1.png scaled up for legibility (docs/design/decisions.md, "Sizing"):
- * 4 swatches of 52px + 3 gaps of 4px = 220px, plus 12px padding each side (px-3) = 244px.
+ * shadcn's 32px rows and 8px group padding, with room for four ~54px swatches.
  */
 export const SIDEBAR_WIDTH = "244px"
 
@@ -66,29 +66,25 @@ export function AppSidebar() {
   return (
     <Sidebar variant="inset" collapsible="offcanvas" className="absolute h-full p-0">
       {/* TODO: temporary block; removed when the command palette lands. */}
-      <SidebarHeader className="gap-2 px-3 pt-3 pb-0">
+      <SidebarHeader className="pb-0">
         <div className="flex items-center gap-0.5">
-          <SidebarToggle />
+          <SidebarTrigger />
           <Navigation canGoBack={page.canGoBack} canGoForward={page.canGoForward} />
         </div>
         <UrlBar url={page.url} isLoading={page.isLoading} />
       </SidebarHeader>
 
       <SidebarContent className="gap-0 overflow-hidden">
-        <ScrollArea className="flex-1" viewportClassName="px-3 pt-4 pb-3">
+        <ScrollArea className="flex-1" viewportClassName="pt-2">
           <Swatches swatches={PLACEHOLDER_SWATCHES} />
-          <div className="mt-6">
-            <SpaceSwitcher spaces={PLACEHOLDER_SPACES} activeSpaceId={space.id} onSelect={setActiveSpaceId} />
-          </div>
-          <div className="mt-4">
-            {/* Keyed by space: folder open state and the active tab start fresh per space. */}
-            <Folders key={space.id} items={space.items} defaultActiveTabId={PLACEHOLDER_ACTIVE_TAB_ID} />
-          </div>
+          <SpaceSwitcher spaces={PLACEHOLDER_SPACES} activeSpaceId={space.id} onSelect={setActiveSpaceId} />
+          {/* Keyed by space: folder open state and the active tab start fresh per space. */}
+          <Folders key={space.id} items={space.items} defaultActiveTabId={PLACEHOLDER_ACTIVE_TAB_ID} />
           <TempTabs tabs={PLACEHOLDER_TEMP_TABS} />
         </ScrollArea>
       </SidebarContent>
 
-      <SidebarFooter className="px-3 pt-2 pb-3">
+      <SidebarFooter>
         <BottomActions />
       </SidebarFooter>
     </Sidebar>

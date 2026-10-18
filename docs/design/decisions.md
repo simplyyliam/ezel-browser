@@ -38,16 +38,19 @@ Ours copies that exactly:
 ## Sizing (2026-10-18)
 `docs/design/sidebar-1.png` is a 1.5× export. At its 1× sizes (10.5px tab titles, 14px favicons, 18×14 buttons) the sidebar was hard to read and hit, especially in a small window. We scale it up, text most, without going large:
 
+Since 2026-10-18 the sidebar uses shadcn's Sidebar primitives at their defaults, so most sizes come from shadcn (`components/ui/sidebar.tsx`, never edited):
+
 | Element | Design 1× | Now |
 |---|---|---|
-| Sidebar width | 212 | 244 (4 × 52 swatches + 3 × 4 gaps + 2 × 12 padding) |
-| Swatch | 45×27, r7.5 | 52×31, r9 |
-| Tab row | 28 high, 10.5px text, 14px favicon | 32 high, 13px text, 16px favicon, r9 |
-| Folder row | 9px label | 28 high, 12px label, 14px icon |
-| Space pill / buttons | 15 high, 9px | 24 high, 12px medium, 14px icon, r7 |
-| New Tab | 26 high | 32 high, 13px |
-| Bottom actions | 18×14, r5 | 26×20, r6, 12px icons |
-| URL bar | – | 32 high, 13px |
-| Nav / toggle buttons | – | 28px, 16px icons |
+| Sidebar width | 212 | 244 (`SIDEBAR_WIDTH`) |
+| Group / header / footer padding | 10 | 8 (shadcn `p-2`) |
+| Swatch | 45×27, r7.5 | 4 fluid columns (~54) × 32, shadcn menu-button radius |
+| Tab row | 28 high, 10.5px text, 14px favicon | `SidebarMenuButton`: 32 high, 14px text, 16px favicon |
+| Folder row | 9px label | `SidebarMenuButton size="sm"`: 28 high, 12px, muted |
+| Space pill / buttons | 15 high, 9px | `SidebarMenuButton size="sm"`: 28 high, 12px, 14px icon |
+| New Tab | 26 high | 32 high, inset 12px each side, dimmed |
+| Bottom actions | 18×14, r5 | 28×24 pills, 14px icons |
+| URL bar | – | `SidebarInput`, 32 high |
+| Nav / toggle buttons | – | `Button size="icon-sm"` / `SidebarTrigger`, 32px |
 
-Why these numbers: 13px is the common sidebar text size (Arc, Zen, macOS source lists). It stays legible at 100% scaling without crowding a 244px column. A 32px row is easy to hit while keeping about 20 rows visible in an 800px window. Radii scale with their elements so the shapes keep the design's proportions.
+Why these numbers: 13–14px is the common sidebar text size (Arc, Zen, macOS source lists, shadcn). It stays legible at 100% scaling without crowding a 244px column. A 32px row is easy to hit while keeping about 20 rows visible in an 800px window. Radii scale with their elements so the shapes keep the design's proportions.
