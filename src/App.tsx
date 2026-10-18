@@ -1,7 +1,5 @@
 import { Toolbar } from "@/widgets/toolbar"
 
-function App() {
+export default function App() {
   return <Toolbar />
 }
-
-export default App
