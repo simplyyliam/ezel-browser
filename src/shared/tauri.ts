@@ -46,6 +46,11 @@ export function onWindowRadiusChanged(handler: (radius: WindowRadius) => void): 
   return listen<WindowRadius>("window-radius-changed", (event) => handler(event.payload))
 }
 
+/** Ctrl+B pressed while the website has focus (Rust forwards it; the ui webview never sees those keys). */
+export function onToggleSidebar(handler: () => void): Promise<UnlistenFn> {
+  return listen("toggle-sidebar", () => handler())
+}
+
 export function onPageChanged(handler: (page: PageChanged) => void): Promise<UnlistenFn> {
   return listen<PageChanged>("page-changed", (event) => handler(event.payload))
 }

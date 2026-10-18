@@ -21,7 +21,7 @@ import { Swatches } from "@/features/app-sidebar/swatches"
 import { TempTabs } from "@/features/app-sidebar/temp-tabs"
 import { UrlBar } from "@/features/app-sidebar/url-bar"
 import { cn } from "@/lib/utils"
-import { getPage, onPageChanged, useContentCutout, type PageChanged } from "@/shared"
+import { getPage, onPageChanged, onToggleSidebar, useContentCutout, type PageChanged } from "@/shared"
 import { ScrollArea } from "@/shared/components"
 import { useSidebarPeek } from "./use-sidebar-peek"
 
@@ -73,7 +73,14 @@ export function AppSidebar() {
   const page = usePage()
   const [activeSpaceId, setActiveSpaceId] = useState(PLACEHOLDER_SPACES[0].id)
   const space = PLACEHOLDER_SPACES.find((s) => s.id === activeSpaceId) ?? PLACEHOLDER_SPACES[0]
-  const { open } = useSidebar()
+  const { open, toggleSidebar } = useSidebar()
+  // shadcn's Ctrl+B only hears keys while the UI has focus; this covers the website having it.
+  useEffect(() => {
+    const unlisten = onToggleSidebar(toggleSidebar)
+    return () => {
+      unlisten.then((fn) => fn())
+    }
+  }, [toggleSidebar])
   const { peeking, edgeRef, sidebarRef } = useSidebarPeek(!open)
   // The sidebar shows above the page wherever they overlap; floating, that includes its 1px ring
   // (drawn just outside the card). Docked it sits beside the page, so the hole changes nothing.

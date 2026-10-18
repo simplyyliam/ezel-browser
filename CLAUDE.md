@@ -37,6 +37,7 @@ Window APIs (`@tauri-apps/api/window`): `minimize`, `toggleMaximize`, `close`, `
 Event emitted to the `ui` webview:
 - `page-changed`: `{ url: string, title: string | null, canGoBack: boolean, canGoForward: boolean, isLoading: boolean }`
   Emitted on navigation start, on page load finish, and when the document title changes.
+- `toggle-sidebar`: no payload. Ctrl+B was pressed while the website had focus. Rust catches it on the content webview (WebView2 `AcceleratorKeyPressed`) because those keys never reach the `ui` webview; the page doesn't receive it. Windows only for now.
 - `window-radius-changed`: same payload as `get_window_radius`. Emitted only when the value changes (window resize/maximize/snap/fullscreen, or the mod's registry settings change).
 
 ## Frontend structure
@@ -50,7 +51,7 @@ src/
 - Features never import from widgets or from other features. Code two features need goes in `shared/`.
 - Widgets may import from their own features and from `shared/`.
 - Current widgets:
-  - `widgets/app-titlebar` composes `features/app-titlebar/window-controls`. It's a Zen-style peek (studied from Zen's source, see `docs/design/decisions.md`): it overlays the top of the window, opens from a 4px strip at the top edge, grows its height over 150ms ease-in-out and never moves the page. The website is a native webview above the UI, so the bar is cut out of it with `useContentCutout` and Rust cuts it out of the page. No shadow. While the sidebar is collapsed it shows a sidebar toggle.
+  - `widgets/app-titlebar` composes `features/app-titlebar/window-controls`. It's a Zen-style peek (studied from Zen's source, see `docs/design/decisions.md`): it overlays the top of the window, opens from a 4px strip at the top edge, grows its height over 150ms ease-in-out and never moves the page. The website is a native webview above the UI, so the bar is cut out of it with `useContentCutout` and Rust cuts it out of the page. No shadow. It holds only the window controls.
   - `widgets/browser-view` composes `features/browser-view/content-slot` (the placeholder the content webview is placed over)
   - `widgets/app-sidebar` composes `features/app-sidebar/*` (see Sidebar below)
 
@@ -62,7 +63,7 @@ Built from `docs/design/sidebar-1.png` (a 1.5x export) with shadcn's `Sidebar` (
 - **shadcn components in `components/ui/` stay at registry defaults. Never edit them**; customise at the call site with `className`/`render`. Build sidebar UI from its primitives (`SidebarGroup`, `SidebarMenu`, `SidebarMenuItem`, `SidebarMenuButton`, `SidebarMenuSub*`, `SidebarInput`, `SidebarSeparator`, `SidebarTrigger`) instead of raw buttons.
 - Width: `SIDEBAR_WIDTH` (244px) in `widgets/app-sidebar`, set via `--sidebar-width`; groups keep shadcn's `p-2` and the swatch grid is 4 fluid columns. The design image is scaled up for legibility; sizes are in `docs/design/decisions.md` (Sizing).
 - Padding/corners: docked, the frame's `p-1` is the only gap around the sidebar. The peeking card keeps shadcn's floating `p-2` (Zen's 8px float margin) and radius. The inset sits flush in the frame, so it and the ContentSlot use `rounded-frame`.
-- Toggle: **Ctrl+B** (shadcn's shortcut; only while the `ui` webview has focus, not while the website has it) or shadcn's `SidebarTrigger` (in the sidebar header, and in the titlebar while collapsed). The ContentSlot's ResizeObserver re-measures every frame of the collapse/expand transition, so the website follows.
+- Toggle: **Ctrl+B** from anywhere: shadcn's shortcut while the UI has focus, and the `toggle-sidebar` event (forwarded by Rust) while the website has it. Or shadcn's `SidebarTrigger` in the sidebar header. The ContentSlot's ResizeObserver re-measures every frame of the collapse/expand transition, so the website follows.
 - Features (`features/app-sidebar/`): `navigation`, `url-bar` (temporary block at the top, removed when the command palette lands), `swatches`, `space-switcher`, `folders`, `temp-tabs`, `bottom-actions`. All mock data lives in `features/app-sidebar/placeholder-data.ts`; the widget passes it down as props.
 - Scrolling: the sidebar body uses `ScrollArea` (`shared/components/scroll-area`): native scrolling with a trackless, auto-hiding, elastic pill thumb. Use it for any scrollable app UI.
 - Shared: `shared/components/{tab-row,favicon,scroll-area}` (`TabRow` is a `SidebarMenuButton`), `shared/types` (`Tab`, `Folder`, `SpaceItem`, `Space`, `Swatch`), `shared/motion.ts` (`PEEK_TRANSITION` = the titlebar peek's 150ms ease-in-out; use `INSTANT` under `useReducedMotion`).

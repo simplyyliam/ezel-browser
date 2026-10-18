@@ -20,6 +20,7 @@ export {
   getCursorPosition,
   getWindowClientRect,
   onPageChanged,
+  onToggleSidebar,
   getWindowRadius,
   onWindowRadiusChanged,
 } from "./tauri"

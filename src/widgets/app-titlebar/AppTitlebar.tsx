@@ -1,7 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { cn } from "@/lib/utils";
 import { WindowControls } from "@/features/app-titlebar/window-controls";
-import { SidebarTrigger, useSidebar } from "@/components/ui/sidebar";
 import { getCursorPosition, getWindowClientRect, useContentCutout } from "@/shared";
 
 // Peek behaviour follows Zen's compact-mode toolbar (zen-browser/desktop, src/zen/compact-mode):
@@ -23,7 +22,6 @@ const nextFrame = () => new Promise((resolve) => requestAnimationFrame(resolve))
 
 export const AppTitlebar = () => {
   const [open, setOpen] = useState(false);
-  const { open: sidebarOpen } = useSidebar();
   const zoneRef = useRef<HTMLDivElement>(null);
   const barRef = useRef<HTMLDivElement>(null);
 
@@ -149,8 +147,7 @@ export const AppTitlebar = () => {
               open ? "opacity-100" : "opacity-0",
             )}
           >
-            {/* The sidebar's own toggle is hidden while it's collapsed; this is the way back. */}
-            {sidebarOpen ? <span /> : <SidebarTrigger />}
+            <span />
             <WindowControls />
           </div>
         </div>
