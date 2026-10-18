@@ -8,6 +8,7 @@ import {
   useSidebar,
 } from "@/components/ui/sidebar"
 import { BottomActions } from "@/features/app-sidebar/bottom-actions"
+import { SidebarContextMenu } from "@/features/app-sidebar/context-menu"
 import { Folders } from "@/features/app-sidebar/folders"
 import { Navigation } from "@/features/app-sidebar/navigation"
 import {
@@ -103,8 +104,12 @@ export function AppSidebar() {
         // Out of the tab order and the accessibility tree while it's hidden off-canvas.
         inert={!open && !peeking}
         className={cn(
-          // The sidebar variant's divider line isn't wanted either.
-          "absolute h-full group-data-[side=left]:border-r-0",
+          // The sidebar variant's divider line isn't wanted either. No padding in either variant:
+          // the card runs to the top, bottom and left of the browser area like the docked panel.
+          "absolute h-full p-0 group-data-[side=left]:border-r-0",
+          // Without the floating padding the card sits in the frame's corners, so it takes the frame's
+          // radius (important: shadcn's floating rounded-lg is set on the inner element by a group variant).
+          !open && "[&>[data-slot=sidebar-inner]]:rounded-frame!",
           // Peeking slides the collapsed card back in, over the page. Zen: in 0.25s on its spring curve, out 0.15s ease.
           peeking && "data-[side=left]:group-data-[collapsible=offcanvas]:left-0",
           !open && (peeking ? "duration-250 ease-zen-peek" : "duration-150 ease-[ease]"),
@@ -119,6 +124,8 @@ export function AppSidebar() {
         <UrlBar url={page.url} isLoading={page.isLoading} />
       </SidebarHeader>
 
+      {/* Right-clicking the sidebar body opens Zen's sidebar menu. */}
+      <SidebarContextMenu className="flex min-h-0 flex-1 flex-col">
       <SidebarContent className="gap-0 overflow-hidden">
         <ScrollArea className="flex-1" viewportClassName="pt-2">
           <Swatches swatches={PLACEHOLDER_SWATCHES} />
@@ -128,6 +135,7 @@ export function AppSidebar() {
           <TempTabs tabs={PLACEHOLDER_TEMP_TABS} />
         </ScrollArea>
       </SidebarContent>
+      </SidebarContextMenu>
 
       <SidebarFooter>
         <BottomActions />

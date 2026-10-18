@@ -31,7 +31,7 @@ Studied Zen's compact mode (`src/zen/compact-mode/sidebar.inc.css`, `ZenCompactM
 - **Hover**: opens on mouseover of the edge strip or sidebar. On leave it keeps 150ms (`sidebar-keep-hover`) before closing. Leaving through the window's left edge keeps it open while the cursor is within 200px outside (native mouse tracker), falling back to 1000ms. It stays open while a popup is open (`has-popup-menu`).
 
 Ours:
-- shadcn `variant="floating"` gives the card (its `p-2` = Zen's 8px float). Collapsed + peeking overrides the off-canvas `left` back to 0. Timing and curve match Zen (`--ease-zen-peek` samples Zen's curve).
+- shadcn `variant="floating"` gives the card. Unlike Zen it has no float margin: the card runs to the top, bottom and left of the browser area (`p-0`) and takes the frame radius. Collapsed + peeking overrides the off-canvas `left` back to 0. Timing and curve match Zen (`--ease-zen-peek` samples Zen's curve).
 - The trigger is the frame's 4px left padding: the only UI the website doesn't cover there. The 150ms keep-hover covers crossing the 8px gap to the card.
 - Also stays open while the sidebar holds focus (typing in the URL bar must not be cut off by a mouse twitch).
 - Out of the tab order (`inert`) while hidden off-canvas.

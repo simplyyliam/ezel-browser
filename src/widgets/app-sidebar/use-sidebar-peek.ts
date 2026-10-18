@@ -1,7 +1,8 @@
 import { useEffect, useRef, useState } from "react"
-import { getCursorPosition, getWindowClientRect } from "@/shared"
+import { getCursorPosition, getWindowClientRect, isPopupOpen } from "@/shared"
 
-// Port of Zen's compact-mode sidebar hover (src/zen/compact-mode/ZenCompactMode.mjs, prefs/zen/compact-mode.yaml).
+// Port of Zen's compact-mode sidebar (src/zen/compact-mode/ZenCompactMode.mjs, prefs/zen/compact-mode.yaml)
+// and its popup tracking (src/zen/common/modules/ZenUIManager.mjs, `has-popup-menu`).
 
 /** Zen: zen.view.compact.sidebar-keep-hover.duration. Covers the gap between the edge strip and the card. */
 const KEEP_HOVER = 150
@@ -13,12 +14,16 @@ const HIDE_AFTER_EXIT = 1000
 const EDGE_TOLERANCE = 10
 
 const nextFrame = () => new Promise((resolve) => requestAnimationFrame(resolve))
-const popupOpen = () => document.querySelector('[data-slot="dropdown-menu-content"]') !== null
 
 /**
  * While `enabled` (the sidebar is collapsed), hovering the window's left edge peeks the sidebar out
- * over the page. It stays while hovered, while it holds focus or an open menu, and briefly after the
- * pointer leaves; leaving through the window's left edge keeps it open while the pointer stays close.
+ * over the page. What keeps it out:
+ * - hover, with a short grace period after the pointer leaves (and while the pointer is just outside
+ *   the window's left edge);
+ * - a popup opened from inside it (context menu, dropdown), regardless of hover or focus, until the
+ *   popup closes. Like Zen's `has-popup-menu`;
+ * - typing in one of its fields (the URL bar), while the window has focus.
+ * A click on the page closes open popups (see useDismissPopupsOnBlur), and then the sidebar.
  */
 export function useSidebarPeek(enabled: boolean) {
   const [peeking, setPeeking] = useState(false)
@@ -36,18 +41,27 @@ export function useSidebarPeek(enabled: boolean) {
     let closeTimer: ReturnType<typeof setTimeout> | undefined
     let tracking = false
     let fallback: ReturnType<typeof setTimeout> | undefined
+    /** A popup opened from inside the sidebar is showing. */
+    let popupHeld = false
+    /** The last press (left or right click) landed inside the sidebar. */
+    let pressedInside = false
 
     const stopTracking = () => {
       tracking = false
       clearTimeout(fallback)
     }
 
-    /** Hovered, focused (e.g. typing in the URL bar) or showing a menu. */
-    const held = () =>
-      edge.matches(":hover") ||
-      sidebar.matches(":hover") ||
-      sidebar.contains(document.activeElement) ||
-      popupOpen()
+    const typingInside = () => {
+      const active = document.activeElement
+      return (
+        document.hasFocus() &&
+        active instanceof HTMLElement &&
+        sidebar.contains(active) &&
+        active.matches("input, textarea, [contenteditable]:not([contenteditable=false])")
+      )
+    }
+
+    const held = () => popupHeld || edge.matches(":hover") || sidebar.matches(":hover") || typingInside()
 
     const scheduleClose = (delay: number) => {
       clearTimeout(closeTimer)
@@ -82,7 +96,7 @@ export function useSidebarPeek(enabled: boolean) {
           }
           if (!withinY || x < win.x - maxOffset || x > win.x) {
             stopTracking()
-            setPeeking(false)
+            if (!popupHeld) setPeeking(false)
             return
           }
           await nextFrame()
@@ -103,24 +117,46 @@ export function useSidebarPeek(enabled: boolean) {
       scheduleClose(KEEP_HOVER)
     }
     const onFocusOut = () => scheduleClose(KEEP_HOVER)
-    // A menu closing (its portal leaves the DOM) may be the last thing holding the sidebar open.
-    const popups = new MutationObserver(() => scheduleClose(KEEP_HOVER))
-    popups.observe(document.body, { childList: true })
 
+    // Zen sets `has-popup-menu` on popupshowing when the popup's trigger is inside the sidebar.
+    // Popups here open from a press (right-click, click), so remember where the last press was.
+    const onPress = (event: Event) => {
+      if (event.isTrusted) pressedInside = event.target instanceof Node && sidebar.contains(event.target)
+    }
+    const popups = new MutationObserver(() => {
+      const open = isPopupOpen()
+      if (open && !popupHeld && pressedInside) {
+        popupHeld = true
+        clearTimeout(closeTimer)
+      } else if (!open && popupHeld) {
+        // Closed by a click inside the sidebar: still hovered, stays. Closed by a click on the
+        // page (or Escape with the pointer away): nothing holds it any more, so it slides away.
+        popupHeld = false
+        scheduleClose(KEEP_HOVER)
+      }
+    })
+    popups.observe(document.body, { childList: true, subtree: true })
+
+    document.addEventListener("pointerdown", onPress, true)
+    document.addEventListener("contextmenu", onPress, true)
     edge.addEventListener("mouseover", open)
     sidebar.addEventListener("mouseover", open)
     edge.addEventListener("mouseleave", onLeave)
     sidebar.addEventListener("mouseleave", onLeave)
     sidebar.addEventListener("focusout", onFocusOut)
+    window.addEventListener("blur", onFocusOut)
     return () => {
       clearTimeout(closeTimer)
       stopTracking()
       popups.disconnect()
+      document.removeEventListener("pointerdown", onPress, true)
+      document.removeEventListener("contextmenu", onPress, true)
       edge.removeEventListener("mouseover", open)
       sidebar.removeEventListener("mouseover", open)
       edge.removeEventListener("mouseleave", onLeave)
       sidebar.removeEventListener("mouseleave", onLeave)
       sidebar.removeEventListener("focusout", onFocusOut)
+      window.removeEventListener("blur", onFocusOut)
     }
   }, [enabled])
 

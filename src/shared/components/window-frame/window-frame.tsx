@@ -26,7 +26,7 @@ export const WindowFrame = ({
 
   return (
     <div
-      className={cn("relative flex h-full w-full flex-col p-1 overflow-hidden", className)}
+      className={cn("relative flex h-full w-full flex-col p-1.5 overflow-hidden", className)}
       style={frameStyle}
       {...props}
     >

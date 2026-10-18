@@ -46,9 +46,10 @@ src/
   widgets/<widget>/              parent: lays out and composes its features
   features/<widget>/<feature>/   features belong to the widget folder with the EXACT same name
   shared/                        Tauri invoke/listen helpers, contract types (PageChanged)
+  theme/                         theme provider/store (light/dark/system + runtime token overrides)
   components/ui/                 shadcn components
 ```
-- Features never import from widgets or from other features. Code two features need goes in `shared/`.
+- Features never import from widgets or from other features. Code two features need goes in `shared/`. `theme/` is app-wide like `shared/`: anything may import it.
 - Widgets may import from their own features and from `shared/`.
 - Current widgets:
   - `widgets/app-titlebar` composes `features/app-titlebar/window-controls`. It's a Zen-style peek (studied from Zen's source, see `docs/design/decisions.md`): it overlays the top of the window, opens from a 4px strip at the top edge, grows its height over 150ms ease-in-out and never moves the page. The website is a native webview above the UI, so the bar is cut out of it with `useContentCutout` and Rust cuts it out of the page. No shadow. It holds only the window controls.
@@ -62,12 +63,13 @@ Built from `docs/design/sidebar-1.png` (a 1.5x export) with shadcn's `Sidebar` (
 - Positioning: the sidebar is `absolute h-full` against the row below the titlebar, not shadcn's viewport-fixed default (overridden through `className`).
 - **shadcn components in `components/ui/` stay at registry defaults. Never edit them**; customise at the call site with `className`/`render`. Build sidebar UI from its primitives (`SidebarGroup`, `SidebarMenu`, `SidebarMenuItem`, `SidebarMenuButton`, `SidebarMenuSub*`, `SidebarInput`, `SidebarSeparator`, `SidebarTrigger`) instead of raw buttons.
 - Width: `SIDEBAR_WIDTH` (244px) in `widgets/app-sidebar`, set via `--sidebar-width`; groups keep shadcn's `p-2` and the swatch grid is 4 fluid columns. The design image is scaled up for legibility; sizes are in `docs/design/decisions.md` (Sizing).
-- Padding/corners: docked, the frame's `p-1` is the only gap around the sidebar. The peeking card keeps shadcn's floating `p-2` (Zen's 8px float margin) and radius. The inset sits flush in the frame, so it and the ContentSlot use `rounded-frame`.
+- Padding/corners: no padding in either state (`p-0`): the frame's `p-1` is the only gap, and the sidebar runs to the top, bottom and left of the browser area. The peeking card takes the frame radius (`rounded-frame`) and keeps only its 1px ring. The inset uses `rounded-frame`, with square left corners while docked (flush with the sidebar); the ContentSlot inherits the inset's corners and passes them to the website clip.
 - Toggle: **Ctrl+B** from anywhere: shadcn's shortcut while the UI has focus, and the `toggle-sidebar` event (forwarded by Rust) while the website has it. Or shadcn's `SidebarTrigger` in the sidebar header. The ContentSlot's ResizeObserver re-measures every frame of the collapse/expand transition, so the website follows.
-- Features (`features/app-sidebar/`): `navigation`, `url-bar` (temporary block at the top, removed when the command palette lands), `swatches`, `space-switcher`, `folders`, `temp-tabs`, `bottom-actions`. All mock data lives in `features/app-sidebar/placeholder-data.ts`; the widget passes it down as props.
+- Features (`features/app-sidebar/`): `context-menu` (the sidebar background's menu, around the sidebar body; which areas get menus and how they behave: `docs/design/context-menus.md`), `navigation`, `url-bar` (temporary block at the top, removed when the command palette lands), `swatches`, `space-switcher`, `folders`, `temp-tabs`, `bottom-actions`. All mock data lives in `features/app-sidebar/placeholder-data.ts`; the widget passes it down as props.
 - Scrolling: the sidebar body uses `ScrollArea` (`shared/components/scroll-area`): native scrolling with a trackless, auto-hiding, elastic pill thumb. Use it for any scrollable app UI.
 - Shared: `shared/components/{tab-row,favicon,scroll-area}` (`TabRow` is a `SidebarMenuButton`), `shared/types` (`Tab`, `Folder`, `SpaceItem`, `Space`, `Swatch`), `shared/motion.ts` (`PEEK_TRANSITION` = the titlebar peek's 150ms ease-in-out; use `INSTANT` under `useReducedMotion`).
-- **No overlap past the right edge**: the native website webview is drawn on top of the UI, so tooltips, popovers and menus must never extend past the sidebar's right edge or they are hidden. Pick `side`/`align` to keep them inside (e.g. the add menu uses `side="top" align="end"`).
+- **Popups over the page**: the native website webview is drawn on top of the UI. Open popups (menus, submenus, popovers: anything shadcn/Base UI portals out of `#root` with a `data-slot` ending in `-content`) are cut out of it automatically by `usePopupCutouts()` (mounted in `AppLayout`), so they stay visible over the page. Still prefer `side`/`align` that keep them inside the sidebar; anything drawn outside a popup's box (shadows) is clipped over the page.
+- **Popups and the page**: clicks on the page never reach the UI, so the UI losing focus closes every open popup (`useDismissPopupsOnBlur`, `shared/outside-press.ts`, mounted in `AppLayout`). A popup opened from the peeking sidebar keeps it out until the popup closes (Zen's `has-popup-menu`). Click inside the sidebar closes only the popup; a click on the page closes both.
 
 ### Rules for the tabs step (documentation only, not implemented yet)
 - The top grid is called **Swatches** (max 8).
@@ -75,6 +77,14 @@ Built from `docs/design/sidebar-1.png` (a 1.5x export) with shadcn's `Sidebar` (
 - Closing a temp tab removes it immediately.
 - Closing a pinned tab only unloads the site; the pinned tab stays in its space and can be reopened.
 - Trash-all clears temp tabs only.
+
+## Theme
+`src/theme/`: `ThemeProvider` (in `App.tsx`, `defaultTheme="system"`, no persistence yet; pass `storageKey` to persist) around a framework-agnostic store (`theme-store.ts`).
+- Applies shadcn's convention: the `dark` class on `<html>` plus `color-scheme`. **The colours stay shadcn's `:root` / `.dark` variables in `index.css`**; the provider never redefines them.
+- Follows the OS live while on "system". Switching disables transitions for one frame so the whole UI doesn't animate.
+- `index.html` applies the system theme before first paint (no white flash). Update it if persistence is turned on.
+- Hooks: `useTheme()` (state + `setTheme` / `setTokens` / `replaceTokens`), `useThemeSelector(fn)` (re-renders only for that slice), `useResolvedTheme()`.
+- For the future theme editor: `setTokens({ light: { "--primary": "…" }, dark: { … } })` overrides any index.css variable at runtime through one `<style data-theme-tokens>` (rules `:root:not(.dark)` / `:root.dark` out-rank index.css). No React re-render of the tree is needed to recolour.
 
 ## Design
 Read `docs/design/decisions.md` before UI work: motion language, the titlebar peek study, the scrollbar spec and the sizing scale.

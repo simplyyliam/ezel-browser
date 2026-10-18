@@ -5,6 +5,10 @@
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>ezel</title>
+    <!-- Apply the system theme before first paint, so dark mode doesn't flash white. Keep in sync with src/theme (defaultTheme "system", no persistence). -->
+    <script>
+      document.documentElement.classList.toggle("dark", matchMedia("(prefers-color-scheme: dark)").matches)
+    </script>
   </head>
   <body>
     <div id="root"></div>
