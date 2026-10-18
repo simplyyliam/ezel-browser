@@ -2,13 +2,16 @@ import { useEffect, useRef, useState } from "react";
 import { cn } from "@/lib/utils";
 import { WindowControls } from "@/features/app-titlebar/window-controls";
 import { useSidebar } from "@/components/ui/sidebar";
-import { getCursorPosition, getWindowClientRect } from "@/shared";
+import { getCursorPosition, getWindowClientRect, setContentCutout } from "@/shared";
 import { SidebarToggle } from "@/shared/components";
 
 // Peek behaviour follows Zen's compact-mode toolbar (zen-browser/desktop, src/zen/compact-mode):
 // the bar opens as soon as the top edge is hovered, closes on the next frame after the pointer
-// leaves it, and stays open while the pointer is just above the window. Unlike Zen it pushes the page down rather than floating over
-// it: the native website webview is drawn above all UI, so an overlay would be hidden behind it.
+// leaves it, and stays open while the pointer is just above the window.
+// Look follows Zen's default (zen.view.shift-down-site-on-hover = false): the bar's height grows
+// from the edge strip over 150ms ease-in-out while its contents fade in, and the page does NOT
+// move; the bar covers its top. No shadow. The website is a native webview drawn above all UI,
+// so the bar's rect is cut out of it (setContentCutout) for the bar to show through.
 
 /** How far above the window (logical px) the pointer may go before the bar closes. Zen: outside-window-edge-offset.vertical. */
 const OUTSIDE_TOP_OFFSET = 100;
@@ -16,6 +19,9 @@ const OUTSIDE_TOP_OFFSET = 100;
 const EDGE_TOLERANCE = 10;
 /** Fallback when the cursor can't be read outside the window. Zen: toolbar-hide-after-hover.duration. */
 const HIDE_AFTER_EXIT = 1000;
+
+/** Height of the closed bar: the frame's top padding, the strip that opens it. Zen: --zen-element-separation. */
+const EDGE_STRIP = 4;
 
 const nextFrame = () => new Promise((resolve) => requestAnimationFrame(resolve));
 
@@ -125,20 +131,50 @@ export const AppTitlebar = () => {
     };
   }, []);
 
+  // Keep the bar's rect cut out of the website on every frame of its height transition.
+  useEffect(() => {
+    const bar = barRef.current;
+    if (!bar) return;
+
+    let frame = 0;
+    let last = "";
+    const report = () => {
+      frame = 0;
+      const r = bar.getBoundingClientRect();
+      const rect: [number, number, number, number] | null =
+        r.height > EDGE_STRIP ? [r.left, r.top, r.width, r.height] : null;
+      const key = JSON.stringify(rect);
+      if (key === last) return;
+      last = key;
+      setContentCutout(rect);
+    };
+    const schedule = () => {
+      if (!frame) frame = requestAnimationFrame(report);
+    };
+
+    const observer = new ResizeObserver(schedule);
+    observer.observe(bar);
+    window.addEventListener("resize", schedule);
+    return () => {
+      cancelAnimationFrame(frame);
+      observer.disconnect();
+      window.removeEventListener("resize", schedule);
+      setContentCutout(null);
+    };
+  }, []);
+
   return (
-    // In flow above the content: opening grows its height and pushes the content (and the
-    // website webview, which is drawn over any UI it overlaps) down instead of covering it.
-    <div ref={zoneRef} className="relative z-50 shrink-0">
-      {/* The 4px strip along the window's top edge (the frame's padding) that opens the bar on hover. */}
-      <div aria-hidden className="absolute -inset-x-1 -top-1 h-1" />
+    // Overlays the top of the window (outside the frame's padding) so nothing below moves.
+    // Closed, it's just the edge strip; open, its height grows to fit the controls.
+    <div ref={zoneRef} className="absolute inset-x-0 top-0 z-50">
       <div
-        // Revealed top-down like Zen's height transition.
+        // Zen animates the toolbar's height; 0fr -> 1fr is the CSS way to animate to its natural height.
         className={cn(
           "grid transition-[grid-template-rows] duration-150 ease-in-out motion-reduce:transition-none",
           open ? "grid-rows-[1fr]" : "grid-rows-[0fr]",
         )}
       >
-        <div ref={barRef} className="min-h-0 overflow-hidden bg-background">
+        <div ref={barRef} className="min-h-1 overflow-hidden bg-background">
           <div
             data-tauri-drag-region
             className={cn(

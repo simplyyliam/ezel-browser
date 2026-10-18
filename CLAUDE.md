@@ -17,15 +17,18 @@ One frameless window (`main`, `decorations(false)`), two webviews:
 - `ui`: the React app, covers the whole window (Rust re-applies full-window bounds on every resize). It draws its own titlebar, window controls and drag region.
 - `content`: the website, placed wherever the frontend reports via `set_content_bounds`; starts at https://duckduckgo.com, hidden until `set_content_visible(true)`.
 
-Only `ui` has IPC; `content` has none.
+Only `ui` has IPC; `content` has none. Both use WebView2's Fluent overlay scrollbars (they share a data directory, so the style must match).
 
 ## Contract (UI ↔ Rust)
+New commands must also be allow-listed in `src-tauri/build.rs` (app manifest) and `src-tauri/capabilities/default.json` (`allow-<name>`), otherwise every call is rejected silently.
+
 Commands (`invoke`):
 - `navigate(input: string)`: a URL is loaded (`https://` added if missing); anything else is searched on DuckDuckGo
 - `go_back()`, `go_forward()`, `reload()`
 - `get_page()`: returns the latest `page-changed` payload (same shape), so the UI can catch up on mount
 - `set_content_bounds(x: number, y: number, width: number, height: number)`: places the content webview; logical px relative to the window's top-left
 - `set_content_radius(radii: [number, number, number, number])`: clips the content webview to rounded corners; logical px, CSS order (top-left, top-right, bottom-right, bottom-left). Windows only for now.
+- `set_content_cutout(rect: [x, y, width, height] | null)`: cuts a window-relative rect (logical px) out of the content webview's clip region so the UI below shows through, without moving or resizing the page. Used by the titlebar peek. Windows only for now.
 - `set_content_visible(visible: boolean)`: shows or hides the content webview. It starts hidden, so report bounds first, then show it.
 - `get_window_radius()` → `{ radius: number | null, customized: boolean }`: the corner radius Windows 11 actually draws for the window, logical px. Without the Windhawk "Custom Window Corner Radius" mod: 8, or 0 when fullscreen/maximized/snapped. With it (`customized: true`): the mod's radius, or 0 where it leaves windows square. `radius: null` = unknown (not Windows): keep the UI's default radii. The UI sets `--radius-frame` to `radius − 4` (frame padding).
 
@@ -47,7 +50,7 @@ src/
 - Features never import from widgets or from other features. Code two features need goes in `shared/`.
 - Widgets may import from their own features and from `shared/`.
 - Current widgets:
-  - `widgets/app-titlebar` composes `features/app-titlebar/window-controls`. It's a Zen-style peek that opens from a 4px strip at the top edge. Unlike Zen it pushes the content down (animated height) instead of overlaying it: the native website webview is drawn above all UI, so an overlay would be hidden behind it. While the sidebar is collapsed it shows a sidebar toggle.
+  - `widgets/app-titlebar` composes `features/app-titlebar/window-controls`. It's a Zen-style peek (studied from Zen's source, see `docs/design/decisions.md`): it overlays the top of the window, opens from a 4px strip at the top edge, grows its height over 150ms ease-in-out and never moves the page. The website is a native webview above the UI, so the bar reports its rect via `set_content_cutout` every frame and Rust cuts it out of the page. No shadow. While the sidebar is collapsed it shows a sidebar toggle.
   - `widgets/browser-view` composes `features/browser-view/content-slot` (the placeholder the content webview is placed over)
   - `widgets/app-sidebar` composes `features/app-sidebar/*` (see Sidebar below)
 
@@ -55,11 +58,12 @@ src/
 Built from `docs/design/sidebar-1.png` (a 1.5x export) with shadcn's `Sidebar` (`variant="inset"`, `collapsible="offcanvas"`, open by default).
 - Layout: `AppLayout` = `SidebarProvider` > `WindowFrame` (titlebar on top) > row (`relative`) > `AppSidebar` + `SidebarInset` > `<Outlet />`. The provider wraps the frame so the titlebar can use `useSidebar`. The browser page renders only the `BrowserView` (ContentSlot).
 - Positioning: the sidebar is `absolute h-full` against the row below the titlebar, not shadcn's viewport-fixed default. When the titlebar peeks, the row shrinks, so the sidebar and the website move down together. `components/ui/sidebar.tsx` is edited to be desktop-only: no mobile sheet, no `md:` breakpoints.
-- Width: `SIDEBAR_WIDTH` (212px) in `widgets/app-sidebar`, set via `--sidebar-width`: 4 swatches of 45px + 3 gaps of 4px + 10px padding each side (the sections' `px-2.5`).
+- Width: `SIDEBAR_WIDTH` (244px) in `widgets/app-sidebar`, set via `--sidebar-width`: 4 swatches of 52px + 3 gaps of 4px + 12px padding each side (`px-3`). The design image is scaled up for legibility; sizes are in `docs/design/decisions.md` (Sizing).
 - Padding/corners: shadcn's inset padding is removed (sidebar `p-0`, inset `m-0`); the frame's `p-1` is the only gap. The inset sits flush in the frame, so it and the ContentSlot use `rounded-frame`. Small control radii (7.5px, 5px) are fixed design values.
 - Toggle: **Ctrl+B** (shadcn's shortcut; only while the `ui` webview has focus, not while the website has it) or `SidebarToggle` (`shared/components`, used in the sidebar and in the titlebar while collapsed). The ContentSlot's ResizeObserver re-measures every frame of the collapse/expand transition, so the website follows.
 - Features (`features/app-sidebar/`): `navigation`, `url-bar` (temporary block at the top, removed when the command palette lands), `swatches`, `space-switcher`, `folders`, `temp-tabs`, `bottom-actions`. All mock data lives in `features/app-sidebar/placeholder-data.ts`; the widget passes it down as props.
-- Shared: `shared/components/{tab-row,favicon,sidebar-toggle}`, `shared/types` (`Tab`, `Folder`, `SpaceItem`, `Space`, `Swatch`), `shared/motion.ts` (`PEEK_TRANSITION` = the titlebar peek's 150ms ease-in-out; use `INSTANT` under `useReducedMotion`).
+- Scrolling: the sidebar body uses `ScrollArea` (`shared/components/scroll-area`): native scrolling with a trackless, auto-hiding, elastic pill thumb. Use it for any scrollable app UI.
+- Shared: `shared/components/{tab-row,favicon,sidebar-toggle,scroll-area}`, `shared/types` (`Tab`, `Folder`, `SpaceItem`, `Space`, `Swatch`), `shared/motion.ts` (`PEEK_TRANSITION` = the titlebar peek's 150ms ease-in-out; use `INSTANT` under `useReducedMotion`).
 - **No overlap past the right edge**: the native website webview is drawn on top of the UI, so tooltips, popovers and menus must never extend past the sidebar's right edge or they are hidden. Pick `side`/`align` to keep them inside (e.g. the add menu uses `side="top" align="end"`).
 
 ### Rules for the tabs step (documentation only, not implemented yet)
@@ -68,6 +72,9 @@ Built from `docs/design/sidebar-1.png` (a 1.5x export) with shadcn's `Sidebar` (
 - Closing a temp tab removes it immediately.
 - Closing a pinned tab only unloads the site; the pinned tab stays in its space and can be reopened.
 - Trash-all clears temp tabs only.
+
+## Design
+Read `docs/design/decisions.md` before UI work: motion language, the titlebar peek study, the scrollbar spec and the sizing scale.
 
 ## Current scope
 MVP only. Sidebar shell with placeholder data; no real tabs, folders, spaces, downloads or persistence.

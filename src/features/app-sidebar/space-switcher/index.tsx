@@ -15,7 +15,7 @@ export function SpaceSwitcher({ spaces, activeSpaceId, onSelect }: SpaceSwitcher
 
   return (
     <LayoutGroup>
-      <div role="group" aria-label="Spaces" className="flex items-center gap-1">
+      <div role="group" aria-label="Spaces" className="flex items-center gap-1.5">
         {spaces.map((space) => {
           const active = space.id === activeSpaceId
           const Icon = space.icon
@@ -29,11 +29,11 @@ export function SpaceSwitcher({ spaces, activeSpaceId, onSelect }: SpaceSwitcher
               aria-pressed={active}
               onClick={() => onSelect(space.id)}
               className={cn(
-                "flex h-[15px] min-w-[15px] items-center justify-center rounded-[5px] bg-sidebar-foreground/5 px-[3px] text-sidebar-foreground outline-none transition-colors focus-visible:ring-2 focus-visible:ring-sidebar-ring",
+                "flex h-6 min-w-6 items-center justify-center rounded-[7px] bg-sidebar-foreground/5 px-[5px] text-sidebar-foreground outline-none transition-colors focus-visible:ring-2 focus-visible:ring-sidebar-ring",
                 !active && "hover:bg-sidebar-foreground/8",
               )}
             >
-              <Icon aria-hidden className="size-[9px] shrink-0" />
+              <Icon aria-hidden className="size-3.5 shrink-0" />
               {/* Expanding the new name and collapsing the old one run at the same time. */}
               <AnimatePresence initial={false}>
                 {active && (
@@ -45,7 +45,7 @@ export function SpaceSwitcher({ spaces, activeSpaceId, onSelect }: SpaceSwitcher
                     transition={transition}
                     className="overflow-hidden whitespace-nowrap"
                   >
-                    <span className="block pr-0.5 pl-1 text-[9px] leading-none">{space.name}</span>
+                    <span className="block pr-1 pl-1.5 text-xs leading-none font-medium">{space.name}</span>
                   </motion.span>
                 )}
               </AnimatePresence>

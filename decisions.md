@@ -8,3 +8,9 @@ Frontend owns content geometry (ContentSlot -> set_content_bounds). The titlebar
 
 ## 2026-10-18: Sidebar
 Top grid named Swatches; sidebar built from docs/design/sidebar.png.
+
+## 2026-10-18: Titlebar overlays the page via a webview cutout
+Copies Zen's default peek: the page stays still and the bar covers its top. The website is a native webview above the UI, so the frontend reports the bar's rect (`set_content_cutout`) and Rust subtracts it from the webview's clip region. This replaces the push-down interim.
+
+## 2026-10-18: Scrollbars
+App scroll areas use a custom elastic pill thumb (`ScrollArea`); websites use WebView2 Fluent overlay scrollbars. Details: docs/design/decisions.md.

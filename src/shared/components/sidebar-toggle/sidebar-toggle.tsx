@@ -8,7 +8,8 @@ export const SidebarToggle = () => {
   return (
     <Button
       variant="ghost"
-      size="icon-xs"
+      size="icon-sm"
+      className="size-7"
       aria-label={open ? "Collapse sidebar" : "Expand sidebar"}
       aria-expanded={open}
       onClick={toggleSidebar}

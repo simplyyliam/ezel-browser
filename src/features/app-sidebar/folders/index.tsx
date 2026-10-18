@@ -70,9 +70,9 @@ function FolderGroup({ folder, open, onToggle, activeTabId, onSelectTab }: Folde
         type="button"
         aria-expanded={open}
         onClick={onToggle}
-        className="flex h-4 w-full min-w-0 items-center gap-1.5 rounded-[5px] text-left text-[9px] text-muted-foreground outline-none focus-visible:ring-2 focus-visible:ring-sidebar-ring"
+        className="flex h-7 w-full min-w-0 items-center gap-2 rounded-[7px] text-left text-xs text-muted-foreground outline-none focus-visible:ring-2 focus-visible:ring-sidebar-ring"
       >
-        <Icon aria-hidden className="size-2.5 shrink-0 text-sidebar-foreground" />
+        <Icon aria-hidden className="size-3.5 shrink-0 text-sidebar-foreground" />
         <span className="truncate">{folder.name}</span>
       </button>
       <AnimatePresence initial={false}>
@@ -83,7 +83,7 @@ function FolderGroup({ folder, open, onToggle, activeTabId, onSelectTab }: Folde
             animate={{ height: "auto", opacity: 1 }}
             exit={{ height: 0, opacity: 0 }}
             transition={transition}
-            className="flex flex-col gap-0.5 overflow-hidden px-2.5 pt-1.5"
+            className="flex flex-col gap-0.5 overflow-hidden px-3 pt-1"
           >
             {folder.tabs.map((tab) => (
               <li key={tab.id}>

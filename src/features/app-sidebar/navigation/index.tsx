@@ -10,13 +10,13 @@ type NavigationProps = {
 export function Navigation({ canGoBack, canGoForward }: NavigationProps) {
   return (
     <div className="flex items-center gap-0.5">
-      <Button variant="ghost" size="icon-xs" aria-label="Back" disabled={!canGoBack} onClick={goBack}>
+      <Button variant="ghost" size="icon-sm" className="size-7" aria-label="Back" disabled={!canGoBack} onClick={goBack}>
         <ArrowLeft />
       </Button>
-      <Button variant="ghost" size="icon-xs" aria-label="Forward" disabled={!canGoForward} onClick={goForward}>
+      <Button variant="ghost" size="icon-sm" className="size-7" aria-label="Forward" disabled={!canGoForward} onClick={goForward}>
         <ArrowRight />
       </Button>
-      <Button variant="ghost" size="icon-xs" aria-label="Reload" onClick={reload}>
+      <Button variant="ghost" size="icon-sm" className="size-7" aria-label="Reload" onClick={reload}>
         <RotateCw />
       </Button>
     </div>

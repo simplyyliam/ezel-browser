@@ -40,11 +40,11 @@ export function UrlBar({ url, isLoading, className }: UrlBarProps) {
         }}
         onBlur={() => setDraft(null)}
         onKeyDown={handleKeyDown}
-        className="h-7 rounded-[7.5px] bg-sidebar-foreground/5 px-2 pr-7 text-[11px] md:text-[11px]"
+        className="h-8 rounded-[9px] bg-sidebar-foreground/5 px-2.5 pr-8 text-[13px] md:text-[13px]"
       />
       <LoadingIndicator
         isLoading={isLoading}
-        className="pointer-events-none absolute top-1/2 right-2 -translate-y-1/2 [&_svg]:size-3"
+        className="pointer-events-none absolute top-1/2 right-2.5 -translate-y-1/2 [&_svg]:size-3.5"
       />
     </div>
   )

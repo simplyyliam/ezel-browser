@@ -17,7 +17,7 @@ export const TabRow = ({ tab, active = false, onSelect, className }: TabRowProps
     aria-current={active ? "page" : undefined}
     onClick={onSelect}
     className={cn(
-      "flex h-7 w-full min-w-0 items-center gap-1.5 rounded-[7.5px] px-1.5 text-left text-[10.5px] text-sidebar-foreground outline-none transition-colors hover:bg-sidebar-foreground/[0.03] focus-visible:ring-2 focus-visible:ring-sidebar-ring data-active:bg-sidebar-foreground/5",
+      "flex h-8 w-full min-w-0 items-center gap-2 rounded-[9px] px-2 text-left text-[13px] text-sidebar-foreground outline-none transition-colors hover:bg-sidebar-foreground/[0.03] focus-visible:ring-2 focus-visible:ring-sidebar-ring data-active:bg-sidebar-foreground/5",
       className,
     )}
   >

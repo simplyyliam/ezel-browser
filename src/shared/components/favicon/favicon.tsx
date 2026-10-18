@@ -7,12 +7,12 @@ interface FaviconProps {
   className?: string;
 }
 
-/** A fully rounded favicon, 14px unless sized through className. */
+/** A fully rounded favicon, 16px unless sized through className. */
 export const Favicon = ({ src, className }: FaviconProps) => {
   const [failed, setFailed] = useState<string | null>(null);
 
   if (!src || failed === src) {
-    return <span aria-hidden className={cn("size-3.5 shrink-0 rounded-full bg-sidebar-foreground/15", className)} />;
+    return <span aria-hidden className={cn("size-4 shrink-0 rounded-full bg-sidebar-foreground/15", className)} />;
   }
   return (
     <img
@@ -20,7 +20,7 @@ export const Favicon = ({ src, className }: FaviconProps) => {
       alt=""
       draggable={false}
       onError={() => setFailed(src)}
-      className={cn("size-3.5 shrink-0 rounded-full object-cover", className)}
+      className={cn("size-4 shrink-0 rounded-full object-cover", className)}
     />
   );
 };
