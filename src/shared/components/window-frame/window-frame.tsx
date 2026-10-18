@@ -6,6 +6,7 @@ import { useWindowRadius } from "../../window-radius";
 const FRAME_PADDING = 4;
 
 interface WindowFrameProps extends HTMLAttributes<HTMLDivElement> {
+  /** Positions itself (absolute) against the frame's padding box, so it can cover the padding. */
   titlebar?: ReactNode;
 }
 

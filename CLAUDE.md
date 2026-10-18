@@ -29,7 +29,7 @@ Commands (`invoke`):
 - `set_content_visible(visible: boolean)`: shows or hides the content webview. It starts hidden, so report bounds first, then show it.
 - `get_window_radius()` → `{ radius: number | null, customized: boolean }`: the corner radius Windows 11 actually draws for the window, logical px. Without the Windhawk "Custom Window Corner Radius" mod: 8, or 0 when fullscreen/maximized/snapped. With it (`customized: true`): the mod's radius, or 0 where it leaves windows square. `radius: null` = unknown (not Windows): keep the UI's default radii. The UI sets `--radius-frame` to `radius − 4` (frame padding).
 
-Window APIs (`@tauri-apps/api/window`): `minimize`, `toggleMaximize`, `close`, `startDragging`, `isMaximized`, `isFullscreen`.
+Window APIs (`@tauri-apps/api/window`): `minimize`, `toggleMaximize`, `close`, `startDragging`, `isMaximized`, `isFullscreen`, `cursorPosition`, `innerPosition`, `innerSize`, `scaleFactor` (the last four let the titlebar peek follow the cursor above the window).
 
 Event emitted to the `ui` webview:
 - `page-changed`: `{ url: string, title: string | null, canGoBack: boolean, canGoForward: boolean, isLoading: boolean }`
@@ -47,7 +47,7 @@ src/
 - Features never import from widgets or from other features. Code two features need goes in `shared/`.
 - Widgets may import from their own features and from `shared/`.
 - Current widgets:
-  - `widgets/app-titlebar` composes `features/app-titlebar/window-controls`
+  - `widgets/app-titlebar` composes `features/app-titlebar/window-controls`. It's a Zen-style peek: it overlays the top of the window (never moves the content) and opens from a 4px strip at the top edge.
   - `widgets/browser-view` composes `features/browser-view/content-slot` (the placeholder the content webview is placed over)
   - `widgets/toolbar` composes `features/toolbar/{navigation,url-bar,loading-indicator}` (temporary, until sidebar + command palette)
 

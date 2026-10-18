@@ -1,6 +1,6 @@
 import { invoke } from "@tauri-apps/api/core"
 import { listen, type UnlistenFn } from "@tauri-apps/api/event"
-import { getCurrentWindow } from "@tauri-apps/api/window"
+import { cursorPosition, getCurrentWindow } from "@tauri-apps/api/window"
 import type { PageChanged } from "./page"
 
 export const getPage = () => invoke<PageChanged>("get_page")
@@ -20,6 +20,20 @@ export const setContentVisible = (visible: boolean) => invoke<void>("set_content
 export const minimizeWindow = () => getCurrentWindow().minimize()
 export const toggleMaximizeWindow = () => getCurrentWindow().toggleMaximize()
 export const closeWindow = () => getCurrentWindow().close()
+
+/** Cursor position in physical px, desktop coordinates. Works while the cursor is outside the window. */
+export const getCursorPosition = () => cursorPosition()
+
+/** The window's client area in physical px, desktop coordinates, plus its scale factor. */
+export async function getWindowClientRect() {
+  const window = getCurrentWindow()
+  const [position, size, scale] = await Promise.all([
+    window.innerPosition(),
+    window.innerSize(),
+    window.scaleFactor(),
+  ])
+  return { x: position.x, y: position.y, width: size.width, height: size.height, scale }
+}
 
 /** OS window corner radius in logical px; `radius: null` = unknown (not Windows). */
 export type WindowRadius = { radius: number | null; customized: boolean }

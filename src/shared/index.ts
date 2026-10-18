@@ -13,6 +13,8 @@ export {
   minimizeWindow,
   toggleMaximizeWindow,
   closeWindow,
+  getCursorPosition,
+  getWindowClientRect,
   onPageChanged,
   getWindowRadius,
   onWindowRadiusChanged,
