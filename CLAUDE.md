@@ -5,6 +5,7 @@ A lightweight browser for designers.
 ## Stack
 - Tauri v2 (Rust) with the `unstable` feature for multi-webview, using the system webview
 - UI: React + Vite + shadcn + Tailwind v4 (`src/`)
+- UI primitives are Base UI, never Radix. Don't add @radix-ui/* packages. (shadcn style `base-luma` in `components.json`; compose with `render`, not `asChild`.)
 - Rust side: `src-tauri/`
 
 ## Run
@@ -84,13 +85,20 @@ Built from `docs/design/sidebar-1.png` (a 1.5x export) with shadcn's `Sidebar` (
 - Width: `SIDEBAR_WIDTH` (244px) in `widgets/app-sidebar`, set via `--sidebar-width`; groups keep shadcn's `p-2` and the swatch grid is 4 fluid columns. The design image is scaled up for legibility; sizes are in `docs/design/decisions.md` (Sizing).
 - Padding/corners: no padding in either state (`p-0`): the frame's `p-1` is the only gap, and the sidebar runs to the top, bottom and left of the browser area. The peeking card takes the frame radius (`rounded-frame`) and keeps only its 1px ring. The inset uses `rounded-frame`, with square left corners while docked (flush with the sidebar); the ContentSlot inherits the inset's corners and passes them to the website clip.
 - Toggle: **Ctrl+B** from anywhere: shadcn's shortcut while the UI has focus, and the `toggle-sidebar` event (forwarded by Rust) while the website has it. Or shadcn's `SidebarTrigger` in the sidebar header. The ContentSlot's ResizeObserver re-measures every frame of the collapse/expand transition, so the website follows.
-- Features (`features/app-sidebar/`): `context-menu` (the sidebar background's menu, around the sidebar body; which areas get menus and how they behave: `docs/design/context-menus.md`), `navigation`, `url-bar` (temporary block at the top, removed when the command palette lands), `swatches`, `space-switcher`, `folders`, `temp-tabs`, `bottom-actions`. All mock data lives in `features/app-sidebar/placeholder-data.ts`; the widget passes it down as props.
+- Features (`features/app-sidebar/`): `context-menu` (the sidebar background's menu, around the sidebar body; which areas get menus and how they behave: `docs/design/context-menus.md`), `navigation`, `url-bar` (temporary block at the top, removed when the command palette lands), `swatches`, `space-switcher`, `folders`, `temp-tabs`, `bottom-actions`. They render backend state the widget passes down as props (see Sidebar data flow).
 - Scrolling: the sidebar body uses `ScrollArea` (`shared/components/scroll-area`): native scrolling with a trackless, auto-hiding, elastic pill thumb. Use it for any scrollable app UI.
-- Shared: `shared/components/{tab-row,favicon,scroll-area}` (`TabRow` is a `SidebarMenuButton`), `shared/types` (`Tab`, `Folder`, `SpaceItem`, `Space`, `Swatch`), `shared/motion.ts` (`PEEK_TRANSITION` = the titlebar peek's 150ms ease-in-out; use `INSTANT` under `useReducedMotion`).
-- **Popups over the page**: the native website webview is drawn on top of the UI. Open popups (menus, submenus, popovers: anything shadcn/Base UI portals out of `#root` with a `data-slot` ending in `-content`) are cut out of it automatically by `usePopupCutouts()` (mounted in `AppLayout`), so they stay visible over the page. Still prefer `side`/`align` that keep them inside the sidebar; anything drawn outside a popup's box (shadows) is clipped over the page.
+- Shared: `shared/components/{tab-row,favicon,scroll-area}` (`TabRow` is a `SidebarMenuButton`), `shared/types` (all contract data: `TabsState`, `Space`, `SpaceItem`, `Folder`, `Tab`, `Swatch`, `TabLocation`, `PageChanged`, `WindowRadius`), `shared/motion.ts` (`PEEK_TRANSITION` = the titlebar peek's 150ms ease-in-out; use `INSTANT` under `useReducedMotion`).
+- **Popups over the page**: the native website webview is drawn on top of the UI. Open popups (menus, submenus, popovers: anything shadcn/Base UI portals out of `#root` with a `data-slot` ending in `-content`) are cut out of it automatically by `usePopupCutouts()` (mounted in `AppLayout`), so they stay visible over the page. Rust keeps every hole until it's cleared, so popup holes reuse ids `popup-0`…`popup-7` and the hook clears them all on mount (a UI reload with a popup open otherwise left a black box over the page). Still prefer `side`/`align` that keep them inside the sidebar; anything drawn outside a popup's box (shadows) is clipped over the page.
 - **Popups and the page**: clicks on the page never reach the UI, so the UI losing focus closes every open popup (`useDismissPopupsOnBlur`, `shared/outside-press.ts`, mounted in `AppLayout`). A popup opened from the peeking sidebar keeps it out until the popup closes (Zen's `has-popup-menu`). Click inside the sidebar closes only the popup; a click on the page closes both.
 
-### Rules for the tabs step (documentation only, not implemented yet)
+### Sidebar data flow
+- **Bindings**: every backend call goes through `shared/tauri.ts`: one typed wrapper per command, named after it in camelCase (`activate_tab` → `activateTab`), one typed listener per event (`onTabsChanged`, `onTabUpdated`, …). Thin, no logic: it will be replaced by a generated bindings file. Nothing else imports `@tauri-apps/api/core` or `/event`; data types live in `shared/types`; Tauri window APIs in `shared/window.ts`.
+- **Store**: `useTabs()` (`shared/tabs-store.ts`) is a read-only mirror of the backend: `get_tabs` on first subscribe, then `tabs-changed` replaces the whole state and `tab-updated` patches one tab. `null` until the first snapshot. The UI never keeps its own copy of tab, folder or space data and never updates it optimistically: actions are commands, and the result comes back through the event.
+- **Widget → features**: `widgets/app-sidebar` reads `useTabs()` and the page (`get_page`/`page-changed`) and passes data and command wrappers to the features as props; features never import each other. Active highlight = `activeTabId`/`activeSpaceId`; folder open state = `folder.collapsed` (`set_folder_collapsed`); unloaded tabs (`!isLoaded`) show dimmed; `TabRow`'s close button shows on row hover.
+- The URL bar and back/forward/reload act on the shown tab (`navigate`, `go_back`, …) and follow it through `page-changed`. New Tab = `open_tab()` then `UrlBar`'s `focusEmpty()` (a ref the widget holds). New space = `create_space("Space N", next of NEW_SPACE_ICONS)` → `switch_space` → inline rename (also: double-click the active space pill). Space icons are lucide names mapped in `shared/space-icons.ts` (unknown → `Layers`).
+- Only ContentSlot calls `set_content_bounds`.
+
+### Rules for the tabs step
 - The top grid is called **Swatches** (max 8).
 - Temp tabs and pinned tabs both survive an app restart.
 - Closing a temp tab removes it immediately.
@@ -109,4 +117,4 @@ Built from `docs/design/sidebar-1.png` (a 1.5x export) with shadcn's `Sidebar` (
 Read `docs/design/decisions.md` before UI work: motion language, the titlebar peek study, the scrollbar spec and the sizing scale.
 
 ## Current scope
-MVP only. The tabs/folders/spaces backend and its persistence exist (Rust); the sidebar still renders placeholder data until it's wired to `get_tabs`/`tabs-changed`. No downloads yet.
+MVP only. The sidebar renders the real tabs/folders/spaces backend state (persisted by Rust). Not built yet: drag-and-drop into folders, creating folders, item context menus, downloads.

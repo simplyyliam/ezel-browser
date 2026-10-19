@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react"
+import { useEffect, useRef, useState } from "react"
 import {
   Sidebar,
   SidebarContent,
@@ -11,18 +11,30 @@ import { BottomActions } from "@/features/app-sidebar/bottom-actions"
 import { SidebarContextMenu } from "@/features/app-sidebar/context-menu"
 import { Folders } from "@/features/app-sidebar/folders"
 import { Navigation } from "@/features/app-sidebar/navigation"
-import {
-  PLACEHOLDER_ACTIVE_TAB_ID,
-  PLACEHOLDER_SPACES,
-  PLACEHOLDER_SWATCHES,
-  PLACEHOLDER_TEMP_TABS,
-} from "@/features/app-sidebar/placeholder-data"
 import { SpaceSwitcher } from "@/features/app-sidebar/space-switcher"
 import { Swatches } from "@/features/app-sidebar/swatches"
 import { TempTabs } from "@/features/app-sidebar/temp-tabs"
-import { UrlBar } from "@/features/app-sidebar/url-bar"
+import { UrlBar, type UrlBarHandle } from "@/features/app-sidebar/url-bar"
 import { cn } from "@/lib/utils"
-import { getPage, onPageChanged, onToggleSidebar, useContentCutout, type PageChanged } from "@/shared"
+import {
+  activateTab,
+  activeSpace,
+  clearTempTabs,
+  closeTab,
+  createSpace,
+  getPage,
+  NEW_SPACE_ICONS,
+  onPageChanged,
+  onToggleSidebar,
+  openTab,
+  setFolderCollapsed,
+  switchSpace,
+  updateSpace,
+  useContentCutout,
+  useTabs,
+  type Id,
+  type PageChanged,
+} from "@/shared"
 import { ScrollArea } from "@/shared/components"
 import { useSidebarPeek } from "./use-sidebar-peek"
 
@@ -72,8 +84,26 @@ function usePage() {
  */
 export function AppSidebar() {
   const page = usePage()
-  const [activeSpaceId, setActiveSpaceId] = useState(PLACEHOLDER_SPACES[0].id)
-  const space = PLACEHOLDER_SPACES.find((s) => s.id === activeSpaceId) ?? PLACEHOLDER_SPACES[0]
+  // Tab, folder and space data come only from the backend mirror; actions are commands whose
+  // result returns through `tabs-changed`.
+  const tabs = useTabs()
+  const space = tabs ? activeSpace(tabs) : undefined
+  const activeTabId = tabs?.activeTabId ?? null
+  const urlBarRef = useRef<UrlBarHandle>(null)
+  const [renamingSpaceId, setRenamingSpaceId] = useState<Id | null>(null)
+
+  async function newTab() {
+    await openTab()
+    urlBarRef.current?.focusEmpty()
+  }
+
+  async function newSpace() {
+    if (!tabs) return
+    const count = tabs.spaces.length
+    const id = await createSpace(`Space ${count + 1}`, NEW_SPACE_ICONS[(count - 1) % NEW_SPACE_ICONS.length])
+    await switchSpace(id)
+    setRenamingSpaceId(id)
+  }
   const { open, toggleSidebar } = useSidebar()
   // shadcn's Ctrl+B only hears keys while the UI has focus; this covers the website having it.
   useEffect(() => {
@@ -121,24 +151,54 @@ export function AppSidebar() {
           <SidebarTrigger />
           <Navigation canGoBack={page.canGoBack} canGoForward={page.canGoForward} />
         </div>
-        <UrlBar url={page.url} isLoading={page.isLoading} />
+        <UrlBar ref={urlBarRef} url={page.url} isLoading={page.isLoading} />
       </SidebarHeader>
 
       {/* Right-clicking the sidebar body opens Zen's sidebar menu. */}
-      <SidebarContextMenu className="flex min-h-0 flex-1 flex-col">
+      <SidebarContextMenu onNewTab={newTab} onNewSpace={newSpace} className="flex min-h-0 flex-1 flex-col">
       <SidebarContent className="gap-0 overflow-hidden">
         <ScrollArea className="flex-1" viewportClassName="pt-2">
-          <Swatches swatches={PLACEHOLDER_SWATCHES} />
-          <SpaceSwitcher spaces={PLACEHOLDER_SPACES} activeSpaceId={space.id} onSelect={setActiveSpaceId} />
-          {/* Keyed by space: folder open state and the active tab start fresh per space. */}
-          <Folders key={space.id} items={space.items} defaultActiveTabId={PLACEHOLDER_ACTIVE_TAB_ID} />
-          <TempTabs tabs={PLACEHOLDER_TEMP_TABS} />
+          {/* Empty until the backend's first snapshot (a few ms after mount). */}
+          {tabs && space && (
+            <>
+              <Swatches swatches={tabs.swatches} activeTabId={activeTabId} onSelect={activateTab} />
+              <SpaceSwitcher
+                spaces={tabs.spaces}
+                activeSpaceId={space.id}
+                onSelect={switchSpace}
+                renamingSpaceId={renamingSpaceId}
+                onRenamingChange={setRenamingSpaceId}
+                onRename={(id, name) => updateSpace(id, name)}
+              />
+              {/* Keyed by space: switching swaps the whole list instead of animating every folder. */}
+              <Folders
+                key={space.id}
+                items={space.items}
+                activeTabId={activeTabId}
+                onSelectTab={activateTab}
+                onCloseTab={closeTab}
+                onSetFolderCollapsed={setFolderCollapsed}
+              />
+              <TempTabs
+                tabs={space.tempTabs}
+                activeTabId={activeTabId}
+                onSelect={activateTab}
+                onClose={closeTab}
+                onNewTab={newTab}
+              />
+            </>
+          )}
         </ScrollArea>
       </SidebarContent>
       </SidebarContextMenu>
 
       <SidebarFooter>
-        <BottomActions />
+        <BottomActions
+          hasTempTabs={(space?.tempTabs.length ?? 0) > 0}
+          onTrashAll={() => space && clearTempTabs(space.id)}
+          onAddSpace={newSpace}
+          onAddTab={newTab}
+        />
       </SidebarFooter>
     </Sidebar>
     </>

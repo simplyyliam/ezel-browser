@@ -10,8 +10,17 @@ import { SidebarMenu, SidebarMenuButton, SidebarMenuItem } from "@/components/ui
 /** Small icon-only pills, as in the design. */
 const action = "h-6 w-7 justify-center bg-sidebar-foreground/5 p-0 hover:bg-sidebar-foreground/8 [&_svg]:size-3.5"
 
-/** Pinned to the bottom of the sidebar (render inside SidebarFooter). None of these do anything yet. */
-export function BottomActions() {
+type BottomActionsProps = {
+  /** False disables trash-all (no temp tabs in the active space). */
+  hasTempTabs: boolean
+  /** Closes the active space's TEMP tabs only, never pinned ones. */
+  onTrashAll: () => void
+  onAddSpace: () => void
+  onAddTab: () => void
+}
+
+/** Pinned to the bottom of the sidebar (render inside SidebarFooter). */
+export function BottomActions({ hasTempTabs, onTrashAll, onAddSpace, onAddTab }: BottomActionsProps) {
   return (
     <SidebarMenu className="flex-row items-center gap-1.5">
       <SidebarMenuItem>
@@ -21,8 +30,13 @@ export function BottomActions() {
         </SidebarMenuButton>
       </SidebarMenuItem>
       <SidebarMenuItem>
-        {/* TODO: trash-all closes TEMP tabs only, never pinned ones. */}
-        <SidebarMenuButton size="sm" aria-label="Close all temporary tabs" className={action}>
+        <SidebarMenuButton
+          size="sm"
+          aria-label="Close all temporary tabs"
+          disabled={!hasTempTabs}
+          onClick={onTrashAll}
+          className={action}
+        >
           <Trash2 aria-hidden />
         </SidebarMenuButton>
       </SidebarMenuItem>
@@ -33,9 +47,8 @@ export function BottomActions() {
           </DropdownMenuTrigger>
           {/* The website webview is drawn over everything right of the sidebar: open upwards, end-aligned, so the menu stays inside it. */}
           <DropdownMenuContent side="top" align="end">
-            {/* TODO: create a space / a tab. */}
-            <DropdownMenuItem>Add space</DropdownMenuItem>
-            <DropdownMenuItem>Add tab</DropdownMenuItem>
+            <DropdownMenuItem onClick={onAddSpace}>Add space</DropdownMenuItem>
+            <DropdownMenuItem onClick={onAddTab}>Add tab</DropdownMenuItem>
           </DropdownMenuContent>
         </DropdownMenu>
       </SidebarMenuItem>

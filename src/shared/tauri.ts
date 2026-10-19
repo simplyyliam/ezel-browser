@@ -1,7 +1,10 @@
 import { invoke } from "@tauri-apps/api/core"
 import { listen, type UnlistenFn } from "@tauri-apps/api/event"
-import { cursorPosition, getCurrentWindow } from "@tauri-apps/api/window"
-import type { PageChanged } from "./page"
+import type { Id, PageChanged, Tab, TabLocation, TabsState, WindowRadius } from "./types"
+
+// Backend bindings: one typed wrapper per command (named after it, camelCase) and one typed listener
+// per event. Keep it thin, no logic: it will be replaced by a generated bindings file. Data types
+// live in shared/types; window APIs in shared/window.ts.
 
 export const getPage = () => invoke<PageChanged>("get_page")
 export const navigate = (input: string) => invoke<void>("navigate", { input })
@@ -20,26 +23,6 @@ export const setContentCutout = (id: string, rect: [number, number, number, numb
   invoke<void>("set_content_cutout", { id, rect, radius })
 export const setContentVisible = (visible: boolean) => invoke<void>("set_content_visible", { visible })
 
-export const minimizeWindow = () => getCurrentWindow().minimize()
-export const toggleMaximizeWindow = () => getCurrentWindow().toggleMaximize()
-export const closeWindow = () => getCurrentWindow().close()
-
-/** Cursor position in physical px, desktop coordinates. Works while the cursor is outside the window. */
-export const getCursorPosition = () => cursorPosition()
-
-/** The window's client area in physical px, desktop coordinates, plus its scale factor. */
-export async function getWindowClientRect() {
-  const window = getCurrentWindow()
-  const [position, size, scale] = await Promise.all([
-    window.innerPosition(),
-    window.innerSize(),
-    window.scaleFactor(),
-  ])
-  return { x: position.x, y: position.y, width: size.width, height: size.height, scale }
-}
-
-/** OS window corner radius in logical px; `radius: null` = unknown (not Windows). */
-export type WindowRadius = { radius: number | null; customized: boolean }
 export const getWindowRadius = () => invoke<WindowRadius>("get_window_radius")
 
 export function onWindowRadiusChanged(handler: (radius: WindowRadius) => void): Promise<UnlistenFn> {
@@ -53,4 +36,50 @@ export function onToggleSidebar(handler: () => void): Promise<UnlistenFn> {
 
 export function onPageChanged(handler: (page: PageChanged) => void): Promise<UnlistenFn> {
   return listen<PageChanged>("page-changed", (event) => handler(event.payload))
+}
+
+// Tabs, folders, spaces. Every change also emits "tabs-changed"; components read state through `useTabs` (shared/tabs-store).
+
+export const getTabs = () => invoke<TabsState>("get_tabs")
+/** New temp tab on top of the active space, selected; the home page without input. Resolves to its id. */
+export const openTab = (input?: string) => invoke<Id>("open_tab", { input })
+export const activateTab = (id: Id) => invoke<void>("activate_tab", { id })
+/** A temp tab is removed; a pinned/swatch tab is unloaded and reset to its pinned URL. */
+export const closeTab = (id: Id) => invoke<void>("close_tab", { id })
+export const removeTab = (id: Id) => invoke<void>("remove_tab", { id })
+export const unloadTab = (id: Id) => invoke<void>("unload_tab", { id })
+export const moveTab = (id: Id, to: TabLocation) => invoke<void>("move_tab", { id, to })
+export const resetTab = (id: Id) => invoke<void>("reset_tab", { id })
+export const updatePinnedUrl = (id: Id) => invoke<void>("update_pinned_url", { id })
+/** Trash-all: closes the space's temp tabs only. */
+export const clearTempTabs = (spaceId: Id) => invoke<void>("clear_temp_tabs", { spaceId })
+
+export const createFolder = (spaceId: Id, name: string, index?: number) =>
+  invoke<Id>("create_folder", { spaceId, name, index })
+export const renameFolder = (id: Id, name: string) => invoke<void>("rename_folder", { id, name })
+export const setFolderCollapsed = (id: Id, collapsed: boolean) => invoke<void>("set_folder_collapsed", { id, collapsed })
+export const moveFolder = (id: Id, spaceId: Id, index?: number) =>
+  invoke<void>("move_folder", { id, spaceId, index })
+/** `keepTabs`: unpack the folder's tabs into the space instead of removing them. */
+export const deleteFolder = (id: Id, keepTabs: boolean) => invoke<void>("delete_folder", { id, keepTabs })
+export const unloadFolder = (id: Id) => invoke<void>("unload_folder", { id })
+
+/** `icon` is a lucide icon name. Resolves to the new space's id. */
+export const createSpace = (name: string, icon: string) => invoke<Id>("create_space", { name, icon })
+/** Omitted fields are left unchanged. */
+export const updateSpace = (id: Id, name?: string, icon?: string) =>
+  invoke<void>("update_space", { id, name, icon })
+export const moveSpace = (id: Id, index: number) => invoke<void>("move_space", { id, index })
+/** Fails for the last space. */
+export const deleteSpace = (id: Id) => invoke<void>("delete_space", { id })
+/** Shows the tab the space showed last. */
+export const switchSpace = (id: Id) => invoke<void>("switch_space", { id })
+
+export function onTabsChanged(handler: (state: TabsState) => void): Promise<UnlistenFn> {
+  return listen<TabsState>("tabs-changed", (event) => handler(event.payload))
+}
+
+/** One tab's URL, title, favicon, loading or audio state changed (any tab, shown or not). */
+export function onTabUpdated(handler: (tab: Tab) => void): Promise<UnlistenFn> {
+  return listen<Tab>("tab-updated", (event) => handler(event.payload))
 }

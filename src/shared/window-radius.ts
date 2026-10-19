@@ -1,5 +1,6 @@
 import { useSyncExternalStore } from "react"
-import { getWindowRadius, onWindowRadiusChanged, type WindowRadius } from "./tauri"
+import { getWindowRadius, onWindowRadiusChanged } from "./tauri"
+import type { WindowRadius } from "./types"
 
 // One subscription to Rust for the whole app; components read it through useWindowRadius().
 let current: WindowRadius = { radius: null, customized: false }

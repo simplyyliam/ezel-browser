@@ -1,6 +1,6 @@
-export type { PageChanged } from "./page"
-export type { WindowRadius } from "./tauri"
-export type { Tab, Folder, SpaceItem, Space, Swatch } from "./types"
+export type { PageChanged, WindowRadius, Id, Tab, Folder, SpaceItem, Space, Swatch, TabsState, TabLocation } from "./types"
+export { useTabs, activeSpace } from "./tabs-store"
+export { spaceIcon, NEW_SPACE_ICONS } from "./space-icons"
 export { PEEK_TRANSITION, INSTANT } from "./motion"
 export { useWindowRadius } from "./window-radius"
 export { useContentCutout, usePopupCutouts, trackContentCutout } from "./content-cutout"
@@ -15,13 +15,32 @@ export {
   setContentRadius,
   setContentCutout,
   setContentVisible,
-  minimizeWindow,
-  toggleMaximizeWindow,
-  closeWindow,
-  getCursorPosition,
-  getWindowClientRect,
   onPageChanged,
   onToggleSidebar,
   getWindowRadius,
   onWindowRadiusChanged,
+  getTabs,
+  openTab,
+  activateTab,
+  closeTab,
+  removeTab,
+  unloadTab,
+  moveTab,
+  resetTab,
+  updatePinnedUrl,
+  clearTempTabs,
+  createFolder,
+  renameFolder,
+  setFolderCollapsed,
+  moveFolder,
+  deleteFolder,
+  unloadFolder,
+  createSpace,
+  updateSpace,
+  moveSpace,
+  deleteSpace,
+  switchSpace,
+  onTabsChanged,
+  onTabUpdated,
 } from "./tauri"
+export { minimizeWindow, toggleMaximizeWindow, closeWindow, getCursorPosition, getWindowClientRect } from "./window"
