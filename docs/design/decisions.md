@@ -87,3 +87,20 @@ Typed bindings via tauri-specta, same setup as Foundry: the same pinned crate ve
 
 ## Tab drag and drop (2026-10-19)
 Studied Zen's `ZenDragAndDrop.js` and Arc's docs; findings and Ezel's version in `docs/design/drag-and-drop.md`.
+
+## Command palette (2026-10-19)
+Studied Arc's command bar and Zen's new-tab URL bar: New Tab asks where to go first instead of loading a blank or default page, and the same field searches, opens addresses and jumps to open tabs.
+- **New Tab opens the palette; nothing is created until something is chosen.** Escape leaves no empty tab behind.
+- **Ctrl+L edits the shown tab's address** in the same palette, URL pre-selected (typing replaces it, Ctrl+C copies it). Shift+Enter sends it to a new tab instead.
+- **The first row is what Enter does**, and the input's leading icon follows it: a magnifier for a search, the site's favicon as soon as the text reads as an address (crossfade, 160ms).
+- **Autofill** like Firefox/Zen: the rest of an open tab's host, faint and tinted after the caret. Tab or → accepts; the first Backspace only removes it.
+- **One gliding highlight** (spring) instead of a fill per row; the panel's height eases as results change (cmdk's `--cmdk-list-height`, 150ms). Opens in 120ms (fade + scale from 0.97), leaves in 200ms. Reduced motion keeps the fade only.
+- **No backdrop and no shadow**: the page is a native webview above the UI, so a backdrop would dim the sidebar but not the page, and a shadow would be clipped. A 1px ring draws the edge.
+- **Swatch tiles are packed, not spread**: fixed 64px tiles from the leading edge, 2px apart, all 8 on one line, aligned with the rows below (HIG layout: group related items, consistent spacing). A 4-column grid stretched across the 600px palette left wide gaps and made it feel big and empty.
+- The footer says where the result opens ("New tab in <space>" / "Opens in this tab") and shows only the keys that apply right now.
+
+## Hotkeys everywhere (2026-10-19)
+Clicking the website gives keyboard focus to its native webview, which has no IPC: key presses there never reach the UI, so every app shortcut stopped working once the page was clicked. Ctrl+B had been patched on its own (Rust caught it and emitted `toggle-sidebar`). Generalised before more shortcuts arrive:
+- The frontend owns the list (`shared/hotkeys.ts`), because Settings will rebind it. It sends the list to Rust (`set_forwarded_hotkeys`); Rust catches those keys in every tab webview, hides them from the page and emits `hotkey-pressed { id }`. One event for every shortcut, so new ones need no backend work.
+- Shortcuts that open a field (`focusUi`) move OS focus to the UI webview first; JS `focus()` alone can't take focus from another webview.
+- Caught shortcuts override the page's own use of those keys (e.g. Ctrl+B bold in web editors), as in Arc and Zen.

@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react"
+import { useCallback, useState } from "react"
 import { DndContext, DragOverlay } from "@dnd-kit/core"
 import {
   Sidebar,
@@ -21,18 +21,16 @@ import {
   activeSpace,
   clearTempTabs,
   closeTab,
-  getPage,
   navigate,
   NEW_SPACE_ICONS,
-  onPageChanged,
-  onToggleSidebar,
-  openTab,
+  openCommandPalette,
   setFolderCollapsed,
   unwrap,
   useContentCutout,
+  useHotkey,
+  usePage,
   useTabs,
   type Id,
-  type PageChanged,
   type Space,
 } from "@/shared"
 import { commands } from "@/shared/bindings"
@@ -47,36 +45,6 @@ import { findTab, showTab, tabMenu } from "./tab-menu"
  * shadcn's 32px rows and 8px group padding, with room for four 45px swatches.
  */
 export const SIDEBAR_WIDTH = "244px"
-
-const INITIAL_PAGE: PageChanged = {
-  url: "",
-  title: null,
-  canGoBack: false,
-  canGoForward: false,
-  isLoading: false,
-}
-
-function usePage() {
-  const [page, setPage] = useState(INITIAL_PAGE)
-
-  useEffect(() => {
-    // Subscribe before fetching the snapshot so no event slips through in between;
-    // an event that arrives first is newer than the snapshot, so it wins.
-    let gotEvent = false
-    const unlisten = onPageChanged((next) => {
-      gotEvent = true
-      setPage(next)
-    })
-    getPage().then((snapshot) => {
-      if (!gotEvent) setPage(snapshot)
-    })
-    return () => {
-      unlisten.then((fn) => fn())
-    }
-  }, [])
-
-  return page
-}
 
 /**
  * The left sidebar: shadcn's floating card, positioned against the area below the titlebar
@@ -113,9 +81,8 @@ export function AppSidebar() {
   /** A new tab with its name field empty, ready for an address (the URL bar's old job). */
   const startNewTab = (tabId: Id) => setEditing({ tabId, value: "" })
 
-  async function newTab() {
-    startNewTab(await openTab())
-  }
+  /** New Tab asks where to go first (the command palette), so no blank page is ever opened. */
+  const newTab = () => openCommandPalette("new-tab")
 
   // Spaces (features/app-sidebar/space-switcher): commands only; the list and titles follow `tabs-changed`.
   const [spaceListOpen, setSpaceListOpen] = useState(false)
@@ -147,12 +114,7 @@ export function AppSidebar() {
   }
   const { open, toggleSidebar } = useSidebar()
   // shadcn's Ctrl+B only hears keys while the UI has focus; this covers the website having it.
-  useEffect(() => {
-    const unlisten = onToggleSidebar(toggleSidebar)
-    return () => {
-      unlisten.then((fn) => fn())
-    }
-  }, [toggleSidebar])
+  useHotkey("toggleSidebar", toggleSidebar)
   const { peeking, edgeRef, sidebarRef } = useSidebarPeek(!open)
   // The sidebar shows above the page wherever they overlap; floating, that includes its 1px ring
   // (drawn just outside the card). Docked it sits beside the page, so the hole changes nothing.
