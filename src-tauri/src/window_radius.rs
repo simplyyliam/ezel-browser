@@ -2,12 +2,16 @@
 //! "Custom Window Corner Radius" mod if it's enabled.
 
 use serde::Serialize;
+use specta::Type;
+use tauri_specta::Event;
 
 /// Windows 11's own window radius, in logical px.
 const WIN11_DEFAULT_RADIUS: u32 = 8;
 
-/// What the UI gets. `radius` is logical px; `None` = unknown (not Windows), so the UI keeps its defaults.
-#[derive(Clone, Copy, Default, PartialEq, Debug, Serialize)]
+/// What the UI gets (`get_window_radius`, "window-radius-changed"). `radius` is logical px; `None` =
+/// unknown (not Windows), so the UI keeps its defaults.
+#[derive(Clone, Copy, Default, PartialEq, Debug, Serialize, Type, Event)]
+#[tauri_specta(event_name = "window-radius-changed")]
 pub struct WindowRadius {
   pub radius: Option<u32>,
   /// True when the Windhawk mod sets the radius.

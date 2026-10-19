@@ -21,8 +21,12 @@ tauri-build = { version = "2.6.0", features = [] }
 serde_json = "1.0"
 serde = { version = "1.0", features = ["derive"] }
 log = "0.4"
-tauri = { version = "2.11.0", features = ["unstable"] }
+tauri = { version = "2.11.0", features = ["unstable", "specta"] }
 tauri-plugin-log = "2"
+# Typed bindings (same setup as Foundry). specta crates are pinned exactly while tauri-specta v2 is in RC.
+specta = { version = "=2.0.0-rc.25", features = ["derive"] }
+specta-typescript = "=0.0.12"
+tauri-specta = { version = "=2.0.0-rc.25", features = ["derive", "typescript"] }
 
 [target.'cfg(windows)'.dependencies]
 # Same version webview2-com uses, so its HWND type matches ours.

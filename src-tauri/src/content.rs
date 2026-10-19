@@ -4,9 +4,11 @@
 
 use std::{collections::BTreeMap, sync::Mutex};
 
+use serde::Deserialize;
+use specta::Type;
 use tauri::{AppHandle, LogicalPosition, LogicalSize, Manager, Rect, State, Webview};
 
-use crate::browser;
+use crate::{browser, error::AppError};
 
 /// Last reported content bounds, corner radii, cutouts and visibility, in logical px. Rust rebuilds the clip region from these.
 #[derive(Default)]
@@ -22,6 +24,12 @@ pub struct ContentShape {
   /// The frontend's `set_content_visible`. The website starts hidden until bounds are reported.
   visible: bool,
 }
+
+// Exported as TS `number`: specta maps f64 to `number | null` (NaN and infinities serialize as null).
+/// Logical px.
+#[derive(Clone, Copy, Deserialize, Type)]
+#[serde(transparent)]
+pub struct Px(#[specta(type = specta_typescript::Number)] f64);
 
 /// A window-relative rounded rect, logical px.
 #[derive(Clone, Copy)]
@@ -52,9 +60,11 @@ pub fn present(webview: &Webview) {
 
 /// Places the content webview. Logical px, relative to the window's top-left. Reported by the frontend.
 #[tauri::command]
-pub fn set_content_bounds(app: AppHandle, x: f64, y: f64, width: f64, height: f64) -> Result<(), String> {
+#[specta::specta]
+pub fn set_content_bounds(app: AppHandle, x: Px, y: Px, width: Px, height: Px) -> Result<(), AppError> {
+  let [x, y, width, height] = [x.0, y.0, width.0, height.0];
   if ![x, y, width, height].iter().all(|v| v.is_finite()) {
-    return Err("bounds must be finite numbers".into());
+    return Err(AppError::invalid_input("bounds must be finite numbers"));
   }
   let (width, height) = (width.max(0.0), height.max(0.0));
   let rect = {
@@ -64,7 +74,7 @@ pub fn set_content_bounds(app: AppHandle, x: f64, y: f64, width: f64, height: f6
     bounds(&shape)
   };
   if let Some(webview) = browser::shown_webview(&app) {
-    webview.set_bounds(rect).map_err(|e| e.to_string())?;
+    webview.set_bounds(rect)?;
     apply_shape(&webview);
   }
   Ok(())
@@ -72,9 +82,11 @@ pub fn set_content_bounds(app: AppHandle, x: f64, y: f64, width: f64, height: f6
 
 /// Rounds the content webview's corners. Logical px, CSS order: top-left, top-right, bottom-right, bottom-left.
 #[tauri::command]
-pub fn set_content_radius(app: AppHandle, radii: [f64; 4]) -> Result<(), String> {
+#[specta::specta]
+pub fn set_content_radius(app: AppHandle, radii: [Px; 4]) -> Result<(), AppError> {
+  let radii = radii.map(|r| r.0);
   if !radii.iter().all(|r| r.is_finite() && *r >= 0.0) {
-    return Err("radii must be finite, non-negative numbers".into());
+    return Err(AppError::invalid_input("radii must be finite, non-negative numbers"));
   }
   {
     let shape: State<Mutex<ContentShape>> = app.state();
@@ -87,14 +99,16 @@ pub fn set_content_radius(app: AppHandle, radii: [f64; 4]) -> Result<(), String>
 /// Cuts a window-relative rounded rect (logical px) out of the content webview under `id`, or clears
 /// that id's hole with `rect: None`. The page keeps its bounds (no reflow); the UI shows through.
 #[tauri::command]
-pub fn set_content_cutout(app: AppHandle, id: String, rect: Option<[f64; 4]>, radius: f64) -> Result<(), String> {
+#[specta::specta]
+pub fn set_content_cutout(app: AppHandle, id: String, rect: Option<[Px; 4]>, radius: Px) -> Result<(), AppError> {
+  let (rect, radius) = (rect.map(|r| r.map(|v| v.0)), radius.0);
   if let Some(r) = rect {
     if !r.iter().all(|v| v.is_finite()) {
-      return Err("cutout must be finite numbers".into());
+      return Err(AppError::invalid_input("cutout must be finite numbers"));
     }
   }
   if !radius.is_finite() || radius < 0.0 {
-    return Err("radius must be a finite, non-negative number".into());
+    return Err(AppError::invalid_input("radius must be a finite, non-negative number"));
   }
   {
     let shape: State<Mutex<ContentShape>> = app.state();
@@ -109,13 +123,14 @@ pub fn set_content_cutout(app: AppHandle, id: String, rect: Option<[f64; 4]>, ra
 }
 
 #[tauri::command]
-pub fn set_content_visible(app: AppHandle, visible: bool) -> Result<(), String> {
+#[specta::specta]
+pub fn set_content_visible(app: AppHandle, visible: bool) -> Result<(), AppError> {
   {
     let shape: State<Mutex<ContentShape>> = app.state();
     shape.lock().unwrap().visible = visible;
   }
   let Some(webview) = browser::shown_webview(&app) else { return Ok(()) };
-  if visible { webview.show() } else { webview.hide() }.map_err(|e| e.to_string())
+  Ok(if visible { webview.show() } else { webview.hide() }?)
 }
 
 /// Rebuilds the shown webview's clip, e.g. after a DPI change (logical bounds stay the same, so the

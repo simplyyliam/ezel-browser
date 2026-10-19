@@ -8,8 +8,18 @@
 use std::collections::{HashMap, HashSet};
 
 use serde::{Deserialize, Serialize};
+use specta::Type;
+
+use crate::error::{AppError, ErrorCode};
 
 pub type Id = u64;
+
+// [`Id`] in the bindings (TS `Id = number`), for `#[specta(type = TsId)]` and the command boundary.
+// specta refuses u64 (bigint), so u32 stands in for the type only; the value stays a u64.
+/// A tab, folder or space id: a number from one shared counter, never reused.
+#[derive(Clone, Copy, Debug, PartialEq, Serialize, Deserialize, Type)]
+#[serde(transparent, rename = "Id")]
+pub struct TsId(#[specta(type = u32)] pub Id);
 
 /// Swatches (Zen's essentials, Arc's favorites): a global grid shared by every space.
 pub const SWATCH_SLOTS: usize = 8;
@@ -80,18 +90,34 @@ pub struct Session {
   pub tabs: HashMap<Id, Tab>,
 }
 
-/// Where a tab lives. Also the target of [`Model::move_tab`].
-#[derive(Clone, Copy, Debug, PartialEq, Serialize, Deserialize)]
-#[serde(tag = "kind", rename_all = "camelCase")]
-pub enum Location {
+/// Where a tab lives. Also the target of `move_tab`.
+// specta refuses usize (bigint): `#[specta(type = u32)]` exports it as TS `number`; the value stays a usize.
+#[derive(Clone, Copy, Debug, PartialEq, Serialize, Deserialize, Type)]
+#[serde(tag = "kind", rename = "TabLocation", rename_all = "camelCase")]
+pub enum TabLocation {
   #[serde(rename_all = "camelCase")]
-  Swatch { slot: usize },
+  Swatch {
+    #[specta(type = u32)]
+    slot: usize,
+  },
   /// `folder_id: None` = the space's pinned list itself. `index: None` = the end.
   #[serde(rename_all = "camelCase")]
-  Pinned { space_id: Id, folder_id: Option<Id>, index: Option<usize> },
+  Pinned {
+    #[specta(type = TsId)]
+    space_id: Id,
+    #[specta(type = Option<TsId>)]
+    folder_id: Option<Id>,
+    #[specta(type = Option<u32>)]
+    index: Option<usize>,
+  },
   /// `index: None` = the top (newest first).
   #[serde(rename_all = "camelCase")]
-  Temp { space_id: Id, index: Option<usize> },
+  Temp {
+    #[specta(type = TsId)]
+    space_id: Id,
+    #[specta(type = Option<u32>)]
+    index: Option<usize>,
+  },
 }
 
 /// What the runtime must do to the native webviews after an operation.
@@ -113,7 +139,7 @@ pub struct Live {
   pub playing_audio: bool,
 }
 
-pub type Result<T> = std::result::Result<T, String>;
+pub type Result<T> = std::result::Result<T, AppError>;
 
 pub struct Model {
   pub session: Session,
@@ -216,15 +242,15 @@ impl Model {
   }
 
   pub fn tab(&self, id: Id) -> Result<&Tab> {
-    self.session.tabs.get(&id).ok_or_else(|| format!("tab {id} not found"))
+    self.session.tabs.get(&id).ok_or_else(|| AppError::not_found(format!("tab {id} not found")))
   }
 
   fn space(&self, id: Id) -> Result<&Space> {
-    self.session.spaces.iter().find(|s| s.id == id).ok_or_else(|| format!("space {id} not found"))
+    self.session.spaces.iter().find(|s| s.id == id).ok_or_else(|| AppError::not_found(format!("space {id} not found")))
   }
 
   fn space_mut(&mut self, id: Id) -> Result<&mut Space> {
-    self.session.spaces.iter_mut().find(|s| s.id == id).ok_or_else(|| format!("space {id} not found"))
+    self.session.spaces.iter_mut().find(|s| s.id == id).ok_or_else(|| AppError::not_found(format!("space {id} not found")))
   }
 
   fn folder_mut(&mut self, id: Id) -> Result<(Id, &mut Folder)> {
@@ -239,27 +265,27 @@ impl Model {
         })
         .map(|f| (s.id, f))
       })
-      .ok_or_else(|| format!("folder {id} not found"))
+      .ok_or_else(|| AppError::not_found(format!("folder {id} not found")))
   }
 
   /// Where the tab lives. A linear scan: tab counts are small, and one source of truth beats a
   /// reverse index that can drift out of sync.
-  pub fn locate(&self, id: Id) -> Option<Location> {
+  pub fn locate(&self, id: Id) -> Option<TabLocation> {
     if let Some(slot) = self.session.swatches.iter().position(|s| *s == Some(id)) {
-      return Some(Location::Swatch { slot });
+      return Some(TabLocation::Swatch { slot });
     }
     for space in &self.session.spaces {
       if let Some(index) = space.temp.iter().position(|t| *t == id) {
-        return Some(Location::Temp { space_id: space.id, index: Some(index) });
+        return Some(TabLocation::Temp { space_id: space.id, index: Some(index) });
       }
       for (i, item) in space.pinned.iter().enumerate() {
         match item {
           Pinned::Tab { id: t } if *t == id => {
-            return Some(Location::Pinned { space_id: space.id, folder_id: None, index: Some(i) })
+            return Some(TabLocation::Pinned { space_id: space.id, folder_id: None, index: Some(i) })
           }
           Pinned::Folder(f) => {
             if let Some(index) = f.tabs.iter().position(|t| *t == id) {
-              return Some(Location::Pinned { space_id: space.id, folder_id: Some(f.id), index: Some(index) });
+              return Some(TabLocation::Pinned { space_id: space.id, folder_id: Some(f.id), index: Some(index) });
             }
           }
           _ => {}
@@ -296,9 +322,9 @@ impl Model {
   /// Selects a tab: it becomes its space's active tab, and that space becomes active.
   /// A swatch stays in the current space.
   pub fn activate(&mut self, id: Id, now: u64) -> Result<Vec<Effect>> {
-    let space = match self.locate(id).ok_or_else(|| format!("tab {id} not found"))? {
-      Location::Swatch { .. } => self.session.active_space,
-      Location::Pinned { space_id, .. } | Location::Temp { space_id, .. } => space_id,
+    let space = match self.locate(id).ok_or_else(|| AppError::not_found(format!("tab {id} not found")))? {
+      TabLocation::Swatch { .. } => self.session.active_space,
+      TabLocation::Pinned { space_id, .. } | TabLocation::Temp { space_id, .. } => space_id,
     };
     self.session.active_space = space;
     self.space_mut(space)?.active_tab = Some(id);
@@ -311,15 +337,15 @@ impl Model {
   /// Zen/Arc close: a temp tab is removed; a pinned or swatch tab only unloads (it keeps its place).
   pub fn close_tab(&mut self, id: Id, now: u64) -> Result<Vec<Effect>> {
     match self.locate(id) {
-      Some(Location::Temp { .. }) => self.remove_tab(id, now),
+      Some(TabLocation::Temp { .. }) => self.remove_tab(id, now),
       Some(_) => self.unload_tabs(&[id], true, now),
-      None => Err(format!("tab {id} not found")),
+      None => Err(AppError::not_found(format!("tab {id} not found"))),
     }
   }
 
   /// Removes a tab from wherever it lives.
   pub fn remove_tab(&mut self, id: Id, now: u64) -> Result<Vec<Effect>> {
-    let location = self.locate(id).ok_or_else(|| format!("tab {id} not found"))?;
+    let location = self.locate(id).ok_or_else(|| AppError::not_found(format!("tab {id} not found")))?;
     let mut effects = self.deselect(&[id], now);
     self.detach(id, location);
     self.session.tabs.remove(&id);
@@ -354,11 +380,11 @@ impl Model {
 
   /// Moves a tab: pin/unpin, into or out of a folder or a swatch, reorder, or to another space.
   /// Into an occupied swatch slot, the occupant takes the moved tab's old place (a swap).
-  pub fn move_tab(&mut self, id: Id, to: Location) -> Result<()> {
-    let from = self.locate(id).ok_or_else(|| format!("tab {id} not found"))?;
+  pub fn move_tab(&mut self, id: Id, to: TabLocation) -> Result<()> {
+    let from = self.locate(id).ok_or_else(|| AppError::not_found(format!("tab {id} not found")))?;
     self.validate(to)?;
     self.detach(id, from);
-    if let Location::Swatch { slot } = to {
+    if let TabLocation::Swatch { slot } = to {
       if let Some(occupant) = self.session.swatches[slot].take() {
         self.attach(occupant, from);
       }
@@ -370,8 +396,8 @@ impl Model {
 
   /// A tab moved out of the space that shows it stops being that space's tab. If that was the
   /// active space, the selection follows the tab into its new space.
-  fn follow_moved_tab(&mut self, id: Id, to: Location) {
-    let (Location::Pinned { space_id: dest, .. } | Location::Temp { space_id: dest, .. }) = to else { return };
+  fn follow_moved_tab(&mut self, id: Id, to: TabLocation) {
+    let (TabLocation::Pinned { space_id: dest, .. } | TabLocation::Temp { space_id: dest, .. }) = to else { return };
     let active_space = self.session.active_space;
     let mut follow = false;
     for space in self.session.spaces.iter_mut().filter(|s| s.id != dest && s.active_tab == Some(id)) {
@@ -387,7 +413,7 @@ impl Model {
   /// Navigates a pinned or swatch tab back to its pinned URL.
   pub fn reset_tab(&mut self, id: Id) -> Result<Vec<Effect>> {
     let tab = self.tab(id)?;
-    let url = tab.pinned_url.clone().ok_or_else(|| format!("tab {id} is not pinned"))?;
+    let url = tab.pinned_url.clone().ok_or_else(|| AppError::new(ErrorCode::NotPinned, format!("tab {id} is not pinned")))?;
     if self.live.contains_key(&id) {
       return Ok(vec![Effect::Navigate(id, url)]);
     }
@@ -397,9 +423,9 @@ impl Model {
 
   /// Makes the tab's current URL its pinned URL.
   pub fn update_pinned_url(&mut self, id: Id) -> Result<()> {
-    let tab = self.session.tabs.get_mut(&id).ok_or_else(|| format!("tab {id} not found"))?;
+    let tab = self.session.tabs.get_mut(&id).ok_or_else(|| AppError::not_found(format!("tab {id} not found")))?;
     if tab.pinned_url.is_none() {
-      return Err(format!("tab {id} is not pinned"));
+      return Err(AppError::new(ErrorCode::NotPinned, format!("tab {id} is not pinned")));
     }
     tab.pinned_url = Some(tab.url.clone());
     Ok(())
@@ -497,7 +523,7 @@ impl Model {
         return Ok((space.id, folder, index));
       }
     }
-    Err(format!("folder {id} not found"))
+    Err(AppError::not_found(format!("folder {id} not found")))
   }
 
   // ---- Spaces ----
@@ -520,7 +546,7 @@ impl Model {
   }
 
   pub fn move_space(&mut self, id: Id, index: usize) -> Result<()> {
-    let from = self.session.spaces.iter().position(|s| s.id == id).ok_or_else(|| format!("space {id} not found"))?;
+    let from = self.session.spaces.iter().position(|s| s.id == id).ok_or_else(|| AppError::not_found(format!("space {id} not found")))?;
     let space = self.session.spaces.remove(from);
     insert_at(&mut self.session.spaces, index, space);
     Ok(())
@@ -529,9 +555,9 @@ impl Model {
   /// Deletes a space and all its tabs. The last space can't be deleted.
   pub fn delete_space(&mut self, id: Id, now: u64) -> Result<Vec<Effect>> {
     if self.session.spaces.len() == 1 {
-      return Err("can't delete the last space".into());
+      return Err(AppError::new(ErrorCode::LastSpace, "can't delete the last space"));
     }
-    let index = self.session.spaces.iter().position(|s| s.id == id).ok_or_else(|| format!("space {id} not found"))?;
+    let index = self.session.spaces.iter().position(|s| s.id == id).ok_or_else(|| AppError::not_found(format!("space {id} not found")))?;
     let mut effects = vec![];
     if self.session.active_space == id {
       let neighbour = self.session.spaces[if index == 0 { 1 } else { index - 1 }].id;
@@ -625,16 +651,16 @@ impl Model {
     vec![Effect::Show(fallback)]
   }
 
-  fn validate(&self, to: Location) -> Result<()> {
+  fn validate(&self, to: TabLocation) -> Result<()> {
     match to {
-      Location::Swatch { slot } if slot >= SWATCH_SLOTS => Err(format!("swatch slot {slot} out of range")),
-      Location::Swatch { .. } => Ok(()),
-      Location::Temp { space_id, .. } => self.space(space_id).map(|_| ()),
-      Location::Pinned { space_id, folder_id, .. } => {
+      TabLocation::Swatch { slot } if slot >= SWATCH_SLOTS => Err(AppError::invalid_input(format!("swatch slot {slot} out of range"))),
+      TabLocation::Swatch { .. } => Ok(()),
+      TabLocation::Temp { space_id, .. } => self.space(space_id).map(|_| ()),
+      TabLocation::Pinned { space_id, folder_id, .. } => {
         let space = self.space(space_id)?;
         match folder_id {
           Some(f) if !space.pinned.iter().any(|p| matches!(p, Pinned::Folder(x) if x.id == f)) => {
-            Err(format!("folder {f} not found in space {space_id}"))
+            Err(AppError::not_found(format!("folder {f} not found in space {space_id}")))
           }
           _ => Ok(()),
         }
@@ -642,20 +668,20 @@ impl Model {
     }
   }
 
-  fn detach(&mut self, id: Id, from: Location) {
+  fn detach(&mut self, id: Id, from: TabLocation) {
     match from {
-      Location::Swatch { slot } => self.session.swatches[slot] = None,
-      Location::Temp { space_id, .. } => {
+      TabLocation::Swatch { slot } => self.session.swatches[slot] = None,
+      TabLocation::Temp { space_id, .. } => {
         if let Ok(space) = self.space_mut(space_id) {
           space.temp.retain(|t| *t != id);
         }
       }
-      Location::Pinned { space_id, folder_id: None, .. } => {
+      TabLocation::Pinned { space_id, folder_id: None, .. } => {
         if let Ok(space) = self.space_mut(space_id) {
           space.pinned.retain(|p| !matches!(p, Pinned::Tab { id: t } if *t == id));
         }
       }
-      Location::Pinned { folder_id: Some(folder), .. } => {
+      TabLocation::Pinned { folder_id: Some(folder), .. } => {
         if let Ok((_, folder)) = self.folder_mut(folder) {
           folder.tabs.retain(|t| *t != id);
         }
@@ -664,24 +690,24 @@ impl Model {
   }
 
   /// Places a detached tab. Pinned and swatch tabs remember their URL; temp tabs forget it.
-  fn attach(&mut self, id: Id, to: Location) {
+  fn attach(&mut self, id: Id, to: TabLocation) {
     let tab = self.session.tabs.get_mut(&id).expect("attached tab exists");
     match to {
-      Location::Temp { .. } => tab.pinned_url = None,
+      TabLocation::Temp { .. } => tab.pinned_url = None,
       _ => {
         tab.pinned_url.get_or_insert_with(|| tab.url.clone());
       }
     }
     match to {
-      Location::Swatch { slot } => self.session.swatches[slot] = Some(id),
-      Location::Temp { space_id, index } => {
+      TabLocation::Swatch { slot } => self.session.swatches[slot] = Some(id),
+      TabLocation::Temp { space_id, index } => {
         insert_at(&mut self.space_mut(space_id).expect("validated").temp, index.unwrap_or(0), id)
       }
-      Location::Pinned { space_id, folder_id: None, index } => {
+      TabLocation::Pinned { space_id, folder_id: None, index } => {
         let pinned = &mut self.space_mut(space_id).expect("validated").pinned;
         insert_at(pinned, index.unwrap_or(usize::MAX), Pinned::Tab { id });
       }
-      Location::Pinned { folder_id: Some(folder), index, .. } => {
+      TabLocation::Pinned { folder_id: Some(folder), index, .. } => {
         let tabs = &mut self.folder_mut(folder).expect("validated").1.tabs;
         insert_at(tabs, index.unwrap_or(usize::MAX), id);
       }
@@ -711,7 +737,7 @@ mod tests {
     let tab = m.active_tab().unwrap();
     assert_eq!(m.tab(tab).unwrap().url, HOME);
     assert!(m.live.contains_key(&tab));
-    assert!(matches!(m.locate(tab), Some(Location::Temp { .. })));
+    assert!(matches!(m.locate(tab), Some(TabLocation::Temp { .. })));
   }
 
   #[test]
@@ -741,20 +767,20 @@ mod tests {
   fn closing_pinned_unloads_and_resets_to_pinned_url() {
     let mut m = model();
     let tab = m.active_tab().unwrap();
-    m.move_tab(tab, Location::Pinned { space_id: space(&m), folder_id: None, index: None }).unwrap();
+    m.move_tab(tab, TabLocation::Pinned { space_id: space(&m), folder_id: None, index: None }).unwrap();
     m.update_page(tab, Some("https://home.test/elsewhere".into()), None);
     let effects = m.close_tab(tab, 1).unwrap();
     assert_eq!(effects, vec![Effect::Show(None), Effect::Destroy(tab)]);
     assert_eq!(m.tab(tab).unwrap().url, HOME);
     assert!(!m.live.contains_key(&tab));
-    assert!(matches!(m.locate(tab), Some(Location::Pinned { .. })));
+    assert!(matches!(m.locate(tab), Some(TabLocation::Pinned { .. })));
   }
 
   #[test]
   fn unloading_keeps_the_current_page() {
     let mut m = model();
     let tab = m.active_tab().unwrap();
-    m.move_tab(tab, Location::Swatch { slot: 0 }).unwrap();
+    m.move_tab(tab, TabLocation::Swatch { slot: 0 }).unwrap();
     m.update_page(tab, Some("https://home.test/deep".into()), None);
     m.unload_tab(tab, 1).unwrap();
     assert_eq!(m.tab(tab).unwrap().url, "https://home.test/deep");
@@ -765,7 +791,7 @@ mod tests {
     let mut m = model();
     let tab = m.active_tab().unwrap();
     let work = m.create_space("Work".into(), "hammer".into());
-    m.move_tab(tab, Location::Temp { space_id: work, index: None }).unwrap();
+    m.move_tab(tab, TabLocation::Temp { space_id: work, index: None }).unwrap();
     assert_eq!(m.session.active_space, work);
     assert_eq!(m.active_tab(), Some(tab));
     assert_eq!(m.session.spaces[0].active_tab, None);
@@ -776,9 +802,9 @@ mod tests {
     let mut m = model();
     let tab = m.active_tab().unwrap();
     let s = space(&m);
-    m.move_tab(tab, Location::Swatch { slot: 3 }).unwrap();
+    m.move_tab(tab, TabLocation::Swatch { slot: 3 }).unwrap();
     assert_eq!(m.tab(tab).unwrap().pinned_url.as_deref(), Some(HOME));
-    m.move_tab(tab, Location::Temp { space_id: s, index: None }).unwrap();
+    m.move_tab(tab, TabLocation::Temp { space_id: s, index: None }).unwrap();
     assert_eq!(m.tab(tab).unwrap().pinned_url, None);
     assert_eq!(m.session.swatches[3], None);
   }
@@ -788,10 +814,10 @@ mod tests {
     let mut m = model();
     let a = m.active_tab().unwrap();
     let (b, _) = m.open_tab("https://b.test/".into(), 1);
-    m.move_tab(a, Location::Swatch { slot: 0 }).unwrap();
-    m.move_tab(b, Location::Swatch { slot: 0 }).unwrap();
+    m.move_tab(a, TabLocation::Swatch { slot: 0 }).unwrap();
+    m.move_tab(b, TabLocation::Swatch { slot: 0 }).unwrap();
     assert_eq!(m.session.swatches[0], Some(b));
-    assert!(matches!(m.locate(a), Some(Location::Temp { .. })));
+    assert!(matches!(m.locate(a), Some(TabLocation::Temp { .. })));
   }
 
   #[test]
@@ -799,7 +825,7 @@ mod tests {
     let mut m = model();
     let s = space(&m);
     let pinned = m.active_tab().unwrap();
-    m.move_tab(pinned, Location::Pinned { space_id: s, folder_id: None, index: None }).unwrap();
+    m.move_tab(pinned, TabLocation::Pinned { space_id: s, folder_id: None, index: None }).unwrap();
     m.open_tab("https://b.test/".into(), 1);
     m.open_tab("https://c.test/".into(), 2);
     m.clear_temp_tabs(s, 3).unwrap();
@@ -814,12 +840,12 @@ mod tests {
     let s = space(&m);
     let tab = m.active_tab().unwrap();
     let folder = m.create_folder(s, "F".into(), None).unwrap();
-    m.move_tab(tab, Location::Pinned { space_id: s, folder_id: Some(folder), index: None }).unwrap();
+    m.move_tab(tab, TabLocation::Pinned { space_id: s, folder_id: Some(folder), index: None }).unwrap();
     m.delete_folder(folder, true, 1).unwrap();
     assert_eq!(m.active_space().pinned, vec![Pinned::Tab { id: tab }]);
 
     let folder = m.create_folder(s, "G".into(), Some(0)).unwrap();
-    m.move_tab(tab, Location::Pinned { space_id: s, folder_id: Some(folder), index: None }).unwrap();
+    m.move_tab(tab, TabLocation::Pinned { space_id: s, folder_id: Some(folder), index: None }).unwrap();
     m.delete_folder(folder, false, 2).unwrap();
     assert!(m.session.tabs.is_empty());
     assert_eq!(m.active_tab(), None);
@@ -833,7 +859,7 @@ mod tests {
     let work = m.create_space("Work".into(), "hammer".into());
     assert_eq!(m.switch_space(work, 1).unwrap(), vec![Effect::Show(None)]);
     let (work_tab, _) = m.open_tab("https://w.test/".into(), 2);
-    assert!(matches!(m.locate(work_tab), Some(Location::Temp { space_id, .. }) if space_id == work));
+    assert!(matches!(m.locate(work_tab), Some(TabLocation::Temp { space_id, .. }) if space_id == work));
     assert_eq!(m.switch_space(home, 3).unwrap(), vec![Effect::Show(Some(home_tab))]);
 
     let effects = m.delete_space(home, 4).unwrap();
@@ -887,7 +913,7 @@ mod tests {
   #[test]
   fn location_serde_matches_the_contract() {
     let json = r#"{"kind":"pinned","spaceId":1,"folderId":null,"index":2}"#;
-    let to: Location = serde_json::from_str(json).unwrap();
-    assert_eq!(to, Location::Pinned { space_id: 1, folder_id: None, index: Some(2) });
+    let to: TabLocation = serde_json::from_str(json).unwrap();
+    assert_eq!(to, TabLocation::Pinned { space_id: 1, folder_id: None, index: Some(2) });
   }
 }

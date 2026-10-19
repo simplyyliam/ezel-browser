@@ -1,20 +1,91 @@
 mod browser;
 mod content;
+mod error;
 #[cfg(windows)]
 mod webview2;
 mod window_radius;
 
-use std::sync::Mutex;
+use std::{path::Path, sync::Mutex};
 
+use serde::Serialize;
+use specta_typescript::Typescript;
 use tauri::{
   webview::{ScrollBarStyle, WebviewBuilder},
   window::WindowBuilder,
-  AppHandle, Emitter, EventTarget, LogicalPosition, LogicalSize, Manager, Rect, RunEvent, State, WebviewUrl,
-  Window, WindowEvent,
+  AppHandle, Emitter, EventTarget, LogicalPosition, LogicalSize, Manager, Rect, RunEvent, Runtime, State,
+  WebviewUrl, Window, WindowEvent,
 };
+use tauri_specta::{collect_commands, collect_events};
+
+use error::AppError;
 
 const WINDOW_LABEL: &str = "main";
 const UI_LABEL: &str = "ui";
+
+/// Where the generated TypeScript bindings live. Never hand-edit that file.
+pub const BINDINGS_PATH: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/../src/shared/bindings.ts");
+
+const BINDINGS_HEADER: &str = "// Regenerate from src-tauri with a debug run or `cargo test`.";
+
+/// Every command and event in the contract. Register new ones here.
+pub fn specta_builder() -> tauri_specta::Builder<tauri::Wry> {
+  use browser::commands::*;
+  use content::*;
+
+  tauri_specta::Builder::<tauri::Wry>::new()
+    .commands(collect_commands![
+      navigate,
+      get_page,
+      go_back,
+      go_forward,
+      reload,
+      set_content_bounds,
+      set_content_visible,
+      set_content_radius,
+      set_content_cutout,
+      get_window_radius,
+      get_tabs,
+      open_tab,
+      activate_tab,
+      close_tab,
+      remove_tab,
+      unload_tab,
+      move_tab,
+      reset_tab,
+      update_pinned_url,
+      clear_temp_tabs,
+      create_folder,
+      rename_folder,
+      set_folder_collapsed,
+      move_folder,
+      delete_folder,
+      unload_folder,
+      create_space,
+      update_space,
+      move_space,
+      delete_space,
+      switch_space,
+    ])
+    .events(collect_events![
+      browser::PageChanged,
+      browser::TabsState,
+      browser::TabView,
+      browser::ToggleSidebar,
+      window_radius::WindowRadius,
+    ])
+}
+
+pub fn export_bindings(builder: &tauri_specta::Builder<tauri::Wry>, path: &Path) -> Result<(), AppError> {
+  builder
+    .export(Typescript::default().header(BINDINGS_HEADER), path)
+    .map_err(|err| AppError::internal(format!("failed to export bindings: {err}")))
+}
+
+/// Emits a typed event to the `ui` webview (the only one with IPC). Failures are ignored: a missed
+/// update is re-sent with the next change. The event must be registered with `collect_events!`.
+fn emit_to_ui<R: Runtime, H: Emitter<R> + Manager<R>, E: tauri_specta::Event + Serialize + Clone>(handle: &H, event: &E) {
+  let _ = event.emit_to(handle, EventTarget::webview(UI_LABEL));
+}
 
 /// Thin overlay scrollbars that auto-hide and have no track (WebView2 125+; ignored elsewhere).
 const SCROLL_BAR_STYLE: ScrollBarStyle = ScrollBarStyle::FluentOverlay;
@@ -27,8 +98,9 @@ struct RadiusState {
 }
 
 #[tauri::command]
-fn get_window_radius(state: State<Mutex<RadiusState>>) -> window_radius::WindowRadius {
-  state.lock().unwrap().current
+#[specta::specta]
+fn get_window_radius(state: State<Mutex<RadiusState>>) -> Result<window_radius::WindowRadius, AppError> {
+  Ok(state.lock().unwrap().current)
 }
 
 fn window_state(window: &Window) -> window_radius::WindowState {
@@ -56,7 +128,7 @@ fn update_window_radius(window: &Window) {
   };
   if next != s.current {
     s.current = next;
-    let _ = window.emit_to(EventTarget::webview(UI_LABEL), "window-radius-changed", next);
+    emit_to_ui(window, &next);
   }
 }
 
@@ -126,46 +198,19 @@ fn build_window(app: &AppHandle) -> tauri::Result<()> {
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
-  use browser::commands::*;
-  use content::*;
+  let specta = specta_builder();
+  #[cfg(debug_assertions)]
+  if let Err(err) = export_bindings(&specta, Path::new(BINDINGS_PATH)) {
+    log::error!("bindings export failed: {err}");
+  }
 
   tauri::Builder::default()
     .manage(Mutex::new(content::ContentShape::default()))
     .manage(Mutex::new(RadiusState::default()))
-    .invoke_handler(tauri::generate_handler![
-      navigate,
-      get_page,
-      go_back,
-      go_forward,
-      reload,
-      set_content_bounds,
-      set_content_visible,
-      set_content_radius,
-      set_content_cutout,
-      get_window_radius,
-      get_tabs,
-      open_tab,
-      activate_tab,
-      close_tab,
-      remove_tab,
-      unload_tab,
-      move_tab,
-      reset_tab,
-      update_pinned_url,
-      clear_temp_tabs,
-      create_folder,
-      rename_folder,
-      set_folder_collapsed,
-      move_folder,
-      delete_folder,
-      unload_folder,
-      create_space,
-      update_space,
-      move_space,
-      delete_space,
-      switch_space,
-    ])
-    .setup(|app| {
+    .invoke_handler(specta.invoke_handler())
+    .setup(move |app| {
+      // Before anything emits: typed events look their name up in what this registers.
+      specta.mount_events(app);
       if cfg!(debug_assertions) {
         app.handle().plugin(
           tauri_plugin_log::Builder::default()
@@ -185,4 +230,28 @@ pub fn run() {
         browser::flush(app);
       }
     });
+}
+
+#[cfg(test)]
+mod tests {
+  use super::*;
+
+  /// Regenerates the real bindings file, then checks the contract is in it.
+  #[test]
+  fn export_bindings_regenerates_file_with_the_contract() {
+    let path = Path::new(BINDINGS_PATH);
+    export_bindings(&specta_builder(), path).unwrap();
+
+    let ts = std::fs::read_to_string(path).unwrap();
+    assert!(ts.starts_with(BINDINGS_HEADER));
+    for command in ["navigate", "get_page", "set_content_bounds", "get_window_radius", "get_tabs", "move_tab", "switch_space"] {
+      assert!(ts.contains(&format!("\"{command}\"")), "{command} command missing");
+    }
+    for event in ["page-changed", "tabs-changed", "tab-updated", "toggle-sidebar", "window-radius-changed"] {
+      assert!(ts.contains(&format!("\"{event}\"")), "{event} event missing");
+    }
+    for ty in ["AppError", "ErrorCode", "Id", "Tab", "Folder", "Space", "SpaceItem", "Swatch", "TabsState", "TabLocation", "PageChanged", "WindowRadius"] {
+      assert!(ts.contains(&format!("export type {ty} =")), "{ty} type missing");
+    }
+  }
 }

@@ -22,14 +22,16 @@ use std::{
 };
 
 use serde::Serialize;
+use specta::Type;
 use tauri::{
   webview::{NewWindowResponse, PageLoadEvent, WebviewBuilder},
-  AppHandle, Emitter, EventTarget, LogicalPosition, LogicalSize, Manager, State, Url, Webview, WebviewUrl,
+  AppHandle, LogicalPosition, LogicalSize, Manager, State, Url, Webview, WebviewUrl,
 };
+use tauri_specta::Event;
 
-use crate::{content, SCROLL_BAR_STYLE, UI_LABEL};
+use crate::{content, emit_to_ui, error::AppError, SCROLL_BAR_STYLE};
 use model::{Effect, Id, Model, Session};
-use view::{TabView, TabsState};
+pub use view::{TabView, TabsState};
 
 
 const HOME_URL: &str = "https://google.com";
@@ -50,8 +52,9 @@ pub struct Browser {
 }
 
 /// Payload of "page-changed": the shown tab's page.
-#[derive(Clone, Default, Serialize)]
+#[derive(Clone, Default, Serialize, Type, Event)]
 #[serde(rename_all = "camelCase")]
+#[tauri_specta(event_name = "page-changed")]
 pub struct PageChanged {
   url: String,
   title: Option<String>,
@@ -59,6 +62,11 @@ pub struct PageChanged {
   can_go_forward: bool,
   is_loading: bool,
 }
+
+/// "toggle-sidebar": Ctrl+B was pressed while the website had focus. No payload (`null`).
+#[derive(Clone, Serialize, Type, Event)]
+#[tauri_specta(event_name = "toggle-sidebar")]
+pub struct ToggleSidebar;
 
 fn now() -> u64 {
   SystemTime::now().duration_since(UNIX_EPOCH).map(|d| d.as_millis() as u64).unwrap_or(0)
@@ -116,7 +124,7 @@ pub fn flush(app: &AppHandle) {
 
 /// Runs one operation: edits the model, applies its effects to the webviews, then tells the UI
 /// and queues a save. Not from the main thread (see the module docs).
-fn update<T>(app: &AppHandle, op: impl FnOnce(&mut Model, u64) -> model::Result<(T, Vec<Effect>)>) -> Result<T, String> {
+fn update<T>(app: &AppHandle, op: impl FnOnce(&mut Model, u64) -> model::Result<(T, Vec<Effect>)>) -> Result<T, AppError> {
   let browser = browser(app);
   let _op = browser.ops.lock().unwrap();
   let (value, effects) = op(&mut browser.model.lock().unwrap(), now())?;
@@ -124,13 +132,13 @@ fn update<T>(app: &AppHandle, op: impl FnOnce(&mut Model, u64) -> model::Result<
     apply(app, effect);
   }
   let model = browser.model.lock().unwrap();
-  let _ = app.emit_to(EventTarget::webview(UI_LABEL), "tabs-changed", TabsState::of(&model));
+  emit_to_ui(app, &TabsState::of(&model));
   browser.store.save(&model.session);
   Ok(value)
 }
 
 /// [`update`] for operations with no webview effects.
-fn edit<T>(app: &AppHandle, op: impl FnOnce(&mut Model) -> model::Result<T>) -> Result<T, String> {
+fn edit<T>(app: &AppHandle, op: impl FnOnce(&mut Model) -> model::Result<T>) -> Result<T, AppError> {
   update(app, |m, _| op(m).map(|value| (value, vec![])))
 }
 
@@ -234,7 +242,7 @@ fn on_page_event(webview: &Webview, id: Id, url: Option<String>, title: Option<O
 
 fn emit_tab(app: &AppHandle, model: &Model, id: Id) {
   if let Some(tab) = TabView::of(model, id) {
-    let _ = app.emit_to(EventTarget::webview(UI_LABEL), "tab-updated", tab);
+    emit_to_ui(app, &tab);
   }
 }
 
@@ -275,7 +283,7 @@ fn page_of(model: &Model, id: Id) -> PageChanged {
 }
 
 fn emit_page(app: &AppHandle, page: PageChanged) {
-  let _ = app.emit_to(EventTarget::webview(UI_LABEL), "page-changed", page);
+  emit_to_ui(app, &page);
 }
 
 fn set_low_memory(webview: &Webview, low: bool) {
@@ -310,7 +318,7 @@ fn watch_platform_events(webview: &Webview, id: Id) {
         emit_tab(&a, &model, id);
       });
       webview2::forward_shortcuts(&pw, move || {
-        let _ = app.emit_to(EventTarget::webview(UI_LABEL), "toggle-sidebar", ());
+        emit_to_ui(&app, &ToggleSidebar);
       });
     });
   }
