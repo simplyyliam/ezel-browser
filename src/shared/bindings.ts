@@ -58,14 +58,16 @@ export const commands = {
 	deleteSpace: (id: Id) => typedError<null, AppError>(__TAURI_INVOKE("delete_space", { id })),
 	/**  Selects a space; it shows the tab it showed last. */
 	switchSpace: (id: Id) => typedError<null, AppError>(__TAURI_INVOKE("switch_space", { id })),
+	/**  Replaces the shortcuts caught in the tab webviews (existing ones too: the list is read per key). */
+	setForwardedHotkeys: (hotkeys: ForwardedHotkey[]) => typedError<null, AppError>(__TAURI_INVOKE("set_forwarded_hotkeys", { hotkeys })),
 };
 
 /** Events */
 export const events = {
+	hotkeyPressed: makeEvent<HotkeyPressed>("hotkey-pressed"),
 	pageChanged: makeEvent<PageChanged>("page-changed"),
 	tabUpdated: makeEvent<Tab>("tab-updated"),
 	tabsChanged: makeEvent<TabsState>("tabs-changed"),
-	toggleSidebar: makeEvent<ToggleSidebar>("toggle-sidebar"),
 	windowRadiusChanged: makeEvent<WindowRadius>("window-radius-changed"),
 };
 
@@ -104,6 +106,23 @@ export type Folder = {
 	name: string,
 	collapsed: boolean,
 	tabs: Tab[],
+};
+
+/**  One shortcut as the frontend describes it (`shared/hotkeys.ts`). */
+export type ForwardedHotkey = {
+	id: string,
+	/**  Lowercase: "a"–"z", "0"–"9", "f1"–"f12". */
+	key: string,
+	ctrl: boolean,
+	shift: boolean,
+	alt: boolean,
+	/**  Move keyboard focus to the `ui` webview before emitting (shortcuts that open a field). */
+	focusUi: boolean,
+};
+
+/**  Payload of "hotkey-pressed": a forwarded shortcut was pressed while the website had focus. */
+export type HotkeyPressed = {
+	id: string,
 };
 
 /**  A tab, folder or space id: a number from one shared counter, never reused. */
@@ -164,9 +183,6 @@ export type TabsState = {
 	swatches: Swatch[],
 	spaces: Space[],
 };
-
-/**  "toggle-sidebar": Ctrl+B was pressed while the website had focus. No payload (`null`). */
-export type ToggleSidebar = null;
 
 /**
  *  What the UI gets (`get_window_radius`, "window-radius-changed"). `radius` is logical px; `None` =

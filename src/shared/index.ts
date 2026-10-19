@@ -1,4 +1,3 @@
-export type { ForwardedHotkey } from "./tauri"
 export type { PageChanged, WindowRadius, Id, Tab, Folder, SpaceItem, Space, Swatch, TabsState, TabLocation } from "./types"
 export { useTabs, activeSpace } from "./tabs-store"
 export { useTabDraggable, useTabDropZone, rowIndicator, tabDropZoneNode, tabDragNode, swatchIndexAt, swatchColumns, swatchCellWidth, SWATCH_GRID, DROP_ROW, DROP_ROW_SELECTOR } from "./tab-dnd"
@@ -19,9 +18,6 @@ export {
   setContentCutout,
   setContentVisible,
   onPageChanged,
-  onToggleSidebar,
-  setForwardedHotkeys,
-  onHotkeyPressed,
   getWindowRadius,
   onWindowRadiusChanged,
   getTabs,

@@ -36,6 +36,7 @@
     "allow-move-space",
     "allow-delete-space",
     "allow-switch-space",
+    "allow-set-forwarded-hotkeys",
     "core:window:allow-is-maximized",
     "core:window:allow-is-fullscreen",
     "core:window:allow-start-dragging",

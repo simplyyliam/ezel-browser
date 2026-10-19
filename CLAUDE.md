@@ -46,7 +46,7 @@ Commands (`invoke`):
 - `set_content_radius(radii: [number, number, number, number])`: clips the content webview to rounded corners; logical px, CSS order (top-left, top-right, bottom-right, bottom-left). Windows only for now.
 - `set_content_cutout(id: string, rect: [x, y, width, height] | null, radius: number)`: cuts a window-relative rounded rect (logical px) out of the content webview's clip region under `id`, so the UI below shows through without moving or resizing the page. `rect: null` clears that id. Holes: `"titlebar"`, `"sidebar"`. Use `useContentCutout` (`shared/content-cutout.ts`), which follows an element every frame while it moves. Windows only for now.
 - `set_content_visible(visible: boolean)`: shows or hides the content webview. It starts hidden, so report bounds first, then show it.
-- `set_forwarded_hotkeys(hotkeys: { id, key, ctrl, shift, alt, focusUi }[])`: replaces the shortcuts Rust catches in the tab webviews (see Hotkeys). `key`: `a`–`z`, `0`–`9`, `f1`–`f12`. **Backend pending**: called through `shared/tauri.ts` until it exists.
+- `set_forwarded_hotkeys(hotkeys: { id, key, ctrl, shift, alt, focusUi }[])`: replaces the shortcuts Rust catches in the tab webviews (see Hotkeys). `key`: `a`–`z`, `0`–`9`, `f1`–`f12` (anything else: `invalid_input`). Empty until first called: nothing is caught.
 - `get_window_radius()` → `{ radius: number | null, customized: boolean }`: the corner radius Windows 11 actually draws for the window, logical px. Without the Windhawk "Custom Window Corner Radius" mod: 8, or 0 when fullscreen/maximized/snapped. With it (`customized: true`): the mod's radius, or 0 where it leaves windows square. `radius: null` = unknown (not Windows): keep the UI's default radii. The UI sets `--radius-frame` to `radius − 4` (frame padding).
 
 Tab commands (ids are numbers; every change also emits `tabs-changed`):
@@ -65,8 +65,7 @@ Event emitted to the `ui` webview:
   The shown tab's page. Emitted on navigation start, on page load finish, when the document title changes, and when another tab is shown (all empty/false when none is).
 - `tabs-changed`: `TabsState` (as `get_tabs`). Emitted after every tab/folder/space change.
 - `tab-updated`: one `TabView`. A tab's URL, title, favicon, loading or audio state changed (any tab, shown or not).
-- `hotkey-pressed`: `{ id: string }`. A shortcut from `set_forwarded_hotkeys` was pressed while the website had focus. Rust catches it on each tab webview (WebView2 `AcceleratorKeyPressed`) because those keys never reach the `ui` webview; the page doesn't receive it. With `focusUi` it moves keyboard focus to `ui` first. Windows only for now. **Backend pending.**
-- `toggle-sidebar` (legacy, removed by the hotkeys backend): no payload. Ctrl+B pressed while the website had focus; `useHotkeys` maps it to the `toggleSidebar` hotkey.
+- `hotkey-pressed`: `{ id: string }`. A shortcut from `set_forwarded_hotkeys` was pressed while the website had focus. Rust catches it on each tab webview (WebView2 `AcceleratorKeyPressed`) because those keys never reach the `ui` webview; the page doesn't receive it. With `focusUi` it moves keyboard focus to `ui` first. Auto-repeat is swallowed but not re-emitted. Windows only for now.
 - `window-radius-changed`: same payload as `get_window_radius`. Emitted only when the value changes (window resize/maximize/snap/fullscreen, or the mod's registry settings change).
 
 ## Frontend structure

@@ -48,6 +48,7 @@ fn main() {
       "move_space",
       "delete_space",
       "switch_space",
+      "set_forwarded_hotkeys",
     ]),
   ))
   .expect("failed to run tauri-build");

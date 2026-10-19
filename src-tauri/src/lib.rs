@@ -1,6 +1,7 @@
 mod browser;
 mod content;
 mod error;
+mod hotkeys;
 #[cfg(windows)]
 mod webview2;
 mod window_radius;
@@ -31,6 +32,7 @@ const BINDINGS_HEADER: &str = "// Regenerate from src-tauri with a debug run or 
 pub fn specta_builder() -> tauri_specta::Builder<tauri::Wry> {
   use browser::commands::*;
   use content::*;
+  use hotkeys::*;
 
   tauri_specta::Builder::<tauri::Wry>::new()
     .commands(collect_commands![
@@ -65,12 +67,13 @@ pub fn specta_builder() -> tauri_specta::Builder<tauri::Wry> {
       move_space,
       delete_space,
       switch_space,
+      set_forwarded_hotkeys,
     ])
     .events(collect_events![
       browser::PageChanged,
       browser::TabsState,
       browser::TabView,
-      browser::ToggleSidebar,
+      hotkeys::HotkeyPressed,
       window_radius::WindowRadius,
     ])
 }
@@ -207,6 +210,7 @@ pub fn run() {
   tauri::Builder::default()
     .manage(Mutex::new(content::ContentShape::default()))
     .manage(Mutex::new(RadiusState::default()))
+    .manage(hotkeys::ForwardedHotkeys::default())
     .invoke_handler(specta.invoke_handler())
     .setup(move |app| {
       // Before anything emits: typed events look their name up in what this registers.
@@ -244,10 +248,10 @@ mod tests {
 
     let ts = std::fs::read_to_string(path).unwrap();
     assert!(ts.starts_with(BINDINGS_HEADER));
-    for command in ["navigate", "get_page", "set_content_bounds", "get_window_radius", "get_tabs", "move_tab", "switch_space"] {
+    for command in ["navigate", "get_page", "set_content_bounds", "get_window_radius", "get_tabs", "move_tab", "switch_space", "set_forwarded_hotkeys"] {
       assert!(ts.contains(&format!("\"{command}\"")), "{command} command missing");
     }
-    for event in ["page-changed", "tabs-changed", "tab-updated", "toggle-sidebar", "window-radius-changed"] {
+    for event in ["page-changed", "tabs-changed", "tab-updated", "hotkey-pressed", "window-radius-changed"] {
       assert!(ts.contains(&format!("\"{event}\"")), "{event} event missing");
     }
     for ty in ["AppError", "ErrorCode", "Id", "Tab", "Folder", "Space", "SpaceItem", "Swatch", "TabsState", "TabLocation", "PageChanged", "WindowRadius"] {

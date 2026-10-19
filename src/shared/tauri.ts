@@ -29,23 +29,6 @@ export function onWindowRadiusChanged(handler: (radius: WindowRadius) => void): 
   return listen<WindowRadius>("window-radius-changed", (event) => handler(event.payload))
 }
 
-/** Ctrl+B pressed while the website has focus. Legacy: replaced by "hotkey-pressed" (id "toggleSidebar"). */
-export function onToggleSidebar(handler: () => void): Promise<UnlistenFn> {
-  return listen("toggle-sidebar", () => handler())
-}
-
-/** A shortcut Rust catches in the tab webviews (they never pass keys to the UI). See shared/hotkeys.ts. */
-export type ForwardedHotkey = { id: string; key: string; ctrl: boolean; shift: boolean; alt: boolean; focusUi: boolean }
-
-// Not in the generated bindings until the backend has `set_forwarded_hotkeys` / "hotkey-pressed";
-// then switch shared/hotkeys.ts to commands.setForwardedHotkeys / events.hotkeyPressed and delete these.
-/** Replaces the list of shortcuts caught while the website has focus. */
-export const setForwardedHotkeys = (hotkeys: ForwardedHotkey[]) => invoke<void>("set_forwarded_hotkeys", { hotkeys })
-/** A forwarded shortcut was pressed in the website; `id` as sent in `set_forwarded_hotkeys`. */
-export function onHotkeyPressed(handler: (id: string) => void): Promise<UnlistenFn> {
-  return listen<{ id: string }>("hotkey-pressed", (event) => handler(event.payload.id))
-}
-
 export function onPageChanged(handler: (page: PageChanged) => void): Promise<UnlistenFn> {
   return listen<PageChanged>("page-changed", (event) => handler(event.payload))
 }

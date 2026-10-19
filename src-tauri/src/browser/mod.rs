@@ -63,11 +63,6 @@ pub struct PageChanged {
   is_loading: bool,
 }
 
-/// "toggle-sidebar": Ctrl+B was pressed while the website had focus. No payload (`null`).
-#[derive(Clone, Serialize, Type, Event)]
-#[tauri_specta(event_name = "toggle-sidebar")]
-pub struct ToggleSidebar;
-
 fn now() -> u64 {
   SystemTime::now().duration_since(UNIX_EPOCH).map(|d| d.as_millis() as u64).unwrap_or(0)
 }
@@ -317,9 +312,7 @@ fn watch_platform_events(webview: &Webview, id: Id) {
         }
         emit_tab(&a, &model, id);
       });
-      webview2::forward_shortcuts(&pw, move || {
-        emit_to_ui(&app, &ToggleSidebar);
-      });
+      webview2::forward_shortcuts(&pw, move |key| crate::hotkeys::handle(&app, key));
     });
   }
 

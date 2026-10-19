@@ -2,17 +2,19 @@
 //! `Webview::with_webview`, so it runs on the main thread with a live controller.
 
 use tauri::webview::PlatformWebview;
+
+use crate::hotkeys::KeyPress;
 use webview2_com::{
   take_pwstr, AcceleratorKeyPressedEventHandler, FaviconChangedEventHandler, IsDocumentPlayingAudioChangedEventHandler,
   Microsoft::Web::WebView2::Win32::{
     ICoreWebView2, ICoreWebView2_15, ICoreWebView2_19, ICoreWebView2_8, COREWEBVIEW2_KEY_EVENT_KIND,
-    COREWEBVIEW2_KEY_EVENT_KIND_KEY_DOWN, COREWEBVIEW2_MEMORY_USAGE_TARGET_LEVEL_LOW,
+    COREWEBVIEW2_KEY_EVENT_KIND_KEY_DOWN, COREWEBVIEW2_KEY_EVENT_KIND_SYSTEM_KEY_DOWN, COREWEBVIEW2_MEMORY_USAGE_TARGET_LEVEL_LOW,
     COREWEBVIEW2_MEMORY_USAGE_TARGET_LEVEL_NORMAL, COREWEBVIEW2_PHYSICAL_KEY_STATUS,
   },
 };
 use windows::{
   core::{Interface, PWSTR},
-  Win32::UI::Input::KeyboardAndMouse::{GetKeyState, VK_B, VK_CONTROL, VK_MENU, VK_SHIFT},
+  Win32::UI::Input::KeyboardAndMouse::{GetKeyState, VK_CONTROL, VK_MENU, VK_SHIFT},
 };
 
 fn core(pw: &PlatformWebview) -> Option<ICoreWebView2> {
@@ -80,27 +82,33 @@ pub fn on_audio_changed(pw: &PlatformWebview, f: impl Fn(bool) + 'static) {
 }
 
 /// App shortcuts pressed while the website has focus never reach the `ui` webview's JS, so catch
-/// them here. Ctrl+B calls `on_toggle_sidebar`. The page doesn't see a caught shortcut (no Ctrl+B
-/// "bold" in web editors).
-pub fn forward_shortcuts(pw: &PlatformWebview, on_toggle_sidebar: impl Fn() + 'static) {
+/// them here: `on_key` gets every key press (Alt combos included) and returns true for a shortcut,
+/// which the page then never sees (no Ctrl+B "bold" in web editors).
+pub fn forward_shortcuts(pw: &PlatformWebview, on_key: impl Fn(KeyPress) -> bool + 'static) {
   let handler = AcceleratorKeyPressedEventHandler::create(Box::new(move |_, args| {
     let Some(args) = args else { return Ok(()) };
     // SAFETY: WebView2 calls this on the UI thread with live event args.
     unsafe {
       let mut kind = COREWEBVIEW2_KEY_EVENT_KIND::default();
       args.KeyEventKind(&mut kind)?;
+      // Alt combos arrive as system keys.
+      if kind != COREWEBVIEW2_KEY_EVENT_KIND_KEY_DOWN && kind != COREWEBVIEW2_KEY_EVENT_KIND_SYSTEM_KEY_DOWN {
+        return Ok(());
+      }
       let mut key = 0u32;
       args.VirtualKey(&mut key)?;
       let mut status = COREWEBVIEW2_PHYSICAL_KEY_STATUS::default();
       args.PhysicalKeyStatus(&mut status)?;
       let held = |vk: u16| GetKeyState(vk as i32) < 0;
-      let ctrl_b = key == VK_B.0 as u32 && held(VK_CONTROL.0) && !held(VK_SHIFT.0) && !held(VK_MENU.0);
-      if kind == COREWEBVIEW2_KEY_EVENT_KIND_KEY_DOWN && ctrl_b {
+      let press = KeyPress {
+        vk: key as u16,
+        ctrl: held(VK_CONTROL.0),
+        shift: held(VK_SHIFT.0),
+        alt: held(VK_MENU.0),
+        repeat: status.WasKeyDown.as_bool(),
+      };
+      if on_key(press) {
         args.SetHandled(true)?;
-        // Ignore auto-repeat while the keys are held down.
-        if !status.WasKeyDown.as_bool() {
-          on_toggle_sidebar();
-        }
       }
     }
     Ok(())

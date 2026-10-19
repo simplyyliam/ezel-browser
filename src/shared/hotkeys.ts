@@ -1,6 +1,6 @@
 import { useEffect, useRef } from "react"
-import { onHotkeyPressed, onToggleSidebar, setForwardedHotkeys } from "./tauri"
-import { reportError } from "./report-error"
+import { commands, events } from "./bindings"
+import { unwrap } from "./report-error"
 
 // Every app shortcut in one place: its id, what it does, and its default keys. A settings page will
 // let people rebind them; until then the defaults apply.
@@ -85,19 +85,20 @@ export function useHotkey(id: HotkeyId, handler: () => void) {
 export function useHotkeys() {
   useEffect(() => {
     const ids = Object.keys(HOTKEYS) as HotkeyId[]
-    setForwardedHotkeys(
-      ids.map((id) => {
-        const { keys, focusUi } = HOTKEYS[id] as HotkeyDef
-        return { id, key: keys.key, ctrl: !!keys.ctrl, shift: !!keys.shift, alt: !!keys.alt, focusUi }
-      }),
-    ).catch((error) => reportError("forward hotkeys", error))
+    unwrap(
+      "forward hotkeys",
+      commands.setForwardedHotkeys(
+        ids.map((id) => {
+          const { keys, focusUi } = HOTKEYS[id] as HotkeyDef
+          return { id, key: keys.key, ctrl: !!keys.ctrl, shift: !!keys.shift, alt: !!keys.alt, focusUi }
+        }),
+      ),
+    )
 
-    const unlisten = onHotkeyPressed((id) => {
+    const unlisten = events.hotkeyPressed.listen((event) => {
+      const { id } = event.payload
       if (id in HOTKEYS) run(id as HotkeyId)
     })
-
-    // Legacy Ctrl+B forwarding, until the backend sends it as "hotkey-pressed" too.
-    const unlistenLegacy = onToggleSidebar(() => run("toggleSidebar"))
 
     const onKeyDown = (event: KeyboardEvent) => {
       if (event.repeat) return
@@ -110,7 +111,6 @@ export function useHotkeys() {
     return () => {
       window.removeEventListener("keydown", onKeyDown)
       unlisten.then((fn) => fn())
-      unlistenLegacy.then((fn) => fn())
     }
   }, [])
 }
