@@ -3,10 +3,14 @@ import { createPortal } from "react-dom"
 import { useReducedMotion } from "motion/react"
 import { cn } from "@/lib/utils"
 import { Favicon, tabLabel } from "@/shared/components"
+import { SWATCH_GRID, swatchCellWidth } from "@/shared"
 import type { PreviewShape, TabDrag } from "./use-tab-drag"
 
-/** The design's swatch slot (45x27, r7.5). */
-const SWATCH = { width: 45, height: 27 }
+/** A swatch cell in a full row (SWATCH_GRID). The sidebar's width sets it, as in the grid. */
+function swatchBox(sidebar: DOMRect | null) {
+  const content = sidebar ? sidebar.width - GROUP_PADDING * 2 : 228
+  return { width: swatchCellWidth(content, SWATCH_GRID.columns), height: SWATCH_GRID.height }
+}
 /** shadcn's menu button row. */
 const ROW_HEIGHT = 32
 /** The sidebar group's padding (shadcn p-2): rows sit this far inside the card. */
@@ -28,9 +32,11 @@ function boxAt(drag: TabDrag, shape: PreviewShape, pointer: { x: number; y: numb
     const width = fromSwatch && sidebar ? sidebar.width - GROUP_PADDING * 2 : drag.sourceRect.width
     return { x, y: pointer.y - (fromSwatch ? ROW_HEIGHT / 2 : drag.grab.y), width, height: ROW_HEIGHT }
   }
-  let x = pointer.x - (fromSwatch ? drag.grab.x : SWATCH.width / 2)
-  if (sidebar) x = Math.min(Math.max(x, sidebar.left), sidebar.right - SWATCH.width)
-  return { x, y: pointer.y - (fromSwatch ? drag.grab.y : SWATCH.height / 2), ...SWATCH }
+  // A swatch from a shorter row is wider; while dragged it takes a full row's cell size.
+  const tile = swatchBox(sidebar)
+  let x = pointer.x - (fromSwatch ? Math.min(drag.grab.x, tile.width / 2) : tile.width / 2)
+  if (sidebar) x = Math.min(Math.max(x, sidebar.left), sidebar.right - tile.width)
+  return { x, y: pointer.y - (fromSwatch ? drag.grab.y : tile.height / 2), ...tile }
 }
 
 type TabDragPreviewProps = {
@@ -107,7 +113,7 @@ export function TabDragPreview({ drag, shape, returning, canReturn, onReturned, 
       aria-hidden
       className={cn(
         "pointer-events-none fixed top-0 left-0 z-50 flex items-center overflow-hidden bg-sidebar-accent text-sm text-sidebar-accent-foreground ring-1 ring-sidebar-border",
-        swatch ? "justify-center rounded-[7.5px]" : "gap-2 rounded-md px-2",
+        swatch ? "justify-center rounded-[9px]" : "gap-2 rounded-md px-2",
         // The size change between row and tile. Under reduced motion it applies at once.
         !reduceMotion && "transition-[width,height,border-radius] duration-150 ease-in-out",
       )}

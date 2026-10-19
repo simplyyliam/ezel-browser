@@ -1,6 +1,6 @@
 export type { PageChanged, WindowRadius, Id, Tab, Folder, SpaceItem, Space, Swatch, TabsState, TabLocation } from "./types"
 export { useTabs, activeSpace } from "./tabs-store"
-export { useTabDraggable, useTabDropZone, rowIndicator, tabDropZoneNode, tabDragNode, swatchIndexAt, swatchColumns, SWATCH_GRID, DROP_ROW, DROP_ROW_SELECTOR } from "./tab-dnd"
+export { useTabDraggable, useTabDropZone, rowIndicator, tabDropZoneNode, tabDragNode, swatchIndexAt, swatchColumns, swatchCellWidth, SWATCH_GRID, DROP_ROW, DROP_ROW_SELECTOR } from "./tab-dnd"
 export type { TabDragSource, TabDragData, TabDropZone, TabDropTarget } from "./tab-dnd"
 export { spaceIcon, SPACE_ICON_NAMES, NEW_SPACE_ICONS } from "./space-icons"
 export { PEEK_TRANSITION, INSTANT } from "./motion"

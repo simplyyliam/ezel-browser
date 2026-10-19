@@ -87,23 +87,24 @@ export function rowIndicator(gap: number | null, index: number, count: number): 
   return null
 }
 
-/** The Swatches grid: the design's 45x27 cells, at most 4 per row, 3px apart. */
-export const SWATCH_GRID = { columns: 4, width: 45, height: 27, gap: 3 } as const
+/**
+ * The Swatches grid: at most 4 per row, 3px apart, always spanning the sidebar's content width.
+ * Height and radius are the design's 45x27 / r7.5 scaled to the ~55px-wide cells a full row gets:
+ * 32px high (the tab rows' height, so the grid lines up with the list below), 9px radius.
+ */
+export const SWATCH_GRID = { columns: 4, height: 32, radius: 9, gap: 3 } as const
 
 /**
- * The grid's columns for `cells` cells, as CSS and as a count. Fewer than a full row share the
- * whole width (one swatch spans it, two take half each...), so the grid grows into its cells as
- * swatches join; from a full row on they're the design's 45px cells, left-aligned.
+ * The grid's columns for `cells` cells: always equal shares of the full width. One swatch spans
+ * it, two take half each..., and from a full row on there are 4 per row.
  */
 export function swatchColumns(cells: number) {
-  const { columns, width } = SWATCH_GRID
-  const count = Math.max(Math.min(cells, columns), 1)
-  return {
-    count,
-    fluid: count < columns,
-    template: count < columns ? `repeat(${count}, minmax(0, 1fr))` : `repeat(${columns}, ${width}px)`,
-  }
+  const count = Math.max(Math.min(cells, SWATCH_GRID.columns), 1)
+  return { count, template: `repeat(${count}, minmax(0, 1fr))` }
 }
+
+/** A cell's width in a grid `width` wide with `columns` columns. */
+export const swatchCellWidth = (width: number, columns: number) => (width - SWATCH_GRID.gap * (columns - 1)) / columns
 
 /**
  * Where a drop at a point in the Swatches grid (`grid` = its rect, full width) inserts among
@@ -114,7 +115,7 @@ export function swatchColumns(cells: number) {
 export function swatchIndexAt(grid: DOMRect, x: number, y: number, count: number): number {
   const { height, gap } = SWATCH_GRID
   const columns = swatchColumns(count + 1)
-  const width = columns.fluid ? (grid.width - gap * (columns.count - 1)) / columns.count : SWATCH_GRID.width
+  const width = swatchCellWidth(grid.width, columns.count)
   const column = Math.min(Math.max(Math.round((x - grid.left + gap / 2) / (width + gap)), 0), columns.count)
   const row = Math.max(Math.floor((y - grid.top + gap / 2) / (height + gap)), 0)
   return Math.min(row * columns.count + column, count)

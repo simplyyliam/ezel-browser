@@ -36,9 +36,10 @@ type SwatchesProps = {
 /**
  * The top grid of pinned favourites, shared by every space. There are no empty slots to aim at:
  * it shows only the swatches there are (tabs get here by "Add to Swatches" or by dragging onto the
- * grid once it has some). Fewer than 4 share the full width, like Zen's essentials; from 4 on
- * they're 45px cells. Dragging over it is a live grid: the cells move apart (and narrow) to open
- * a place, and a drop past the last cell lands in the free space.
+ * grid once it has some). They always span the sidebar's content width, edge to edge like the
+ * rows below: fewer than 4 share it (Zen's essentials), from 4 on it's 4 per row. Dragging over
+ * it is a live grid: the cells move apart (and narrow) to open a place, and a drop past the last
+ * cell lands in the free space.
  */
 export function Swatches({ swatches, activeTabId, onSelect, menuFor, draggedTabId, insertIndex }: SwatchesProps) {
   const { setNodeRef } = useTabDropZone("swatches", { kind: "swatches" })
@@ -61,7 +62,7 @@ export function Swatches({ swatches, activeTabId, onSelect, menuFor, draggedTabI
         <SidebarMenu
           ref={setNodeRef}
           aria-label="Swatches"
-          // Left-aligned, full width: fewer than 4 swatches share it, 4 and more are 45px cells.
+          // Full width, equal columns: fewer than 4 swatches share the row, then 4 per row.
           className="grid"
           style={{ gridTemplateColumns: columns.template, gap: SWATCH_GRID.gap }}
         >
@@ -116,5 +117,5 @@ function SwatchCell({ tab, active, onSelect, menuFor }: SwatchCellProps) {
   )
 }
 
-/** The design's 27px-high cell with a 7.5px radius; its column sets the width (SWATCH_GRID). */
-const swatchSize = "h-[27px] w-full rounded-[7.5px]"
+/** 32px high with a 9px radius (SWATCH_GRID: the design's cell scaled to the full width); its column sets the width. */
+const swatchSize = "h-8 w-full rounded-[9px]"
