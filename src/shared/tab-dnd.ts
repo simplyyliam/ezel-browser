@@ -13,7 +13,8 @@ export type TabDragData = { tab: Tab; source: TabDragSource }
 
 /** An area a tab can be dropped on. Lists work out the gap from their rows (`DROP_ROW`). */
 export type TabDropZone =
-  | { kind: "swatch"; slot: number }
+  /** The Swatches grid, only while it has swatches. Drops insert; the cells make room. */
+  | { kind: "swatches" }
   | { kind: "pinned" }
   | { kind: "temp" }
   /** Hovering switches to the space; dropping on it does nothing. */
@@ -21,10 +22,11 @@ export type TabDropZone =
 
 /**
  * Where the drop would land, for the indicators. `gap` counts the list's rows above the line, as
- * they're displayed (the dragged row included).
+ * they're displayed (the dragged row included). `index` is the place in the Swatches grid among
+ * the other swatches (the dragged one left out).
  */
 export type TabDropTarget =
-  | { kind: "swatch"; slot: number }
+  | { kind: "swatches"; index: number }
   | { kind: "pinned"; gap: number }
   | { kind: "temp"; gap: number }
 
@@ -81,4 +83,37 @@ export function rowIndicator(gap: number | null, index: number, count: number): 
   if (gap === index) return "top"
   if (gap === count && index === count - 1) return "bottom"
   return null
+}
+
+/** The Swatches grid: the design's 45x27 cells, at most 4 per row, 3px apart. */
+export const SWATCH_GRID = { columns: 4, width: 45, height: 27, gap: 3 } as const
+
+/**
+ * The grid's columns for `cells` cells, as CSS and as a count. Fewer than a full row share the
+ * whole width (one swatch spans it, two take half each...), so the grid grows into its cells as
+ * swatches join; from a full row on they're the design's 45px cells, left-aligned.
+ */
+export function swatchColumns(cells: number) {
+  const { columns, width } = SWATCH_GRID
+  const count = Math.max(Math.min(cells, columns), 1)
+  return {
+    count,
+    fluid: count < columns,
+    template: count < columns ? `repeat(${count}, minmax(0, 1fr))` : `repeat(${columns}, ${width}px)`,
+  }
+}
+
+/**
+ * Where a drop at a point in the Swatches grid (`grid` = its rect, full width) inserts among
+ * `count` other swatches: the cell boundary nearest the pointer in its row, clamped to `count`
+ * (the free space after the last one). Measured on the grid as it looks with the gap open
+ * (count + 1 cells), so cells moving aside don't move the target under the pointer.
+ */
+export function swatchIndexAt(grid: DOMRect, x: number, y: number, count: number): number {
+  const { height, gap } = SWATCH_GRID
+  const columns = swatchColumns(count + 1)
+  const width = columns.fluid ? (grid.width - gap * (columns.count - 1)) / columns.count : SWATCH_GRID.width
+  const column = Math.min(Math.max(Math.round((x - grid.left + gap / 2) / (width + gap)), 0), columns.count)
+  const row = Math.max(Math.floor((y - grid.top + gap / 2) / (height + gap)), 0)
+  return Math.min(row * columns.count + column, count)
 }

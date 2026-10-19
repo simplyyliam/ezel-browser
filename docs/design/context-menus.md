@@ -10,10 +10,10 @@ One menu per kind of thing, scoped to that thing. The closest target wins: right
 | Area | Scope of its actions | Ezel |
 |---|---|---|
 | Sidebar background | The sidebar itself and creating things in it: layout toggles, new tab/folder/space, theme | built (`features/app-sidebar/context-menu`) |
-| Tab row | That tab: move to folder, add to/remove from Swatches, rename/change icon, pin, duplicate, close | with real tabs |
+| Tab row | That tab: new tab below, duplicate, reload, copy link, change URL, Swatches, pin, unload, move, close | built (see Tab menu) |
 | Folder row | That folder: rename, change icon, new subfolder, unload, move to another space, unpack/delete | with real folders |
 | Space (switcher) | That space: rename, change icon, theme, unload, delete; manage/create spaces | with real spaces |
-| Swatch | That swatch's tab: open, replace with current, edit URL, remove | with real tabs |
+| Swatch | That swatch's tab: the tab menu, with "Remove from Swatches" and no "Change URL…" | built (see Tab menu) |
 | "+" button | Create: space, folder, tab | bottom-actions dropdown |
 
 ## How menus are put together
@@ -28,3 +28,16 @@ Zen keeps the sidebar open while a popup opened from it is showing (`has-popup-m
 - Click inside the sidebar: only the popup closes. Click on the page: the popup closes, then the sidebar.
 - The page is a separate native webview, so its clicks never reach the UI. The UI webview losing focus counts as an outside press (`useDismissPopupsOnBlur` in `shared/outside-press.ts`, mounted in `AppLayout`). This works for every popup, not just menus.
 - Popups that extend over the page are cut out of the webview (`usePopupCutouts`) so they stay visible.
+
+## Tab menu (2026-10-19)
+Zen's tab menu is Firefox's tab menu plus Zen's own items (Move to Folder, Add Split View, Add to Essentials, Change Label/Icon) and extension items (routes, auto discard). Ezel takes only what any browser has, plus its own Swatches and address editing. Zen's additions aren't copied.
+
+| Group | Items | Where |
+|---|---|---|
+| Open | New Tab Below, Duplicate Tab | all; the new tab goes right below a temp tab, else on top of the temp tabs. New Tab Below opens its name field empty |
+| Page | Reload Tab, Copy Link | Reload only on the shown, loaded tab (`reload` acts on the shown tab) |
+| Keep | Change URL…, Add to Swatches (`n / 8`, disabled when full) / Remove from Swatches, Pin Tab / Unpin Tab | Change URL… on list rows only (swatches have no name field); Remove → top of the active space's temp tabs |
+| Arrange | Unload Tab, Move Tab ▸ Move to Start / Move to End | Unload only when loaded; Move on temp and top-level pinned tabs |
+| Close | Close Tab, Close Multiple Tabs ▸ Close Tabs Above / Below / Other Tabs | the submenu on temp tabs only |
+
+Labels in Title Case, like the sidebar menu and Firefox/Zen. Left out until the backend has them: Mute Tab, Reopen Closed Tab, Reload for a background tab. Left out until the feature exists: Move to Folder, Bookmark, Share, Move to New Window.

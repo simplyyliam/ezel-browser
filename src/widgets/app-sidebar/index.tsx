@@ -1,5 +1,5 @@
-import { useCallback, useEffect, useRef, useState } from "react"
-import { DndContext } from "@dnd-kit/core"
+import { useCallback, useEffect, useState } from "react"
+import { DndContext, DragOverlay } from "@dnd-kit/core"
 import {
   Sidebar,
   SidebarContent,
@@ -15,7 +15,6 @@ import { Navigation } from "@/features/app-sidebar/navigation"
 import { SpaceSwitcher } from "@/features/app-sidebar/space-switcher"
 import { Swatches } from "@/features/app-sidebar/swatches"
 import { TempTabs } from "@/features/app-sidebar/temp-tabs"
-import { UrlBar, type UrlBarHandle } from "@/features/app-sidebar/url-bar"
 import { cn } from "@/lib/utils"
 import {
   activateTab,
@@ -24,6 +23,7 @@ import {
   closeTab,
   createSpace,
   getPage,
+  navigate,
   NEW_SPACE_ICONS,
   onPageChanged,
   onToggleSidebar,
@@ -36,14 +36,15 @@ import {
   type Id,
   type PageChanged,
 } from "@/shared"
-import { ScrollArea } from "@/shared/components"
+import { ScrollArea, type TabRowActions } from "@/shared/components"
 import { useSidebarPeek } from "./use-sidebar-peek"
 import { TabDragPreview } from "./tab-drag-preview"
 import { useTabDrag } from "./use-tab-drag"
+import { findTab, showTab, tabMenu } from "./tab-menu"
 
 /**
  * docs/design/sidebar-1.png scaled up for legibility (docs/design/decisions.md, "Sizing"):
- * shadcn's 32px rows and 8px group padding, with room for four ~54px swatches.
+ * shadcn's 32px rows and 8px group padding, with room for four 45px swatches.
  */
 export const SIDEBAR_WIDTH = "244px"
 
@@ -92,12 +93,28 @@ export function AppSidebar() {
   const tabs = useTabs()
   const space = tabs ? activeSpace(tabs) : undefined
   const activeTabId = tabs?.activeTabId ?? null
-  const urlBarRef = useRef<UrlBarHandle>(null)
   const [renamingSpaceId, setRenamingSpaceId] = useState<Id | null>(null)
+  // The tab whose name is the address field right now (double-click, "Change URL…", New Tab).
+  const [editing, setEditing] = useState<{ tabId: Id; value: string } | null>(null)
+
+  async function editTab(tabId: Id) {
+    const tab = tabs && findTab(tabs, tabId)
+    if (!tab) return
+    // The address loads in the shown tab.
+    await showTab(tabs, tabId)
+    setEditing({ tabId, value: tab.url })
+  }
+
+  function finishEdit(input: string | null) {
+    setEditing(null)
+    if (input) navigate(input)
+  }
+
+  /** A new tab with its name field empty, ready for an address (the URL bar's old job). */
+  const startNewTab = (tabId: Id) => setEditing({ tabId, value: "" })
 
   async function newTab() {
-    await openTab()
-    urlBarRef.current?.focusEmpty()
+    startNewTab(await openTab())
   }
 
   async function newSpace() {
@@ -127,6 +144,18 @@ export function AppSidebar() {
   const tabDrag = useTabDrag({ tabs, space, getSidebar: getSidebarCard })
   const dropTarget = tabDrag.target
 
+  const rowActions: TabRowActions = {
+    activeTabId,
+    onSelect: activateTab,
+    onClose: closeTab,
+    menuFor: (tabId) =>
+      tabs && space ? tabMenu(tabId, { tabs, activeSpaceId: space.id, onEdit: editTab, onOpened: startNewTab }) : [],
+    editing,
+    onEdit: editTab,
+    onEditDone: finishEdit,
+    draggedTabId: tabDrag.draggedTabId,
+  }
+
   return (
     <>
       {/* The window's left edge (the frame's padding, the only UI the website doesn't cover there) opens the peek. */}
@@ -151,13 +180,12 @@ export function AppSidebar() {
           !open && (peeking ? "duration-250 ease-zen-peek" : "duration-150 ease-[ease]"),
         )}
       >
-      {/* TODO: temporary block; removed when the command palette lands. */}
+      {/* The address lives in the tab's name (double-click it); loading shows on the tab's icon. */}
       <SidebarHeader className="pb-0">
         <div className="flex items-center gap-0.5">
           <SidebarTrigger />
           <Navigation canGoBack={page.canGoBack} canGoForward={page.canGoForward} />
         </div>
-        <UrlBar ref={urlBarRef} url={page.url} isLoading={page.isLoading} />
       </SidebarHeader>
 
       {/* Right-clicking the sidebar body opens Zen's sidebar menu. */}
@@ -169,11 +197,12 @@ export function AppSidebar() {
           {tabs && space && (
             <>
               <Swatches
-                swatches={tabs.swatches}
+                swatches={tabDrag.swatches}
                 activeTabId={activeTabId}
                 onSelect={activateTab}
+                menuFor={rowActions.menuFor}
                 draggedTabId={tabDrag.draggedTabId}
-                dropSlot={dropTarget?.kind === "swatch" ? dropTarget.slot : null}
+                insertIndex={tabDrag.swatchIndex}
               />
               <SpaceSwitcher
                 spaces={tabs.spaces}
@@ -188,26 +217,25 @@ export function AppSidebar() {
               <Folders
                 key={space.id}
                 items={space.items}
-                activeTabId={activeTabId}
-                onSelectTab={activateTab}
-                onCloseTab={closeTab}
+                actions={rowActions}
                 onSetFolderCollapsed={setFolderCollapsed}
-                dragActive={tabDrag.dragActive}
-                draggedTabId={tabDrag.draggedTabId}
                 dropGap={dropTarget?.kind === "pinned" ? dropTarget.gap : null}
               />
               <TempTabs
                 tabs={space.tempTabs}
-                activeTabId={activeTabId}
-                onSelect={activateTab}
-                onClose={closeTab}
+                actions={rowActions}
                 onNewTab={newTab}
-                draggedTabId={tabDrag.draggedTabId}
                 dropGap={dropTarget?.kind === "temp" ? dropTarget.gap : null}
               />
             </>
           )}
         </ScrollArea>
+        {/* Invisible: it gives dnd-kit a dragged rect that survives the source unmounting (a space
+            switch hides list sources, the grid replaces a dragged swatch with its gap). Without
+            it, dnd-kit stops finding drop zones. What the user sees is TabDragPreview. */}
+        <DragOverlay dropAnimation={null} className="pointer-events-none opacity-0">
+          {tabDrag.drag && <div className="size-full" />}
+        </DragOverlay>
         {tabDrag.drag && (
           <TabDragPreview
             drag={tabDrag.drag}

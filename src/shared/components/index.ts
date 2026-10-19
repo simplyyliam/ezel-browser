@@ -4,3 +4,6 @@ export { TabRow, tabLabel } from "./tab-row/tab-row";
 export { ScrollArea } from "./scroll-area/scroll-area";
 export { DropIndicator } from "./drop-indicator/drop-indicator";
 export { DraggableTabItem } from "./tab-row/draggable-tab-item";
+export type { TabRowActions } from "./tab-row/draggable-tab-item";
+export { TabContextMenu } from "./tab-context-menu/tab-context-menu";
+export type { TabMenu, TabMenuItem } from "./tab-context-menu/tab-context-menu";

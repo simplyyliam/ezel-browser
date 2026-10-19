@@ -1,3 +1,4 @@
+import { motion, useReducedMotion } from "motion/react"
 import {
   SidebarGroup,
   SidebarGroupContent,
@@ -6,44 +7,74 @@ import {
   SidebarMenuItem,
 } from "@/components/ui/sidebar"
 import { cn } from "@/lib/utils"
-import { Favicon, tabLabel } from "@/shared/components"
-import { useTabDraggable, useTabDropZone, type Id, type Swatch, type Tab } from "@/shared"
-
-/** The grid holds at most 8 swatches: 4 columns x 2 rows. */
-const MAX_SWATCHES = 8
+import { Favicon, TabContextMenu, tabLabel, type TabMenu } from "@/shared/components"
+import {
+  INSTANT,
+  PEEK_TRANSITION,
+  SWATCH_GRID,
+  swatchColumns,
+  useTabDraggable,
+  useTabDropZone,
+  type Id,
+  type Swatch,
+  type Tab,
+} from "@/shared"
 
 type SwatchesProps = {
-  /** One entry per slot; null = empty cell. */
+  /** The backend's 8 slots; null = free. Only the swatches show, in slot order, without gaps. */
   swatches: Swatch[]
   activeTabId: Id | null
   onSelect: (tabId: Id) => void
-  /** The tab being dragged (or just dropped, until the backend moves it); its cell shows empty. */
+  /** The swatch's right-click menu. */
+  menuFor: (tabId: Id) => TabMenu
+  /** The tab being dragged (or just dropped, until the backend has placed it). */
   draggedTabId: Id | null
-  /** The slot a drag would land on: it shows a ring, and an occupant dims (it would swap). */
-  dropSlot: number | null
+  /** Where a dragged tab would go among the other swatches: the cells there slide aside for it. */
+  insertIndex: number | null
 }
 
-/** The top grid of pinned favourites, shared by every space. Unloaded swatches show dimmed. */
-export function Swatches({ swatches, activeTabId, onSelect, draggedTabId, dropSlot }: SwatchesProps) {
+/**
+ * The top grid of pinned favourites, shared by every space. There are no empty slots to aim at:
+ * it shows only the swatches there are (tabs get here by "Add to Swatches" or by dragging onto the
+ * grid once it has some). Fewer than 4 share the full width, like Zen's essentials; from 4 on
+ * they're 45px cells. Dragging over it is a live grid: the cells move apart (and narrow) to open
+ * a place, and a drop past the last cell lands in the free space.
+ */
+export function Swatches({ swatches, activeTabId, onSelect, menuFor, draggedTabId, insertIndex }: SwatchesProps) {
+  const { setNodeRef } = useTabDropZone("swatches", { kind: "swatches" })
+  const reduceMotion = useReducedMotion()
+  const transition = reduceMotion ? INSTANT : PEEK_TRANSITION
+
+  const tabs = swatches.filter((swatch): swatch is Tab => swatch !== null)
+  if (tabs.length === 0) return null
+  // The dragged swatch leaves an empty cell where it was (Zen hides it), or where it would land.
+  const draggedIndex = tabs.findIndex((tab) => tab.id === draggedTabId)
+  const cells: (Tab | "gap")[] = tabs.filter((tab) => tab.id !== draggedTabId)
+  const gapIndex = insertIndex ?? (draggedIndex >= 0 ? draggedIndex : null)
+  if (gapIndex !== null) cells.splice(gapIndex, 0, "gap")
+  // Counting the gap: a tab dragged in makes the others narrower before it lands.
+  const columns = swatchColumns(cells.length)
+
   return (
     <SidebarGroup>
       <SidebarGroupContent>
-        <SidebarMenu aria-label="Swatches" className="grid grid-cols-4 justify-items-center gap-y-1">
-          {swatches.slice(0, MAX_SWATCHES).map((tab, slot) => (
-            // Keyed by slot: empty cells have no tab id.
-            <SidebarMenuItem key={slot}>
-              {tab ? (
-                <SwatchCell
-                  slot={slot}
-                  tab={tab}
-                  active={tab.id === activeTabId}
-                  onSelect={onSelect}
-                  isDragged={tab.id === draggedTabId}
-                  isDropTarget={dropSlot === slot}
-                />
-              ) : (
-                <EmptySwatch slot={slot} isDropTarget={dropSlot === slot} />
-              )}
+        <SidebarMenu
+          ref={setNodeRef}
+          aria-label="Swatches"
+          // Left-aligned, full width: fewer than 4 swatches share it, 4 and more are 45px cells.
+          className="grid"
+          style={{ gridTemplateColumns: columns.template, gap: SWATCH_GRID.gap }}
+        >
+          {cells.map((cell) => (
+            <SidebarMenuItem key={cell === "gap" ? "gap" : cell.id}>
+              {/* The cells slide to their new place as the gap moves, on the peek's timing. */}
+              <motion.div layout="position" transition={transition}>
+                {cell === "gap" ? (
+                  <div aria-hidden className={swatchSize} />
+                ) : (
+                  <SwatchCell tab={cell} active={cell.id === activeTabId} onSelect={onSelect} menuFor={menuFor} />
+                )}
+              </motion.div>
             </SidebarMenuItem>
           ))}
         </SidebarMenu>
@@ -53,66 +84,37 @@ export function Swatches({ swatches, activeTabId, onSelect, draggedTabId, dropSl
 }
 
 type SwatchCellProps = {
-  slot: number
   tab: Tab
   active: boolean
   onSelect: (tabId: Id) => void
-  /** Dragged away: the cell shows empty (Zen hides it) but stays mounted, so the drag keeps its source. */
-  isDragged: boolean
-  isDropTarget: boolean
+  menuFor: (tabId: Id) => TabMenu
 }
 
-/** An occupied cell: drags its tab, and takes drops (a swap). */
-function SwatchCell({ slot, tab, active, onSelect, isDragged, isDropTarget }: SwatchCellProps) {
-  const { setNodeRef: setDropRef } = useTabDropZone(`swatch-${slot}`, { kind: "swatch", slot })
-  const { setNodeRef: setDragRef, listeners } = useTabDraggable(tab, "swatch")
+function SwatchCell({ tab, active, onSelect, menuFor }: SwatchCellProps) {
+  const { setNodeRef, listeners } = useTabDraggable(tab, "swatch")
   const label = tabLabel(tab)
 
   return (
-    <div
-      ref={(node) => {
-        setDropRef(node)
-        setDragRef(node)
-      }}
-      {...listeners}
-    >
-      <SidebarMenuButton
-        aria-label={label}
-        title={label}
-        isActive={active && !isDragged}
-        aria-current={active ? "page" : undefined}
-        onClick={() => onSelect(tab.id)}
-        className={cn(
-          swatchClassName,
-          !tab.isLoaded && "[&_img]:opacity-50",
-          isDragged && "[&>*]:invisible",
-          // Occupied target: this tab would swap to where the dragged one came from.
-          isDropTarget && [dropTargetClassName, "[&>*]:opacity-40"],
-        )}
-      >
-        <Favicon src={tab.favicon} />
-      </SidebarMenuButton>
+    <div ref={setNodeRef} {...listeners}>
+      <TabContextMenu tabId={tab.id} menuFor={menuFor}>
+        <SidebarMenuButton
+          aria-label={label}
+          title={label}
+          isActive={active}
+          aria-current={active ? "page" : undefined}
+          onClick={() => onSelect(tab.id)}
+          className={cn(
+            swatchSize,
+            "justify-center bg-sidebar-foreground/5 p-0 hover:bg-sidebar-foreground/8 data-active:bg-sidebar-foreground/12",
+            !tab.isLoaded && "[&_img]:opacity-50",
+          )}
+        >
+          <Favicon src={tab.favicon} />
+        </SidebarMenuButton>
+      </TabContextMenu>
     </div>
   )
 }
 
-function EmptySwatch({ slot, isDropTarget }: { slot: number; isDropTarget: boolean }) {
-  const { setNodeRef } = useTabDropZone(`swatch-${slot}`, { kind: "swatch", slot })
-
-  return (
-    <div ref={setNodeRef}>
-      <SidebarMenuButton
-        aria-label="Empty swatch"
-        disabled
-        className={cn(swatchClassName, isDropTarget && dropTargetClassName)}
-      />
-    </div>
-  )
-}
-
-/** The design's 45x27 slot with a 7.5px radius. */
-const swatchClassName = cn(
-  "h-[27px] w-[45px] justify-center rounded-[7.5px] bg-sidebar-foreground/5 p-0 hover:bg-sidebar-foreground/8 disabled:opacity-100",
-  "data-active:bg-sidebar-foreground/12",
-)
-const dropTargetClassName = "ring-2 ring-sidebar-primary"
+/** The design's 27px-high cell with a 7.5px radius; its column sets the width (SWATCH_GRID). */
+const swatchSize = "h-[27px] w-full rounded-[7.5px]"

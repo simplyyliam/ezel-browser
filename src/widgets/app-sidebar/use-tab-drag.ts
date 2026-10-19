@@ -15,10 +15,12 @@ import {
 } from "@dnd-kit/core"
 import { commands } from "@/shared/bindings"
 import { tabLabel } from "@/shared/components"
+import { hasFreeSlot, insertSwatch, swatchOrder } from "./swatch-moves"
 import {
   DROP_ROW_SELECTOR,
   getCursorPosition,
   getWindowClientRect,
+  swatchIndexAt,
   tabDragNode,
   tabDropZoneNode,
   type Id,
@@ -56,7 +58,12 @@ export type TabDrag = {
 /** The preview's shape follows the area under it: a tile over the Swatches, a row elsewhere (Zen). */
 export type PreviewShape = "swatch" | "row"
 
-type Landing = { tabId: Id; tabs: TabsState }
+/**
+ * A drop on its way through the backend: the tab stays where the drag showed it until it's done.
+ * `tabs` is the state at the drop. `swatchIndex`: dropped into the grid, which keeps showing that
+ * state with the gap until the moves are `settled` (the moves in between would shuffle it).
+ */
+type Landing = { tabId: Id; tabs: TabsState; swatchIndex: number | null; settled: boolean }
 
 const pointOf = (event: Event | null) =>
   event instanceof PointerEvent || event instanceof MouseEvent ? { x: event.clientX, y: event.clientY } : { x: 0, y: 0 }
@@ -129,14 +136,21 @@ export function useTabDrag({
   }
 
   /** What dropping now would do, from the zone under the pointer. Null = nothing (a no-op counts). */
-  function resolve(over: Over | null, data: TabDragData) {
+  function resolve(over: Over | null, data: Pick<TabDragData, "tab" | "source">) {
     const zone = over?.data.current as TabDropZone | undefined
     const space = latest.current.space
     if (!zone || !space) return { zone, target: null }
     switch (zone.kind) {
-      case "swatch": {
-        const fromSlot = tabs?.swatches.findIndex((swatch) => swatch?.id === data.tab.id) ?? -1
-        return { zone, target: zone.slot === fromSlot ? null : ({ kind: "swatch", slot: zone.slot } as const) }
+      case "swatches": {
+        const grid = tabDropZoneNode("swatches")
+        if (!grid || !tabs) return { zone, target: null }
+        const order = swatchOrder(tabs.swatches)
+        const from = order.indexOf(data.tab.id)
+        // Full: a tab from outside doesn't fit, so the grid doesn't make room (Zen).
+        if (from < 0 && !hasFreeSlot(tabs.swatches)) return { zone, target: null }
+        const others = from < 0 ? order.length : order.length - 1
+        const index = swatchIndexAt(grid.getBoundingClientRect(), pointer.current.x, pointer.current.y, others)
+        return { zone, target: { kind: "swatches", index } as const }
       }
       case "pinned":
       case "temp": {
@@ -152,12 +166,14 @@ export function useTabDrag({
     }
   }
 
-  function update({ active, over }: { active: Active; over: Over | null }) {
-    if (!latest.current.drag) return
-    const data = active.data.current as TabDragData
+  // The tab and source come from the drag recorded at the start, never from dnd-kit's `active.data`:
+  // that turns null once the source unmounts (a space switch, a swatch turning into its grid gap).
+  function update({ over }: { over: Over | null }) {
+    const data = latest.current.drag
+    if (!data) return
     const next = resolve(over, data)
     setTarget((prev) => (JSON.stringify(prev) === JSON.stringify(next.target) ? prev : next.target))
-    if (next.zone && next.zone.kind !== "space") setShape(next.zone.kind === "swatch" ? "swatch" : "row")
+    if (next.zone && next.zone.kind !== "space") setShape(next.zone.kind === "swatches" ? "swatch" : "row")
 
     // Resting on another space's pill switches to it. Swatches belong to every space, so they don't (Zen).
     const spaceId = next.zone?.kind === "space" ? next.zone.spaceId : null
@@ -205,37 +221,43 @@ export function useTabDrag({
   const onDragMove = (event: DragMoveEvent) => update(event)
   const onDragOver = (event: DragOverEvent) => update(event)
 
-  const onDragEnd = ({ active, over }: DragEndEvent) => {
+  const onDragEnd = ({ over }: DragEndEvent) => {
     const space = latest.current.space
-    const data = active.data.current as TabDragData
-    const dropTarget = latest.current.drag ? resolve(over, data).target : null
+    const data = latest.current.drag
+    const dropTarget = data ? resolve(over, data).target : null
     finish()
-    if (!space || !tabs || !dropTarget) {
-      // Released over nothing (or where nothing would change): same as a cancel.
+    // Released over nothing, or back where it was: same as a cancel.
+    const unchanged =
+      data !== null &&
+      dropTarget?.kind === "swatches" &&
+      swatchOrder(tabs?.swatches ?? []).indexOf(data.tab.id) === dropTarget.index
+    if (!data || !space || !tabs || !dropTarget || unchanged) {
       onDragCancel()
       return
     }
     setDrag(null)
-    let to: TabLocation
-    if (dropTarget.kind === "swatch") {
-      to = { kind: "swatch", slot: dropTarget.slot }
-    } else {
-      // `move_tab` takes the tab out first, so a move down its own list lands one index higher.
-      const from = data.source === dropTarget.kind ? indexIn(dropTarget.kind, space, data.tab.id) : -1
-      const index = from >= 0 && dropTarget.gap > from ? dropTarget.gap - 1 : dropTarget.gap
-      to =
-        dropTarget.kind === "pinned"
-          ? { kind: "pinned", spaceId: space.id, folderId: null, index }
-          : { kind: "temp", spaceId: space.id, index }
+    const tabId = data.tab.id
+    // Shown where the drag left it until the backend's state moves it (no optimistic copy).
+    const swatchIndex = dropTarget.kind === "swatches" ? dropTarget.index : null
+    setLanding({ tabId, tabs, swatchIndex, settled: false })
+    const settle = () => setLanding((current) => (current?.tabId === tabId ? { ...current, settled: true } : current))
+    const fail = (error: unknown) => {
+      console.error("tab drag:", error)
+      setLanding(null)
     }
-    // Hidden where it was until the backend's state moves it (no optimistic copy).
-    setLanding({ tabId: data.tab.id, tabs })
-    commands.moveTab(data.tab.id, to).then((result) => {
-      if (result.status === "error") {
-        logError(result)
-        setLanding(null)
-      }
-    })
+
+    if (dropTarget.kind === "swatches") {
+      insertSwatch(tabId, dropTarget.index, tabs.swatches).then(settle, fail)
+      return
+    }
+    // `move_tab` takes the tab out first, so a move down its own list lands one index higher.
+    const from = data.source === dropTarget.kind ? indexIn(dropTarget.kind, space, tabId) : -1
+    const index = from >= 0 && dropTarget.gap > from ? dropTarget.gap - 1 : dropTarget.gap
+    const to: TabLocation =
+      dropTarget.kind === "pinned"
+        ? { kind: "pinned", spaceId: space.id, folderId: null, index }
+        : { kind: "temp", spaceId: space.id, index }
+    commands.moveTab(tabId, to).then((result) => (result.status === "error" ? fail(result.error) : settle()))
   }
 
   const onDragCancel = () => {
@@ -296,8 +318,10 @@ export function useTabDrag({
 
   useEffect(() => () => clearTimeout(switchTimer.current), [])
 
-  // Landing ends when the backend's next state arrives: the tab is in its new place by then.
-  const landingTabId = landing && landing.tabs === tabs ? landing.tabId : null
+  // Landing ends once the moves are done and the backend's state has changed since the drop.
+  const landingActive = landing !== null && (!landing.settled || landing.tabs === tabs)
+
+  const dragLabel = () => (latest.current.drag ? tabLabel(latest.current.drag.tab) : "the tab")
 
   const context: DndContextProps = {
     sensors,
@@ -314,10 +338,11 @@ export function useTabDrag({
         draggable: "Drag with the pointer to move this tab to Swatches, pinned or temporary tabs.",
       },
       announcements: {
+        // `active` is fine at the start; later the source may have unmounted (see update).
         onDragStart: ({ active }) => `Picked up ${labelOf(active)}.`,
         onDragOver: () => undefined,
-        onDragEnd: ({ active }) => `Dropped ${labelOf(active)}.`,
-        onDragCancel: ({ active }) => `Stopped dragging ${labelOf(active)}; it stays where it was.`,
+        onDragEnd: () => `Dropped ${dragLabel()}.`,
+        onDragCancel: () => `Stopped dragging ${dragLabel()}; it stays where it was.`,
       },
     },
   }
@@ -326,8 +351,11 @@ export function useTabDrag({
     context,
     drag,
     /** The source should look away (dimmed row, empty swatch). */
-    draggedTabId: drag?.tab.id ?? landingTabId,
-    dragActive: drag !== null && !returning,
+    draggedTabId: drag?.tab.id ?? (landingActive ? landing.tabId : null),
+    /** Where the Swatches grid opens a gap: under the drag, or for a drop still being placed. */
+    swatchIndex: target?.kind === "swatches" ? target.index : landingActive ? landing.swatchIndex : null,
+    /** The slots the grid shows: frozen at the drop while a grid drop is being placed. */
+    swatches: landingActive && landing.swatchIndex !== null ? landing.tabs.swatches : tabs?.swatches ?? [],
     target,
     shape,
     dropSpaceId,

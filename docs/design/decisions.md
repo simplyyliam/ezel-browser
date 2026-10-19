@@ -33,7 +33,7 @@ Studied Zen's compact mode (`src/zen/compact-mode/sidebar.inc.css`, `ZenCompactM
 Ours:
 - shadcn `variant="floating"` gives the card. Unlike Zen it has no float margin: the card runs to the top, bottom and left of the browser area (`p-0`) and takes the frame radius. Collapsed + peeking overrides the off-canvas `left` back to 0. Timing and curve match Zen (`--ease-zen-peek` samples Zen's curve).
 - The trigger is the frame's 4px left padding: the only UI the website doesn't cover there. The 150ms keep-hover covers crossing the 8px gap to the card.
-- Also stays open while the sidebar holds focus (typing in the URL bar must not be cut off by a mouse twitch).
+- Also stays open while the sidebar holds focus (typing an address in a tab's name must not be cut off by a mouse twitch).
 - Out of the tab order (`inert`) while hidden off-canvas.
 - The card + 1px ring is cut out of the website (`useContentCutout("sidebar")`, rounded). The shadow outside it can't be drawn over the page (it would sit on the UI's placeholder, not the site), so over the page the card shows its ring only.
 - Open (Ctrl+B / trigger) docks it beside the page, like turning compact mode off. Docked it switches to shadcn's flat `variant="sidebar"`: no border, ring, shadow, radius or padding; the window frame's 4px is the only gap. The card look is only for floating over the page.
@@ -60,13 +60,13 @@ Since 2026-10-18 the sidebar uses shadcn's Sidebar primitives at their defaults,
 |---|---|---|
 | Sidebar width | 212 | 244 (`SIDEBAR_WIDTH`) |
 | Group / header / footer padding | 10 | 8 (shadcn `p-2`) |
-| Swatch | 45×27, r7.5 | 45×27, r7.5 (since 2026-10-19), centred in 4 fluid columns; 16px round favicon |
-| Tab row | 28 high, 10.5px text, 14px favicon | `SidebarMenuButton`: 32 high, 14px text, 16px favicon |
+| Swatch | 45×27, r7.5 | 27 high, r7.5, 3px apart, left-aligned (since 2026-10-19): fewer than 4 share the full width (Zen's essentials), 4 or more are 45 wide; 16px round favicon |
+| Tab row | 28 high, 10.5px text, 14px favicon | `SidebarMenuButton`: 32 high, 14px text, 16px favicon, 2px apart |
 | Folder row | 9px label | `SidebarMenuButton size="sm"`: 28 high, 12px, muted |
 | Space pill / buttons | 15 high, 9px | `SidebarMenuButton size="sm"`: 28 high, 12px, 14px icon |
 | New Tab | 26 high | 32 high, inset 12px each side, dimmed |
 | Bottom actions | 18×14, r5 | 28×24 pills, 14px icons |
-| URL bar | – | `SidebarInput`, 32 high |
+| URL bar | – | none since 2026-10-19: the tab's name is the address field |
 | Nav / toggle buttons | – | `Button size="icon-sm"` / `SidebarTrigger`, 32px |
 
 Why these numbers: 13–14px is the common sidebar text size (Arc, Zen, macOS source lists, shadcn). It stays legible at 100% scaling without crowding a 244px column. A 32px row is easy to hit while keeping about 20 rows visible in an 800px window. Radii scale with their elements so the shapes keep the design's proportions.
