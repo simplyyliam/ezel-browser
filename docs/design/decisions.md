@@ -60,7 +60,7 @@ Since 2026-10-18 the sidebar uses shadcn's Sidebar primitives at their defaults,
 |---|---|---|
 | Sidebar width | 212 | 244 (`SIDEBAR_WIDTH`) |
 | Group / header / footer padding | 10 | 8 (shadcn `p-2`) |
-| Swatch | 45×27, r7.5 | 4 fluid columns (~54) × 32, shadcn menu-button radius |
+| Swatch | 45×27, r7.5 | 45×27, r7.5 (since 2026-10-19), centred in 4 fluid columns; 16px round favicon |
 | Tab row | 28 high, 10.5px text, 14px favicon | `SidebarMenuButton`: 32 high, 14px text, 16px favicon |
 | Folder row | 9px label | `SidebarMenuButton size="sm"`: 28 high, 12px, muted |
 | Space pill / buttons | 15 high, 9px | `SidebarMenuButton size="sm"`: 28 high, 12px, 14px icon |
@@ -84,3 +84,6 @@ Studied Zen's source (`src/zen/spaces/ZenSpaceManager.mjs`, `ZenSpace.mjs`, `tab
 
 ## Typed bindings (2026-10-19)
 Typed bindings via tauri-specta, same setup as Foundry: the same pinned crate versions (`specta =2.0.0-rc.25`, `specta-typescript =0.0.12`, `tauri-specta =2.0.0-rc.25`), one `specta_builder()` collecting every command and event, export on debug runs and in `cargo test`, and Foundry's `AppError { code, message }` with a stable snake_case `ErrorCode`. Every command returns `{ status: "ok", data } | { status: "error", error: AppError }` in TypeScript; the JSON on the wire is unchanged. specta refuses u64/usize (bigint) and widens f64 to `number | null`, so ids cross as `TsId` (TS `Id`), indices as `u32`, and logical px as `Px` (TS `number`).
+
+## Tab drag and drop (2026-10-19)
+Studied Zen's `ZenDragAndDrop.js` and Arc's docs; findings and Ezel's version in `docs/design/drag-and-drop.md`.

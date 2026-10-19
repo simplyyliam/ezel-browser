@@ -1,4 +1,5 @@
-import { useEffect, useRef, useState } from "react"
+import { useCallback, useEffect, useRef, useState } from "react"
+import { DndContext } from "@dnd-kit/core"
 import {
   Sidebar,
   SidebarContent,
@@ -37,6 +38,8 @@ import {
 } from "@/shared"
 import { ScrollArea } from "@/shared/components"
 import { useSidebarPeek } from "./use-sidebar-peek"
+import { TabDragPreview } from "./tab-drag-preview"
+import { useTabDrag } from "./use-tab-drag"
 
 /**
  * docs/design/sidebar-1.png scaled up for legibility (docs/design/decisions.md, "Sizing"):
@@ -115,11 +118,14 @@ export function AppSidebar() {
   const { peeking, edgeRef, sidebarRef } = useSidebarPeek(!open)
   // The sidebar shows above the page wherever they overlap; floating, that includes its 1px ring
   // (drawn just outside the card). Docked it sits beside the page, so the hole changes nothing.
-  useContentCutout(
-    "sidebar",
+  const getSidebarCard = useCallback(
     () => sidebarRef.current?.querySelector<HTMLElement>('[data-slot="sidebar-inner"]') ?? null,
-    open ? 0 : 1,
+    [sidebarRef],
   )
+  useContentCutout("sidebar", getSidebarCard, open ? 0 : 1)
+  // Dragging tabs between Swatches, pinned and temp tabs (docs/design/drag-and-drop.md).
+  const tabDrag = useTabDrag({ tabs, space, getSidebar: getSidebarCard })
+  const dropTarget = tabDrag.target
 
   return (
     <>
@@ -157,11 +163,18 @@ export function AppSidebar() {
       {/* Right-clicking the sidebar body opens Zen's sidebar menu. */}
       <SidebarContextMenu onNewTab={newTab} onNewSpace={newSpace} className="flex min-h-0 flex-1 flex-col">
       <SidebarContent className="gap-0 overflow-hidden">
+        <DndContext {...tabDrag.context}>
         <ScrollArea className="flex-1" viewportClassName="pt-2">
           {/* Empty until the backend's first snapshot (a few ms after mount). */}
           {tabs && space && (
             <>
-              <Swatches swatches={tabs.swatches} activeTabId={activeTabId} onSelect={activateTab} />
+              <Swatches
+                swatches={tabs.swatches}
+                activeTabId={activeTabId}
+                onSelect={activateTab}
+                draggedTabId={tabDrag.draggedTabId}
+                dropSlot={dropTarget?.kind === "swatch" ? dropTarget.slot : null}
+              />
               <SpaceSwitcher
                 spaces={tabs.spaces}
                 activeSpaceId={space.id}
@@ -169,6 +182,7 @@ export function AppSidebar() {
                 renamingSpaceId={renamingSpaceId}
                 onRenamingChange={setRenamingSpaceId}
                 onRename={(id, name) => updateSpace(id, name)}
+                dropSpaceId={tabDrag.dropSpaceId}
               />
               {/* Keyed by space: switching swaps the whole list instead of animating every folder. */}
               <Folders
@@ -178,6 +192,9 @@ export function AppSidebar() {
                 onSelectTab={activateTab}
                 onCloseTab={closeTab}
                 onSetFolderCollapsed={setFolderCollapsed}
+                dragActive={tabDrag.dragActive}
+                draggedTabId={tabDrag.draggedTabId}
+                dropGap={dropTarget?.kind === "pinned" ? dropTarget.gap : null}
               />
               <TempTabs
                 tabs={space.tempTabs}
@@ -185,10 +202,23 @@ export function AppSidebar() {
                 onSelect={activateTab}
                 onClose={closeTab}
                 onNewTab={newTab}
+                draggedTabId={tabDrag.draggedTabId}
+                dropGap={dropTarget?.kind === "temp" ? dropTarget.gap : null}
               />
             </>
           )}
         </ScrollArea>
+        {tabDrag.drag && (
+          <TabDragPreview
+            drag={tabDrag.drag}
+            shape={tabDrag.shape}
+            returning={tabDrag.returning}
+            canReturn={tabDrag.canReturn}
+            onReturned={tabDrag.onReturned}
+            getSidebar={getSidebarCard}
+          />
+        )}
+        </DndContext>
       </SidebarContent>
       </SidebarContextMenu>
 

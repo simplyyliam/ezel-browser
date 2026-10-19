@@ -7,8 +7,8 @@ import {
   SidebarMenuItem,
   SidebarSeparator,
 } from "@/components/ui/sidebar"
-import { TabRow } from "@/shared/components"
-import type { Id, Tab } from "@/shared"
+import { DraggableTabItem, DropIndicator } from "@/shared/components"
+import { rowIndicator, useTabDropZone, type Id, type Tab } from "@/shared"
 
 type TempTabsProps = {
   /** The active space's temp tabs, newest first. */
@@ -18,28 +18,39 @@ type TempTabsProps = {
   /** Temp tabs are removed on close. */
   onClose: (tabId: Id) => void
   onNewTab: () => void
+  /** The tab being dragged (or just dropped, until the backend moves it). */
+  draggedTabId: Id | null
+  /** Where a drag would land: the number of rows above the line. */
+  dropGap: number | null
 }
 
 /** Temporary (unpinned) tabs below the space's list. */
-export function TempTabs({ tabs, activeTabId, onSelect, onClose, onNewTab }: TempTabsProps) {
+export function TempTabs({ tabs, activeTabId, onSelect, onClose, onNewTab, draggedTabId, dropGap }: TempTabsProps) {
+  // The whole group takes drops, so the gaps between rows and the New Tab button count too.
+  const { setNodeRef } = useTabDropZone("temp", { kind: "temp" })
+
   return (
     <>
       {/* The separator primitive's data-horizontal:w-full outranks SidebarSeparator's w-auto, so its mx-2 overflowed. */}
       <SidebarSeparator className="data-horizontal:w-auto" />
-      <SidebarGroup>
+      <SidebarGroup ref={setNodeRef}>
         <SidebarGroupContent>
           <SidebarMenu>
-            {tabs.map((tab) => (
-              <SidebarMenuItem key={tab.id}>
-                <TabRow
-                  tab={tab}
-                  active={tab.id === activeTabId}
-                  onSelect={() => onSelect(tab.id)}
-                  onClose={() => onClose(tab.id)}
-                />
-              </SidebarMenuItem>
+            {tabs.map((tab, index) => (
+              <DraggableTabItem
+                key={tab.id}
+                tab={tab}
+                source="temp"
+                active={tab.id === activeTabId}
+                onSelect={() => onSelect(tab.id)}
+                onClose={() => onClose(tab.id)}
+                isDragged={tab.id === draggedTabId}
+                indicator={rowIndicator(dropGap, index, tabs.length)}
+              />
             ))}
             <SidebarMenuItem className="mt-1 px-3">
+              {/* No temp tabs: the line goes where the first one would be. */}
+              {tabs.length === 0 && dropGap === 0 && <DropIndicator edge="top" className="-top-0.5" />}
               {/* Deliberately inset and dimmed: available, but not the focus. */}
               <SidebarMenuButton
                 onClick={onNewTab}

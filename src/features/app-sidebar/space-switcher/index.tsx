@@ -1,4 +1,4 @@
-import { useState } from "react"
+import { useState, type ReactNode } from "react"
 import { AnimatePresence, LayoutGroup, motion, useReducedMotion } from "motion/react"
 import {
   SidebarGroup,
@@ -7,7 +7,8 @@ import {
   SidebarMenuButton,
   SidebarMenuItem,
 } from "@/components/ui/sidebar"
-import { INSTANT, PEEK_TRANSITION, spaceIcon, type Id, type Space } from "@/shared"
+import { cn } from "@/lib/utils"
+import { INSTANT, PEEK_TRANSITION, spaceIcon, useTabDropZone, type Id, type Space } from "@/shared"
 
 type SpaceSwitcherProps = {
   spaces: Space[]
@@ -17,6 +18,8 @@ type SpaceSwitcherProps = {
   renamingSpaceId: Id | null
   onRenamingChange: (spaceId: Id | null) => void
   onRename: (spaceId: Id, name: string) => void
+  /** A dragged tab hovers this space's pill: it switches to it after a moment. */
+  dropSpaceId: Id | null
 }
 
 /** The active space is a pill with its name; the others collapse to icon-only buttons beside it. */
@@ -27,6 +30,7 @@ export function SpaceSwitcher({
   renamingSpaceId,
   onRenamingChange,
   onRename,
+  dropSpaceId,
 }: SpaceSwitcherProps) {
   const reduceMotion = useReducedMotion()
   const transition = reduceMotion ? INSTANT : PEEK_TRANSITION
@@ -52,7 +56,7 @@ export function SpaceSwitcher({
               )
             }
             return (
-              <SidebarMenuItem key={space.id}>
+              <SpaceItem key={space.id} spaceId={space.id}>
                 <SidebarMenuButton
                   render={<motion.button layout="position" transition={transition} />}
                   size="sm"
@@ -63,7 +67,10 @@ export function SpaceSwitcher({
                   onClick={active ? undefined : () => onSelect(space.id)}
                   onDoubleClick={active ? () => onRenamingChange(space.id) : undefined}
                   // No gap: the name brings its own padding, so collapsed buttons stay square.
-                  className="w-auto min-w-7 justify-center gap-0 bg-sidebar-foreground/5 px-1.5 hover:bg-sidebar-foreground/8 data-active:bg-sidebar-foreground/5"
+                  className={cn(
+                    "w-auto min-w-7 justify-center gap-0 bg-sidebar-foreground/5 px-1.5 hover:bg-sidebar-foreground/8 data-active:bg-sidebar-foreground/5",
+                    space.id === dropSpaceId && "bg-sidebar-foreground/12",
+                  )}
                 >
                   <Icon aria-hidden className="size-3.5" />
                   {/* Expanding the new name and collapsing the old one run at the same time. */}
@@ -82,13 +89,19 @@ export function SpaceSwitcher({
                     )}
                   </AnimatePresence>
                 </SidebarMenuButton>
-              </SidebarMenuItem>
+              </SpaceItem>
             )
           })}
         </SidebarMenu>
       </LayoutGroup>
     </SidebarGroup>
   )
+}
+
+/** A pill's menu item; a tab dragged over it can switch to the space. */
+function SpaceItem({ spaceId, children }: { spaceId: Id; children: ReactNode }) {
+  const { setNodeRef } = useTabDropZone(`space-${spaceId}`, { kind: "space", spaceId })
+  return <SidebarMenuItem ref={setNodeRef}>{children}</SidebarMenuItem>
 }
 
 /** Enter or blur saves (trimmed; empty keeps the old name), Escape cancels. */

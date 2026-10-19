@@ -105,6 +105,13 @@ Built from `docs/design/sidebar-1.png` (a 1.5x export) with shadcn's `Sidebar` (
 - The URL bar and back/forward/reload act on the shown tab (`navigate`, `go_back`, …) and follow it through `page-changed`. New Tab = `open_tab()` then `UrlBar`'s `focusEmpty()` (a ref the widget holds). New space = `create_space("Space N", next of NEW_SPACE_ICONS)` → `switch_space` → inline rename (also: double-click the active space pill). Space icons are lucide names mapped in `shared/space-icons.ts` (unknown → `Layers`).
 - Only ContentSlot calls `set_content_bounds`.
 
+### Tab drag and drop
+Zen's behaviour, rebuilt on dnd-kit (HTML5 drag events are swallowed by Tauri on Windows); study and rules in `docs/design/drag-and-drop.md`.
+- `DndContext` lives in `widgets/app-sidebar` (`use-tab-drag.ts`: sensors, target resolution, space switching, cancelling; `tab-drag-preview.tsx`: the pointer-following preview). Features only register draggables/drop zones through `shared/tab-dnd.ts` (`useTabDraggable`, `useTabDropZone`, `DROP_ROW`) and draw the indicator the widget passes them (`DraggableTabItem`, `DropIndicator`).
+- A drop calls `commands.moveTab` (`shared/bindings`); the dragged tab stays hidden/dimmed where it was until the next state arrives. No optimistic copy.
+- The pointer leaving the sidebar card cancels the drag (the website webview above the UI eats pointer events); on `mouseleave` the real cursor position decides. Never cancel on focus changes: new tab webviews take focus.
+- dnd-kit fills `active.rect` only after `onDragStart`; measure the source with `tabDragNode(id)` instead.
+
 ### Rules for the tabs step
 - The top grid is called **Swatches** (max 8).
 - Temp tabs and pinned tabs both survive an app restart.
