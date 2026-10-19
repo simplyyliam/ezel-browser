@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-set-folder-collapsed"
+description = "Enables the set_folder_collapsed command without any pre-configured scope."
+commands.allow = ["set_folder_collapsed"]
+
+[[permission]]
+identifier = "deny-set-folder-collapsed"
+description = "Denies the set_folder_collapsed command without any pre-configured scope."
+commands.deny = ["set_folder_collapsed"]

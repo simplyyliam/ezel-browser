@@ -13,31 +13,50 @@ A lightweight browser for designers.
 ## Architecture
 The frontend owns content geometry; Rust follows the reported bounds. The UI only sends commands and listens to events.
 
-One frameless window (`main`, `decorations(false)`), two webviews:
+One frameless window (`main`, `decorations(false)`):
 - `ui`: the React app, covers the whole window (Rust re-applies full-window bounds on every resize). It draws its own titlebar, window controls and drag region.
-- `content`: the website, placed wherever the frontend reports via `set_content_bounds`; starts at https://duckduckgo.com, hidden until `set_content_visible(true)`.
+- `tab-<id>`: one webview per **loaded** tab (`src-tauri/src/browser/`). Only the shown tab is visible, placed wherever the frontend reports via `set_content_bounds`; the "content" commands below always apply to it. Hidden until `set_content_visible(true)`.
 
-Only `ui` has IPC; `content` has none. Both use WebView2's Fluent overlay scrollbars (they share a data directory, so the style must match).
+Only `ui` has IPC; tab webviews have none. All use WebView2's Fluent overlay scrollbars (they share a data directory, so the style must match).
+
+### Tabs backend (`src-tauri/src/browser/`)
+Studied from Zen (workspaces, pinned tabs, folders, essentials, session store) and Arc (spaces, pinned/today tabs, favorites); see `docs/design/decisions.md`, "Tabs, folders and spaces".
+- `model.rs`: pure data + rules, no Tauri. Operations return `Effect`s (show / destroy / navigate) that `mod.rs` applies to webviews. Unit-tested (`cargo test`).
+- Spaces each hold `pinned` items (tabs and one-level folders) and `temp` tabs (newest first), and remember their own shown tab. Swatches: 8 global slots shared by every space.
+- Memory: a webview exists only for loaded tabs. Restored tabs stay unloaded until selected; at most `MAX_LOADED_TABS` (8) stay loaded, least recently used unloaded first; background tabs idle 30 min are unloaded; tabs playing audio are never auto-unloaded; hidden webviews get WebView2's low memory target.
+- Persistence (`store.rs`): `<app data>/ezel/session.json`, debounced 1s, atomic write with a `.bak` fallback, flushed on exit. Unreadable files are moved aside, never overwritten.
+- Threading: commands that may load a tab are `async` (creating a webview from the main thread's sync command/event handlers deadlocks on Windows). Never hold the model lock while calling a webview API.
 
 ## Contract (UI ↔ Rust)
 New commands must also be allow-listed in `src-tauri/build.rs` (app manifest) and `src-tauri/capabilities/default.json` (`allow-<name>`), otherwise every call is rejected silently.
 
 Commands (`invoke`):
-- `navigate(input: string)`: a URL is loaded (`https://` added if missing); anything else is searched on DuckDuckGo
-- `go_back()`, `go_forward()`, `reload()`
-- `get_page()`: returns the latest `page-changed` payload (same shape), so the UI can catch up on mount
+- `navigate(input: string)`: loads in the shown tab (a new temp tab if none is shown). A URL is loaded (`https://` added if missing); anything else is searched on Google (`SEARCH_URL`)
+- `go_back()`, `go_forward()`, `reload()`: the shown tab
+- `get_page()`: the shown tab's page (`page-changed` shape), so the UI can catch up on mount
 - `set_content_bounds(x: number, y: number, width: number, height: number)`: places the content webview; logical px relative to the window's top-left
 - `set_content_radius(radii: [number, number, number, number])`: clips the content webview to rounded corners; logical px, CSS order (top-left, top-right, bottom-right, bottom-left). Windows only for now.
 - `set_content_cutout(id: string, rect: [x, y, width, height] | null, radius: number)`: cuts a window-relative rounded rect (logical px) out of the content webview's clip region under `id`, so the UI below shows through without moving or resizing the page. `rect: null` clears that id. Holes: `"titlebar"`, `"sidebar"`. Use `useContentCutout` (`shared/content-cutout.ts`), which follows an element every frame while it moves. Windows only for now.
 - `set_content_visible(visible: boolean)`: shows or hides the content webview. It starts hidden, so report bounds first, then show it.
 - `get_window_radius()` → `{ radius: number | null, customized: boolean }`: the corner radius Windows 11 actually draws for the window, logical px. Without the Windhawk "Custom Window Corner Radius" mod: 8, or 0 when fullscreen/maximized/snapped. With it (`customized: true`): the mod's radius, or 0 where it leaves windows square. `radius: null` = unknown (not Windows): keep the UI's default radii. The UI sets `--radius-frame` to `radius − 4` (frame padding).
 
+Tab commands (ids are numbers; every change also emits `tabs-changed`):
+- `get_tabs()` → `TabsState`: `{ activeSpaceId, activeTabId | null, swatches: (TabView | null)[8], spaces: { id, name, icon, items: ({kind:"tab", tab} | {kind:"folder", folder:{ id, name, collapsed, tabs }})[], tempTabs }[] }`. `TabView`: `{ id, url, title | null, favicon | null, pinnedUrl | null, isLoaded, isLoading, isPlayingAudio }`. `icon` is a lucide icon name.
+- `open_tab(input?: string)` → id: new temp tab on top of the active space, selected (home page without input). Links opened in a new window (`target=_blank`) do the same; sized popups (OAuth) get a native popup window.
+- `activate_tab(id)`; `close_tab(id)`: a temp tab is removed, a pinned/swatch tab is unloaded and reset to its pinned URL; `remove_tab(id)`: removes any tab; `unload_tab(id)`: frees memory, keeps the page.
+- `move_tab(id, to)`: pin/unpin, swatch, folder, reorder, other space. `to`: `{kind:"swatch", slot}` (occupied: swap) | `{kind:"pinned", spaceId, folderId: id | null, index: number | null}` (null = end) | `{kind:"temp", spaceId, index: number | null}` (null = top). Pinned/swatch tabs remember a `pinnedUrl`; temp tabs forget it.
+- `reset_tab(id)`: back to its pinned URL; `update_pinned_url(id)`: current URL becomes the pinned URL; `clear_temp_tabs(spaceId)`: trash-all.
+- Folders: `create_folder(spaceId, name, index?)` → id, `rename_folder(id, name)`, `set_folder_collapsed(id, collapsed)`, `move_folder(id, spaceId, index?)`, `delete_folder(id, keepTabs)` (`keepTabs`: unpack), `unload_folder(id)`.
+- Spaces: `create_space(name, icon)` → id, `update_space(id, name?, icon?)`, `move_space(id, index)`, `delete_space(id)` (not the last one), `switch_space(id)` (shows the tab it showed last).
+
 Window APIs (`@tauri-apps/api/window`): `minimize`, `toggleMaximize`, `close`, `startDragging`, `isMaximized`, `isFullscreen`, `cursorPosition`, `innerPosition`, `innerSize`, `scaleFactor` (the last four let the titlebar peek follow the cursor above the window).
 
 Event emitted to the `ui` webview:
 - `page-changed`: `{ url: string, title: string | null, canGoBack: boolean, canGoForward: boolean, isLoading: boolean }`
-  Emitted on navigation start, on page load finish, and when the document title changes.
-- `toggle-sidebar`: no payload. Ctrl+B was pressed while the website had focus. Rust catches it on the content webview (WebView2 `AcceleratorKeyPressed`) because those keys never reach the `ui` webview; the page doesn't receive it. Windows only for now.
+  The shown tab's page. Emitted on navigation start, on page load finish, when the document title changes, and when another tab is shown (all empty/false when none is).
+- `tabs-changed`: `TabsState` (as `get_tabs`). Emitted after every tab/folder/space change.
+- `tab-updated`: one `TabView`. A tab's URL, title, favicon, loading or audio state changed (any tab, shown or not).
+- `toggle-sidebar`: no payload. Ctrl+B was pressed while the website had focus. Rust catches it on each tab webview (WebView2 `AcceleratorKeyPressed`) because those keys never reach the `ui` webview; the page doesn't receive it. Windows only for now.
 - `window-radius-changed`: same payload as `get_window_radius`. Emitted only when the value changes (window resize/maximize/snap/fullscreen, or the mod's registry settings change).
 
 ## Frontend structure
@@ -90,4 +109,4 @@ Built from `docs/design/sidebar-1.png` (a 1.5x export) with shadcn's `Sidebar` (
 Read `docs/design/decisions.md` before UI work: motion language, the titlebar peek study, the scrollbar spec and the sizing scale.
 
 ## Current scope
-MVP only. Sidebar shell with placeholder data; no real tabs, folders, spaces, downloads or persistence.
+MVP only. The tabs/folders/spaces backend and its persistence exist (Rust); the sidebar still renders placeholder data until it's wired to `get_tabs`/`tabs-changed`. No downloads yet.

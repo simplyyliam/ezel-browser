@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-unload-folder"
+description = "Enables the unload_folder command without any pre-configured scope."
+commands.allow = ["unload_folder"]
+
+[[permission]]
+identifier = "deny-unload-folder"
+description = "Denies the unload_folder command without any pre-configured scope."
+commands.deny = ["unload_folder"]

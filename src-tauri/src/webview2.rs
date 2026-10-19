@@ -1,0 +1,113 @@
+//! WebView2 features Tauri doesn't expose. Each function takes the platform webview handed to
+//! `Webview::with_webview`, so it runs on the main thread with a live controller.
+
+use tauri::webview::PlatformWebview;
+use webview2_com::{
+  take_pwstr, AcceleratorKeyPressedEventHandler, FaviconChangedEventHandler, IsDocumentPlayingAudioChangedEventHandler,
+  Microsoft::Web::WebView2::Win32::{
+    ICoreWebView2, ICoreWebView2_15, ICoreWebView2_19, ICoreWebView2_8, COREWEBVIEW2_KEY_EVENT_KIND,
+    COREWEBVIEW2_KEY_EVENT_KIND_KEY_DOWN, COREWEBVIEW2_MEMORY_USAGE_TARGET_LEVEL_LOW,
+    COREWEBVIEW2_MEMORY_USAGE_TARGET_LEVEL_NORMAL, COREWEBVIEW2_PHYSICAL_KEY_STATUS,
+  },
+};
+use windows::{
+  core::{Interface, PWSTR},
+  Win32::UI::Input::KeyboardAndMouse::{GetKeyState, VK_B, VK_CONTROL, VK_MENU, VK_SHIFT},
+};
+
+fn core(pw: &PlatformWebview) -> Option<ICoreWebView2> {
+  // SAFETY: main thread, live controller.
+  unsafe { pw.controller().CoreWebView2().ok() }
+}
+
+/// (can go back, can go forward).
+pub fn history(pw: &PlatformWebview) -> (bool, bool) {
+  let Some(core) = core(pw) else { return (false, false) };
+  let (mut back, mut forward) = (Default::default(), Default::default());
+  // SAFETY: main thread, live webview.
+  unsafe {
+    let _ = core.CanGoBack(&mut back);
+    let _ = core.CanGoForward(&mut forward);
+  }
+  (back.as_bool(), forward.as_bool())
+}
+
+/// Hidden tabs ask WebView2 to trim memory (it may swap out or drop caches); the shown tab gets
+/// the normal level back. WebView2 1.0.1774+; ignored on older runtimes.
+pub fn set_low_memory(pw: &PlatformWebview, low: bool) {
+  let Some(core) = core(pw).and_then(|c| c.cast::<ICoreWebView2_19>().ok()) else { return };
+  let level = if low { COREWEBVIEW2_MEMORY_USAGE_TARGET_LEVEL_LOW } else { COREWEBVIEW2_MEMORY_USAGE_TARGET_LEVEL_NORMAL };
+  // SAFETY: main thread, live webview.
+  unsafe {
+    let _ = core.SetMemoryUsageTargetLevel(level);
+  }
+}
+
+/// Calls `f` with the page's favicon URL whenever it changes (`None` = the page has none).
+pub fn on_favicon_changed(pw: &PlatformWebview, f: impl Fn(Option<String>) + 'static) {
+  let Some(core) = core(pw).and_then(|c| c.cast::<ICoreWebView2_15>().ok()) else { return };
+  let handler = FaviconChangedEventHandler::create(Box::new(move |sender, _| {
+    let Some(sender) = sender.and_then(|s| s.cast::<ICoreWebView2_15>().ok()) else { return Ok(()) };
+    let mut uri = PWSTR::null();
+    // SAFETY: WebView2 calls this on the main thread; take_pwstr frees the string it returns.
+    unsafe { sender.FaviconUri(&mut uri)? };
+    f(Some(take_pwstr(uri)).filter(|u| !u.is_empty()));
+    Ok(())
+  }));
+  let mut token = 0i64;
+  // SAFETY: main thread, live webview.
+  unsafe {
+    let _ = core.add_FaviconChanged(&handler, &mut token);
+  }
+}
+
+/// Calls `f` whenever the page starts or stops playing audio.
+pub fn on_audio_changed(pw: &PlatformWebview, f: impl Fn(bool) + 'static) {
+  let Some(core) = core(pw).and_then(|c| c.cast::<ICoreWebView2_8>().ok()) else { return };
+  let handler = IsDocumentPlayingAudioChangedEventHandler::create(Box::new(move |sender, _| {
+    let Some(sender) = sender.and_then(|s| s.cast::<ICoreWebView2_8>().ok()) else { return Ok(()) };
+    let mut playing = Default::default();
+    // SAFETY: WebView2 calls this on the main thread with a live sender.
+    unsafe { sender.IsDocumentPlayingAudio(&mut playing)? };
+    f(playing.as_bool());
+    Ok(())
+  }));
+  let mut token = 0i64;
+  // SAFETY: main thread, live webview.
+  unsafe {
+    let _ = core.add_IsDocumentPlayingAudioChanged(&handler, &mut token);
+  }
+}
+
+/// App shortcuts pressed while the website has focus never reach the `ui` webview's JS, so catch
+/// them here. Ctrl+B calls `on_toggle_sidebar`. The page doesn't see a caught shortcut (no Ctrl+B
+/// "bold" in web editors).
+pub fn forward_shortcuts(pw: &PlatformWebview, on_toggle_sidebar: impl Fn() + 'static) {
+  let handler = AcceleratorKeyPressedEventHandler::create(Box::new(move |_, args| {
+    let Some(args) = args else { return Ok(()) };
+    // SAFETY: WebView2 calls this on the UI thread with live event args.
+    unsafe {
+      let mut kind = COREWEBVIEW2_KEY_EVENT_KIND::default();
+      args.KeyEventKind(&mut kind)?;
+      let mut key = 0u32;
+      args.VirtualKey(&mut key)?;
+      let mut status = COREWEBVIEW2_PHYSICAL_KEY_STATUS::default();
+      args.PhysicalKeyStatus(&mut status)?;
+      let held = |vk: u16| GetKeyState(vk as i32) < 0;
+      let ctrl_b = key == VK_B.0 as u32 && held(VK_CONTROL.0) && !held(VK_SHIFT.0) && !held(VK_MENU.0);
+      if kind == COREWEBVIEW2_KEY_EVENT_KIND_KEY_DOWN && ctrl_b {
+        args.SetHandled(true)?;
+        // Ignore auto-repeat while the keys are held down.
+        if !status.WasKeyDown.as_bool() {
+          on_toggle_sidebar();
+        }
+      }
+    }
+    Ok(())
+  }));
+  let mut token = 0i64;
+  // SAFETY: main thread, live controller.
+  unsafe {
+    let _ = pw.controller().add_AcceleratorKeyPressed(&handler, &mut token);
+  }
+}

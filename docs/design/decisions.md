@@ -70,3 +70,14 @@ Since 2026-10-18 the sidebar uses shadcn's Sidebar primitives at their defaults,
 | Nav / toggle buttons | – | `Button size="icon-sm"` / `SidebarTrigger`, 32px |
 
 Why these numbers: 13–14px is the common sidebar text size (Arc, Zen, macOS source lists, shadcn). It stays legible at 100% scaling without crowding a 244px column. A 32px row is easy to hit while keeping about 20 rows visible in an 800px window. Radii scale with their elements so the shapes keep the design's proportions.
+
+## Tabs, folders and spaces (2026-10-19)
+Studied Zen's source (`src/zen/spaces/ZenSpaceManager.mjs`, `ZenSpace.mjs`, `tabs/ZenPinnedTabManager.mjs`, `folders/ZenFolders.mjs`, `sessionstore/ZenSessionManager.sys.mjs`, `prefs/zen/*.yaml`, the `TabUnloader` patch) and Arc's documented behaviour:
+- **Spaces** (Zen workspaces, Arc spaces): each has a name, an icon, its own pinned tabs and temp tabs, and remembers the tab it last showed. Switching a space shows that tab.
+- **Swatches** (Zen essentials, max 12 there; Arc favorites): global, shared by every space. Ours: 8 slots.
+- **Pinned tabs** store the URL they were pinned at (Zen's `_zenPinnedInitialState`). Closing one resets it to that URL and unloads it (Zen's default `close-shortcut-behavior = reset-unload-switch`). "Reset" and "Replace pinned URL with current" mirror Zen's context menu.
+- **Temp tabs** (Arc's Today): closing removes them; trash-all clears them. New ones go on top. Arc archives them after 12h idle; not done yet (`lastAccessed` is stored for it).
+- **Folders** (Zen folders, Arc pinned folders): live in the pinned list, collapse, unload all, unpack or delete. Zen allows 5 levels of subfolders; ours are one level (matches the UI types).
+- **Closing the shown tab** selects the most recently used *loaded* tab in the space (Zen `select-recently-used-on-close`), never waking an unloaded one; if none, nothing is shown.
+- **Memory**: Zen restores tabs "pending" (no content process until selected) and unloads on memory pressure, never the selected tab. Ours: lazy restore, at most 8 loaded (LRU), background tabs unloaded after 30 min idle, audible tabs spared, hidden webviews on WebView2's low memory target. Unloading keeps the page; only a close resets a pinned tab.
+- **Session file** (Zen's `zen-sessions.jsonlz4` + backups): one JSON file, debounced, atomic, with a backup of the previous good file.

@@ -21,3 +21,6 @@ Floating sidebar, collapsed by default; hovering the left edge peeks it over the
 ## 2026-10-18: Theme provider and Zen context menus
 Custom theme store in `src/theme/` (not next-themes): shadcn's `.dark` class and index.css variables stay the source of colours; the store adds system tracking and runtime token overrides for the coming theme editor. Defaults to the system theme, no persistence yet.
 Context menus follow Zen's structure and behaviour, not its items (docs/design/context-menus.md); the sidebar menu is built. Open popups are cut out of the website webview, so menus may extend over the page, and the UI losing focus (a click on the page) closes them.
+
+## 2026-10-19: Tabs, folders and spaces backend
+One webview per loaded tab instead of one shared `content` webview, so switching tabs keeps each page's state. Memory is bounded by lazy loading, an LRU cap and idle unloading (Zen relies on Firefox's pending tabs + tab unloader; Arc on Chromium's). The rules live in a pure, tested model that returns effects; the Tauri runtime applies them. Details: docs/design/decisions.md.

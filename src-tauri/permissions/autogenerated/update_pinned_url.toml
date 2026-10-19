@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-update-pinned-url"
+description = "Enables the update_pinned_url command without any pre-configured scope."
+commands.allow = ["update_pinned_url"]
+
+[[permission]]
+identifier = "deny-update-pinned-url"
+description = "Denies the update_pinned_url command without any pre-configured scope."
+commands.deny = ["update_pinned_url"]

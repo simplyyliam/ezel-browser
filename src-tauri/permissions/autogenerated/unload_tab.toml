@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-unload-tab"
+description = "Enables the unload_tab command without any pre-configured scope."
+commands.allow = ["unload_tab"]
+
+[[permission]]
+identifier = "deny-unload-tab"
+description = "Denies the unload_tab command without any pre-configured scope."
+commands.deny = ["unload_tab"]
