@@ -20,7 +20,9 @@ import {
   DROP_ROW_SELECTOR,
   getCursorPosition,
   getWindowClientRect,
+  reportError,
   swatchIndexAt,
+  unwrap,
   tabDragNode,
   tabDropZoneNode,
   type Id,
@@ -37,7 +39,10 @@ import {
 // Tab drag and drop between Swatches, pinned and temp tabs: Zen's behaviour, rebuilt on dnd-kit
 // (Tauri's drag-drop handler on Windows swallows HTML5 drag events). See docs/design/drag-and-drop.md.
 
-/** Zen: zen.tabs.dnd-switch-space-delay. How long a dragged tab must rest on a space's pill to switch to it. */
+/**
+ * Zen: zen.tabs.dnd-switch-space-delay. How long a dragged tab must rest on the space title to
+ * spring the spaces list open, or on a space in it to switch there (macOS spring-loading).
+ */
 const SPACE_SWITCH_DELAY = 500
 /** A press must move this far before it drags, so clicks and the close button still work. */
 const DRAG_DISTANCE = 4
@@ -102,11 +107,14 @@ export function useTabDrag({
   tabs,
   space,
   getSidebar,
+  onSpaceListOpen,
 }: {
   tabs: TabsState | null
   space: Space | undefined
   /** The sidebar card: the area a drag stays in. */
   getSidebar: () => HTMLElement | null
+  /** Opens or closes the spaces list (springs open under a resting drag, closes when it's done). */
+  onSpaceListOpen: (open: boolean) => void
 }) {
   const [drag, setDrag] = useState<TabDrag | null>(null)
   const [target, setTarget] = useState<TabDropTarget | null>(null)
@@ -124,15 +132,23 @@ export function useTabDrag({
   /** The pointer, kept current while dragging (window listener below). */
   const pointer = useRef({ x: 0, y: 0 })
   const switchTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined)
-  /** The space whose pill the drag is resting on, waiting for the switch. */
-  const pendingSpace = useRef<Id | null>(null)
+  /** What the drag rests on, waiting: the space title ("list", opens the list) or a space in it (switches). */
+  const pendingSpring = useRef<"list" | Id | null>(null)
+  /** The list was sprung open by this drag, so the drag closes it again. */
+  const springOpened = useRef(false)
 
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: DRAG_DISTANCE } }))
 
   function clearSpaceSwitch() {
     clearTimeout(switchTimer.current)
-    pendingSpace.current = null
+    pendingSpring.current = null
     setDropSpaceId(null)
+  }
+
+  function closeSprungList() {
+    if (!springOpened.current) return
+    springOpened.current = false
+    onSpaceListOpen(false)
   }
 
   /** What dropping now would do, from the zone under the pointer. Null = nothing (a no-op counts). */
@@ -161,6 +177,7 @@ export function useTabDrag({
         if (from >= 0 && (gap === from || gap === from + 1)) return { zone, target: null }
         return { zone, target: { kind: zone.kind, gap } as const }
       }
+      case "spaces":
       case "space":
         return { zone, target: null }
     }
@@ -173,26 +190,45 @@ export function useTabDrag({
     if (!data) return
     const next = resolve(over, data)
     setTarget((prev) => (JSON.stringify(prev) === JSON.stringify(next.target) ? prev : next.target))
-    if (next.zone && next.zone.kind !== "space") setShape(next.zone.kind === "swatches" ? "swatch" : "row")
+    if (next.zone && next.zone.kind !== "space" && next.zone.kind !== "spaces") {
+      setShape(next.zone.kind === "swatches" ? "swatch" : "row")
+    }
 
-    // Resting on another space's pill switches to it. Swatches belong to every space, so they don't (Zen).
-    const spaceId = next.zone?.kind === "space" ? next.zone.spaceId : null
-    if (spaceId === null || data.source === "swatch" || spaceId === latest.current.space?.id) {
-      if (pendingSpace.current !== null) clearSpaceSwitch()
+    // Spring-loading: resting on the space title opens the list, resting on another space in it
+    // switches there. Swatches belong to every space, so they never switch (Zen).
+    const zone = next.zone
+    const spring: "list" | Id | null =
+      data.source === "swatch" || (tabs?.spaces.length ?? 0) < 2
+        ? null
+        : zone?.kind === "spaces"
+          ? "list"
+          : zone?.kind === "space" && zone.spaceId !== latest.current.space?.id
+            ? zone.spaceId
+            : null
+    if (spring === null) {
+      if (pendingSpring.current !== null) clearSpaceSwitch()
       return
     }
-    if (pendingSpace.current === spaceId) return
+    if (pendingSpring.current === spring) return
     clearTimeout(switchTimer.current)
-    pendingSpace.current = spaceId
-    setDropSpaceId(spaceId)
+    pendingSpring.current = spring
+    setDropSpaceId(spring === "list" ? null : spring)
     switchTimer.current = setTimeout(() => {
       clearSpaceSwitch()
-      commands.switchSpace(spaceId).then(logError)
+      if (spring === "list") {
+        springOpened.current = true
+        onSpaceListOpen(true)
+        return
+      }
+      unwrap("switch space", commands.switchSpace(spring))
+      // Switched: the list has done its job, and the new space's lists are under it.
+      closeSprungList()
     }, SPACE_SWITCH_DELAY)
   }
 
   function finish() {
     clearSpaceSwitch()
+    closeSprungList()
     setTarget(null)
     setShape("row")
   }
@@ -242,7 +278,7 @@ export function useTabDrag({
     setLanding({ tabId, tabs, swatchIndex, settled: false })
     const settle = () => setLanding((current) => (current?.tabId === tabId ? { ...current, settled: true } : current))
     const fail = (error: unknown) => {
-      console.error("tab drag:", error)
+      reportError("drop tab", error)
       setLanding(null)
     }
 
@@ -367,7 +403,3 @@ export function useTabDrag({
 }
 
 const labelOf = (active: Active) => tabLabel((active.data.current as TabDragData).tab)
-
-function logError(result: { status: "ok" } | { status: "error"; error: unknown }) {
-  if (result.status === "error") console.error("tab drag:", result.error)
-}

@@ -8,20 +8,22 @@ import {
   ContextMenuTrigger,
 } from "@/components/ui/context-menu"
 import { useSidebar } from "@/components/ui/sidebar"
+import { menuLabel } from "@/shared"
 
-// The sidebar's own menu: actions about the sidebar and creating things in it. Item-level menus
-// (tab, folder, space, swatch) come with those items. Guidance: docs/design/context-menus.md.
-// TODO: wire "New Folder" (with drag-into-folder) and "Edit Theme…" once they exist.
+// The sidebar's own menu (catalog area "sidebar", shared/menus/catalog.ts): the sidebar itself and
+// making things in the shown space. Item-level menus (tab, swatch, space) come with those items;
+// New Space lives in the spaces list and the + menu. Items whose feature isn't built yet are left
+// out, not shown dead (HIG context-menus.md).
+// TODO: "New Folder" (with drag-into-folder) and "Edit Theme…" once they exist.
 
 type SidebarContextMenuProps = {
   /** The area that opens the menu on right-click. */
   children: ReactNode
   onNewTab: () => void
-  onNewSpace: () => void
   className?: string
 }
 
-export function SidebarContextMenu({ children, onNewTab, onNewSpace, className }: SidebarContextMenuProps) {
+export function SidebarContextMenu({ children, onNewTab, className }: SidebarContextMenuProps) {
   const { open, setOpen } = useSidebar()
 
   return (
@@ -30,16 +32,10 @@ export function SidebarContextMenu({ children, onNewTab, onNewSpace, className }
       <ContextMenuContent>
         {/* Compact mode = the collapsed sidebar that peeks from the left edge; off = docked. */}
         <ContextMenuCheckboxItem checked={!open} onCheckedChange={(compact) => setOpen(!compact)}>
-          Compact mode
+          {menuLabel("sidebar", "compactMode")}
         </ContextMenuCheckboxItem>
         <ContextMenuSeparator />
-        <ContextMenuItem onClick={onNewTab}>New Tab</ContextMenuItem>
-        {/* TODO: create a folder in the active space. */}
-        <ContextMenuItem>New Folder</ContextMenuItem>
-        <ContextMenuItem onClick={onNewSpace}>New Space</ContextMenuItem>
-        <ContextMenuSeparator />
-        {/* TODO: open the theme editor (src/theme: setTheme / setTokens). */}
-        <ContextMenuItem>Edit Theme…</ContextMenuItem>
+        <ContextMenuItem onClick={onNewTab}>{menuLabel("sidebar", "newTab")}</ContextMenuItem>
       </ContextMenuContent>
     </ContextMenu>
   )

@@ -2,7 +2,7 @@ export type { PageChanged, WindowRadius, Id, Tab, Folder, SpaceItem, Space, Swat
 export { useTabs, activeSpace } from "./tabs-store"
 export { useTabDraggable, useTabDropZone, rowIndicator, tabDropZoneNode, tabDragNode, swatchIndexAt, swatchColumns, SWATCH_GRID, DROP_ROW, DROP_ROW_SELECTOR } from "./tab-dnd"
 export type { TabDragSource, TabDragData, TabDropZone, TabDropTarget } from "./tab-dnd"
-export { spaceIcon, NEW_SPACE_ICONS } from "./space-icons"
+export { spaceIcon, SPACE_ICON_NAMES, NEW_SPACE_ICONS } from "./space-icons"
 export { PEEK_TRANSITION, INSTANT } from "./motion"
 export { useWindowRadius } from "./window-radius"
 export { useContentCutout, usePopupCutouts, trackContentCutout } from "./content-cutout"
@@ -46,3 +46,6 @@ export {
   onTabUpdated,
 } from "./tauri"
 export { minimizeWindow, toggleMaximizeWindow, closeWindow, getCursorPosition, getWindowClientRect } from "./window"
+export { reportError, unwrap } from "./report-error"
+export { MENU_CATALOG, MENU_RULES, menuLabel } from "./menus/catalog"
+export type { MenuAreaId, MenuItemId, CatalogItem, MenuArea } from "./menus/catalog"

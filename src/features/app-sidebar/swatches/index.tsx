@@ -7,7 +7,7 @@ import {
   SidebarMenuItem,
 } from "@/components/ui/sidebar"
 import { cn } from "@/lib/utils"
-import { Favicon, TabContextMenu, tabLabel, type TabMenu } from "@/shared/components"
+import { Favicon, TabContextMenu, tabLabel, type MenuGroups } from "@/shared/components"
 import {
   INSTANT,
   PEEK_TRANSITION,
@@ -26,7 +26,7 @@ type SwatchesProps = {
   activeTabId: Id | null
   onSelect: (tabId: Id) => void
   /** The swatch's right-click menu. */
-  menuFor: (tabId: Id) => TabMenu
+  menuFor: (tabId: Id) => MenuGroups
   /** The tab being dragged (or just dropped, until the backend has placed it). */
   draggedTabId: Id | null
   /** Where a dragged tab would go among the other swatches: the cells there slide aside for it. */
@@ -87,7 +87,7 @@ type SwatchCellProps = {
   tab: Tab
   active: boolean
   onSelect: (tabId: Id) => void
-  menuFor: (tabId: Id) => TabMenu
+  menuFor: (tabId: Id) => MenuGroups
 }
 
 function SwatchCell({ tab, active, onSelect, menuFor }: SwatchCellProps) {

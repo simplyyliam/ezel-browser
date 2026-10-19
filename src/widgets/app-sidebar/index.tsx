@@ -21,7 +21,6 @@ import {
   activeSpace,
   clearTempTabs,
   closeTab,
-  createSpace,
   getPage,
   navigate,
   NEW_SPACE_ICONS,
@@ -29,13 +28,14 @@ import {
   onToggleSidebar,
   openTab,
   setFolderCollapsed,
-  switchSpace,
-  updateSpace,
+  unwrap,
   useContentCutout,
   useTabs,
   type Id,
   type PageChanged,
+  type Space,
 } from "@/shared"
+import { commands } from "@/shared/bindings"
 import { ScrollArea, type TabRowActions } from "@/shared/components"
 import { useSidebarPeek } from "./use-sidebar-peek"
 import { TabDragPreview } from "./tab-drag-preview"
@@ -117,12 +117,33 @@ export function AppSidebar() {
     startNewTab(await openTab())
   }
 
+  // Spaces (features/app-sidebar/space-switcher): commands only; the list and titles follow `tabs-changed`.
+  const [spaceListOpen, setSpaceListOpen] = useState(false)
+
   async function newSpace() {
     if (!tabs) return
     const count = tabs.spaces.length
-    const id = await createSpace(`Space ${count + 1}`, NEW_SPACE_ICONS[(count - 1) % NEW_SPACE_ICONS.length])
-    await switchSpace(id)
+    const icon = NEW_SPACE_ICONS[(count - 1) % NEW_SPACE_ICONS.length]
+    const id = await unwrap("create space", commands.createSpace(`Space ${count + 1}`, icon))
+    if (id === null) return
+    await unwrap("switch space", commands.switchSpace(id))
+    // A new space's first job is a name: its title opens as a field.
     setRenamingSpaceId(id)
+  }
+
+  const switchToSpace = (id: Id) => unwrap("switch space", commands.switchSpace(id))
+  const renameSpace = (id: Id, name: string) => unwrap("rename space", commands.updateSpace(id, name, null))
+  const changeSpaceIcon = (id: Id, icon: string) => unwrap("change space icon", commands.updateSpace(id, null, icon))
+  const moveSpace = (id: Id, index: number) => unwrap("move space", commands.moveSpace(id, index))
+  const deleteSpace = (id: Id) => unwrap("delete space", commands.deleteSpace(id))
+
+  /** Frees every loaded tab of the space but the one on screen (HIG: don't take away what people look at). */
+  function unloadSpace(id: Id) {
+    const target = tabs?.spaces.find((s) => s.id === id)
+    if (!target) return
+    for (const tab of tabsOf(target)) {
+      if (tab.isLoaded && tab.id !== activeTabId) unwrap("unload space", commands.unloadTab(tab.id))
+    }
   }
   const { open, toggleSidebar } = useSidebar()
   // shadcn's Ctrl+B only hears keys while the UI has focus; this covers the website having it.
@@ -141,7 +162,7 @@ export function AppSidebar() {
   )
   useContentCutout("sidebar", getSidebarCard, open ? 0 : 1)
   // Dragging tabs between Swatches, pinned and temp tabs (docs/design/drag-and-drop.md).
-  const tabDrag = useTabDrag({ tabs, space, getSidebar: getSidebarCard })
+  const tabDrag = useTabDrag({ tabs, space, getSidebar: getSidebarCard, onSpaceListOpen: setSpaceListOpen })
   const dropTarget = tabDrag.target
 
   const rowActions: TabRowActions = {
@@ -188,8 +209,8 @@ export function AppSidebar() {
         </div>
       </SidebarHeader>
 
-      {/* Right-clicking the sidebar body opens Zen's sidebar menu. */}
-      <SidebarContextMenu onNewTab={newTab} onNewSpace={newSpace} className="flex min-h-0 flex-1 flex-col">
+      {/* Right-clicking empty sidebar space opens the sidebar's menu (catalog area "sidebar"). */}
+      <SidebarContextMenu onNewTab={newTab} className="flex min-h-0 flex-1 flex-col">
       <SidebarContent className="gap-0 overflow-hidden">
         <DndContext {...tabDrag.context}>
         <ScrollArea className="flex-1" viewportClassName="pt-2">
@@ -204,13 +225,22 @@ export function AppSidebar() {
                 draggedTabId={tabDrag.draggedTabId}
                 insertIndex={tabDrag.swatchIndex}
               />
+              {/* The shown space's title: a pop-up button over its own tabs (see the feature for why). */}
               <SpaceSwitcher
                 spaces={tabs.spaces}
                 activeSpaceId={space.id}
-                onSelect={switchSpace}
+                shownTabId={activeTabId}
+                onSelect={switchToSpace}
+                onCreate={newSpace}
+                onRename={renameSpace}
+                onChangeIcon={changeSpaceIcon}
+                onMove={moveSpace}
+                onUnload={unloadSpace}
+                onDelete={deleteSpace}
                 renamingSpaceId={renamingSpaceId}
                 onRenamingChange={setRenamingSpaceId}
-                onRename={(id, name) => updateSpace(id, name)}
+                listOpen={spaceListOpen}
+                onListOpenChange={setSpaceListOpen}
                 dropSpaceId={tabDrag.dropSpaceId}
               />
               {/* Keyed by space: switching swaps the whole list instead of animating every folder. */}
@@ -261,4 +291,9 @@ export function AppSidebar() {
     </Sidebar>
     </>
   )
+}
+
+/** Every tab a space holds: pinned, in folders, temp. */
+function tabsOf(space: Space) {
+  return [...space.items.flatMap((item) => (item.kind === "tab" ? [item.tab] : item.folder.tabs)), ...space.tempTabs]
 }

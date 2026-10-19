@@ -6,6 +6,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
 import { SidebarMenu, SidebarMenuButton, SidebarMenuItem } from "@/components/ui/sidebar"
+import { menuLabel } from "@/shared"
 
 /** Small icon-only pills, as in the design. */
 const action = "h-6 w-7 justify-center bg-sidebar-foreground/5 p-0 hover:bg-sidebar-foreground/8 [&_svg]:size-3.5"
@@ -47,8 +48,10 @@ export function BottomActions({ hasTempTabs, onTrashAll, onAddSpace, onAddTab }:
           </DropdownMenuTrigger>
           {/* The website webview is drawn over everything right of the sidebar: open upwards, end-aligned, so the menu stays inside it. */}
           <DropdownMenuContent side="top" align="end">
-            <DropdownMenuItem onClick={onAddSpace}>Add space</DropdownMenuItem>
-            <DropdownMenuItem onClick={onAddTab}>Add tab</DropdownMenuItem>
+            {/* Catalog area "add". A pull-down is a regular menu: what isn't built yet shows dimmed (HIG menus.md). */}
+            <DropdownMenuItem onClick={onAddTab}>{menuLabel("add", "newTab")}</DropdownMenuItem>
+            <DropdownMenuItem disabled>{menuLabel("add", "newFolder")}</DropdownMenuItem>
+            <DropdownMenuItem onClick={onAddSpace}>{menuLabel("add", "newSpace")}</DropdownMenuItem>
           </DropdownMenuContent>
         </DropdownMenu>
       </SidebarMenuItem>

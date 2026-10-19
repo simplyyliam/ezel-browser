@@ -17,7 +17,9 @@ export type TabDropZone =
   | { kind: "swatches" }
   | { kind: "pinned" }
   | { kind: "temp" }
-  /** Hovering switches to the space; dropping on it does nothing. */
+  /** The space title: resting on it springs the spaces list open (macOS spring-loading). */
+  | { kind: "spaces" }
+  /** A space in that list: resting on it switches to it. Dropping on either does nothing. */
   | { kind: "space"; spaceId: Id }
 
 /**

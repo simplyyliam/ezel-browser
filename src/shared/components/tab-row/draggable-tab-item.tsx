@@ -3,7 +3,7 @@ import { cn } from "@/lib/utils";
 import { DROP_ROW, useTabDraggable, type TabDragSource } from "../../tab-dnd";
 import type { Id, Tab } from "../../types";
 import { DropIndicator } from "../drop-indicator/drop-indicator";
-import { TabContextMenu, type TabMenu } from "../tab-context-menu/tab-context-menu";
+import { TabContextMenu, type MenuGroups } from "../tab-context-menu/tab-context-menu";
 import { TabRow } from "./tab-row";
 
 /** What every tab row in the sidebar's lists needs from the widget, passed through features as one prop. */
@@ -13,7 +13,7 @@ export interface TabRowActions {
   /** Temp tabs are removed; pinned tabs only unload. */
   onClose: (tabId: Id) => void;
   /** The tab's right-click menu. */
-  menuFor: (tabId: Id) => TabMenu;
+  menuFor: (tabId: Id) => MenuGroups;
   /** The tab whose name is being edited as an address, and the text it starts with. */
   editing: { tabId: Id; value: string } | null;
   onEdit: (tabId: Id) => void;

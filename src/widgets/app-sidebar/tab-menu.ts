@@ -1,21 +1,12 @@
-import {
-  activateTab,
-  closeTab,
-  moveTab,
-  openTab,
-  reload,
-  unloadTab,
-  type Id,
-  type Space,
-  type Tab,
-  type TabsState,
-} from "@/shared"
-import type { TabMenu, TabMenuItem } from "@/shared/components"
+import { commands } from "@/shared/bindings"
+import { menuLabel, reportError, unwrap, type Id, type Space, type Tab, type TabsState } from "@/shared"
+import type { MenuEntry, MenuGroups } from "@/shared/components"
 import { hasFreeSlot, insertSwatch, swatchOrder } from "./swatch-moves"
 
-// The tab's right-click menu. Studied from Zen's tab menu (docs/design/context-menus.md, "Tab
-// menu"): only what any browser has (Firefox's own tab menu, which Zen builds on), plus Ezel's
-// Swatches and address editing. Zen's own additions (folders, split view, labels, icons) are left out.
+// The right-click menus of tab rows and swatches. Items, groups and labels come from the menu
+// catalog (shared/menus/catalog.ts, areas "tab" and "swatch"): browser-standard items plus Ezel's
+// Swatches and address editing. Items that don't apply are left out, not dimmed (HIG
+// context-menus.md).
 
 /** Where a tab lives: what its menu can offer depends on it. */
 type Place =
@@ -53,120 +44,164 @@ type TabMenuContext = {
   onOpened: (tabId: Id) => void
 }
 
-/** Logs a failed command; the menu has already closed, and the state is the backend's anyway. */
-const run = (action: () => Promise<unknown>) => () => {
-  action().catch((error) => console.error("tab menu:", error))
+/** Runs a menu action; failures are reported (the menu has closed, and state is the backend's anyway). */
+const run = (action: string, task: () => Promise<unknown>) => () => {
+  task().catch((error) => reportError(action, error))
 }
 
-export function tabMenu(tabId: Id, { tabs, activeSpaceId, onEdit, onOpened }: TabMenuContext): TabMenu {
+export function tabMenu(tabId: Id, { tabs, activeSpaceId, onEdit, onOpened }: TabMenuContext): MenuGroups {
   const found = locate(tabs, tabId)
   if (!found) return []
   const { tab, place } = found
+  const area = place.kind === "swatch" ? "swatch" : "tab"
   const temp = place.kind === "temp" ? place : null
+  const shown = tab.id === tabs.activeTabId
   const swatchCount = swatchOrder(tabs.swatches).length
 
   /** A new temp tab right below a temp tab; otherwise on top of the temp tabs, the first place below. */
-  const openBelow = async (input?: string) => {
-    const id = await openTab(input)
-    if (temp) await moveTab(id, { kind: "temp", spaceId: temp.space.id, index: temp.index + 1 })
+  const openBelow = async (input: string | null) => {
+    const id = await unwrap("open tab", commands.openTab(input))
+    if (id !== null && temp) {
+      await unwrap("place new tab", commands.moveTab(id, { kind: "temp", spaceId: temp.space.id, index: temp.index + 1 }))
+    }
     return id
   }
+  const move = (action: string, to: Parameters<typeof commands.moveTab>[1]) =>
+    run(action, () => unwrap(action, commands.moveTab(tab.id, to)))
 
-  const open: TabMenuItem[] = [
-    { label: "New Tab Below", onSelect: run(async () => onOpened(await openBelow())) },
-    { label: "Duplicate Tab", onSelect: run(() => openBelow(tab.url)) },
-  ]
-
-  const page: TabMenuItem[] = [
-    // `reload` acts on the shown tab only.
-    ...(tab.id === tabs.activeTabId && tab.isLoaded ? [{ label: "Reload Tab", onSelect: run(reload) }] : []),
-    { label: "Copy Link", onSelect: run(() => navigator.clipboard.writeText(tab.url)) },
-  ]
-
-  const keep: TabMenuItem[] = [
-    // The name field lives in list rows; swatches have no room for it.
-    ...(place.kind !== "swatch" ? [{ label: "Change URL…", onSelect: () => onEdit(tab.id) }] : []),
-    place.kind === "swatch"
-      ? {
-          label: "Remove from Swatches",
-          onSelect: run(() => moveTab(tab.id, { kind: "temp", spaceId: activeSpaceId, index: null })),
-        }
-      : {
-          label: "Add to Swatches",
-          hint: `${swatchCount} / ${SWATCH_SLOTS}`,
-          disabled: !hasFreeSlot(tabs.swatches),
-          // After the last swatch: a list to the user, though the backend has slots.
-          onSelect: run(() => insertSwatch(tab.id, swatchCount, tabs.swatches)),
-        },
-    ...(temp
+  const pageGroup: MenuEntry[] = [
+    ...(place.kind !== "swatch"
       ? [
           {
-            label: "Pin Tab",
-            onSelect: run(() => moveTab(tab.id, { kind: "pinned", spaceId: temp.space.id, folderId: null, index: null })),
+            label: menuLabel("tab", "newTabBelow"),
+            onSelect: run("new tab below", async () => {
+              const id = await openBelow(null)
+              if (id !== null) onOpened(id)
+            }),
           },
         ]
-      : place.kind === "pinned" || place.kind === "folder"
-        ? [
-            {
-              label: "Unpin Tab",
-              onSelect: run(() => moveTab(tab.id, { kind: "temp", spaceId: place.space.id, index: null })),
-            },
-          ]
-        : []),
+      : []),
+    { label: menuLabel(area, "duplicate"), onSelect: run("duplicate tab", () => openBelow(tab.url)) },
+    // `reload` acts on the shown tab only.
+    ...(shown && tab.isLoaded
+      ? [{ label: menuLabel(area, "reload"), onSelect: run("reload", () => unwrap("reload", commands.reload())) }]
+      : []),
+    { label: menuLabel(area, "copyLink"), onSelect: run("copy link", () => navigator.clipboard.writeText(tab.url)) },
   ]
 
-  const arrange: TabMenuItem[] = [
-    ...(tab.isLoaded ? [{ label: "Unload Tab", onSelect: run(() => unloadTab(tab.id)) }] : []),
-    ...(place.kind === "temp" || place.kind === "pinned" ? [moveWithin(tab, place)] : []),
-  ]
+  const keepGroup: MenuEntry[] =
+    place.kind === "swatch"
+      ? [
+          {
+            label: menuLabel("swatch", "removeFromSwatches"),
+            onSelect: move("remove from swatches", { kind: "temp", spaceId: activeSpaceId, index: null }),
+          },
+        ]
+      : [
+          { label: menuLabel("tab", "changeUrl"), onSelect: () => onEdit(tab.id) },
+          ...(hasFreeSlot(tabs.swatches)
+            ? [
+                {
+                  label: menuLabel("tab", "addToSwatches"),
+                  hint: `${swatchCount} / ${SWATCH_SLOTS}`,
+                  // After the last swatch: a list to the user, though the backend has slots.
+                  onSelect: run("add to swatches", () => insertSwatch(tab.id, swatchCount, tabs.swatches)),
+                },
+              ]
+            : []),
+          temp
+            ? {
+                label: menuLabel("tab", "pin"),
+                onSelect: move("pin tab", { kind: "pinned", spaceId: temp.space.id, folderId: null, index: null }),
+              }
+            : {
+                label: menuLabel("tab", "unpin"),
+                onSelect: move("unpin tab", { kind: "temp", spaceId: place.space.id, index: null }),
+              },
+          ...(place.kind === "temp" || place.kind === "pinned" ? [moveWithin(tab, place)] : []),
+          moveToSpace(tab, place, tabs.spaces),
+        ]
 
-  const close: TabMenuItem[] = [
-    { label: "Close Tab", onSelect: run(() => closeTab(tab.id)) },
+  const unloadEntry: MenuEntry[] = tab.isLoaded
+    ? [{ label: menuLabel(area, "unload"), onSelect: run("unload tab", () => unwrap("unload tab", commands.unloadTab(tab.id))) }]
+    : []
+
+  const closeGroup: MenuEntry[] = [
+    { label: menuLabel(area, "close"), onSelect: run("close tab", () => unwrap("close tab", commands.closeTab(tab.id))) },
     ...(temp ? [closeMultiple(tab, temp.space, temp.index)] : []),
   ]
 
-  return [open, page, keep, arrange, close]
+  // Three groups (HIG: about three): the page, keeping and placing the tab, closing it.
+  return [pageGroup, [...keepGroup, ...unloadEntry], closeGroup]
 }
 
-/** Move Tab ▸ to the start or end of its own list (Firefox's "Move Tab"). */
-function moveWithin(tab: Tab, place: Extract<Place, { kind: "temp" | "pinned" }>): TabMenuItem {
+/** Move Tab ▸ to the start or end of its own list. Only the moves that change something. */
+function moveWithin(tab: Tab, place: Extract<Place, { kind: "temp" | "pinned" }>): MenuEntry {
   const count = place.kind === "temp" ? place.space.tempTabs.length : place.space.items.length
   const to = (index: number) =>
-    run(() =>
-      moveTab(
-        tab.id,
-        place.kind === "temp"
-          ? { kind: "temp", spaceId: place.space.id, index }
-          : { kind: "pinned", spaceId: place.space.id, folderId: null, index },
+    run("move tab", () =>
+      unwrap(
+        "move tab",
+        commands.moveTab(
+          tab.id,
+          place.kind === "temp"
+            ? { kind: "temp", spaceId: place.space.id, index }
+            : { kind: "pinned", spaceId: place.space.id, folderId: null, index },
+        ),
       ),
     )
   return {
-    label: "Move Tab",
+    label: menuLabel("tab", "moveTab"),
     items: [
-      { label: "Move to Start", disabled: place.index === 0, onSelect: to(0) },
+      ...(place.index > 0 ? [{ label: "Move to Start", onSelect: to(0) }] : []),
       // `move_tab` takes the tab out first: the last index is then count - 1.
-      { label: "Move to End", disabled: place.index === count - 1, onSelect: to(count - 1) },
+      ...(place.index < count - 1 ? [{ label: "Move to End", onSelect: to(count - 1) }] : []),
     ],
   }
 }
 
+/** Move to Space ▸ the other spaces: a temp tab stays temp, a pinned one stays pinned (at the end). */
+function moveToSpace(tab: Tab, place: Exclude<Place, { kind: "swatch" }>, spaces: Space[]): MenuEntry {
+  const pinned = place.kind !== "temp"
+  return {
+    label: menuLabel("tab", "moveToSpace"),
+    items: spaces
+      .filter((space) => space.id !== place.space.id)
+      .map((space) => ({
+        label: space.name,
+        onSelect: run("move to space", () =>
+          unwrap(
+            "move to space",
+            commands.moveTab(
+              tab.id,
+              pinned
+                ? { kind: "pinned", spaceId: space.id, folderId: null, index: null }
+                : { kind: "temp", spaceId: space.id, index: null },
+            ),
+          ),
+        ),
+      })),
+  }
+}
+
 /** Close Multiple Tabs ▸ (Firefox): temp tabs only; pinned tabs never close in bulk. */
-function closeMultiple(tab: Tab, space: Space, index: number): TabMenuItem {
-  const closeAll = (list: Tab[]) => run(() => Promise.all(list.map((t) => closeTab(t.id))))
+function closeMultiple(tab: Tab, space: Space, index: number): MenuEntry {
+  const closeAll = (list: Tab[]) =>
+    run("close tabs", () => Promise.all(list.map((t) => unwrap("close tab", commands.closeTab(t.id)))))
   const above = space.tempTabs.slice(0, index)
   const below = space.tempTabs.slice(index + 1)
   const others = space.tempTabs.filter((t) => t.id !== tab.id)
   return {
-    label: "Close Multiple Tabs",
+    label: menuLabel("tab", "closeMultiple"),
     items: [
-      { label: "Close Tabs Above", disabled: above.length === 0, onSelect: closeAll(above) },
-      { label: "Close Tabs Below", disabled: below.length === 0, onSelect: closeAll(below) },
-      { label: "Close Other Tabs", disabled: others.length === 0, onSelect: closeAll(others) },
+      ...(above.length > 0 ? [{ label: "Close Tabs Above", onSelect: closeAll(above) }] : []),
+      ...(below.length > 0 ? [{ label: "Close Tabs Below", onSelect: closeAll(below) }] : []),
+      ...(others.length > 0 ? [{ label: "Close Other Tabs", onSelect: closeAll(others) }] : []),
     ],
   }
 }
 
 /** Selecting a tab first when needed (the address field acts on the shown tab). */
 export async function showTab(tabs: TabsState, tabId: Id) {
-  if (tabs.activeTabId !== tabId) await activateTab(tabId)
+  if (tabs.activeTabId !== tabId) await unwrap("show tab", commands.activateTab(tabId))
 }

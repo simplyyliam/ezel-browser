@@ -12,27 +12,68 @@ import {
 } from "@/components/ui/context-menu";
 import type { Id } from "../../types";
 
-// The tab's right-click menu (docs/design/context-menus.md, "Tab menu"). The widget decides the
-// items (it knows where the tab lives and holds the commands); this only draws them.
+// Context menus built from data: the widget decides the items (it knows where things live and
+// holds the commands), these components only draw them. What goes in which menu:
+// shared/menus/catalog.ts.
 
-export type TabMenuItem =
+export type MenuEntry =
   | {
       label: string;
       onSelect: () => void;
-      disabled?: boolean;
-      /** Right-aligned detail, e.g. "3 / 8". */
+      /** Right-aligned detail that explains availability, e.g. "3 / 8". Never a shortcut. */
       hint?: string;
+      /** Last in the menu, in the destructive colour (HIG context-menus.md). */
+      destructive?: boolean;
     }
-  /** A submenu: only for picking a variant (Move Tab ▸, Close Multiple Tabs ▸). */
-  | { label: string; items: TabMenuItem[] };
+  /** A submenu, one level: Move Tab ▸, Close Multiple Tabs ▸. */
+  | { label: string; items: MenuEntry[] };
 
-/** Groups of items, drawn with separators between them. Empty groups are skipped. */
-export type TabMenu = TabMenuItem[][];
+/**
+ * Groups of entries, drawn with separators between them. Items that don't apply are left out by
+ * whoever builds the menu (hidden, not dimmed); empty groups and submenus are skipped.
+ */
+export type MenuGroups = MenuEntry[][];
+
+/** The entries of an open context menu. */
+export function ContextMenuEntries({ groups }: { groups: MenuGroups }) {
+  const shown = groups
+    .map((group) => group.filter((entry) => !("items" in entry) || entry.items.length > 0))
+    .filter((group) => group.length > 0);
+  return shown.map((group, index) => (
+    <Fragment key={index}>
+      {index > 0 && <ContextMenuSeparator />}
+      {group.map((entry) => (
+        <Entry key={entry.label} entry={entry} />
+      ))}
+    </Fragment>
+  ));
+}
+
+function Entry({ entry }: { entry: MenuEntry }) {
+  if ("items" in entry) {
+    return (
+      <ContextMenuSub>
+        <ContextMenuSubTrigger>{entry.label}</ContextMenuSubTrigger>
+        <ContextMenuSubContent>
+          {entry.items.map((sub) => (
+            <Entry key={sub.label} entry={sub} />
+          ))}
+        </ContextMenuSubContent>
+      </ContextMenuSub>
+    );
+  }
+  return (
+    <ContextMenuItem variant={entry.destructive ? "destructive" : "default"} onClick={entry.onSelect}>
+      {entry.label}
+      {entry.hint && <ContextMenuShortcut className="tracking-normal tabular-nums">{entry.hint}</ContextMenuShortcut>}
+    </ContextMenuItem>
+  );
+}
 
 interface TabContextMenuProps {
   tabId: Id;
   /** Builds the menu when it opens, so closed menus cost nothing. */
-  menuFor: (tabId: Id) => TabMenu;
+  menuFor: (tabId: Id) => MenuGroups;
   /** The row or cell that opens the menu on right-click. */
   children: ReactNode;
   className?: string;
@@ -46,40 +87,7 @@ export const TabContextMenu = ({ tabId, menuFor, children, className }: TabConte
   <ContextMenu>
     <ContextMenuTrigger className={className}>{children}</ContextMenuTrigger>
     <ContextMenuContent className="min-w-48">
-      <TabMenuItems menu={menuFor(tabId)} />
+      <ContextMenuEntries groups={menuFor(tabId)} />
     </ContextMenuContent>
   </ContextMenu>
 );
-
-function TabMenuItems({ menu }: { menu: TabMenu }) {
-  const groups = menu.filter((group) => group.length > 0);
-  return groups.map((group, index) => (
-    <Fragment key={index}>
-      {index > 0 && <ContextMenuSeparator />}
-      {group.map((item) => (
-        <MenuItem key={item.label} item={item} />
-      ))}
-    </Fragment>
-  ));
-}
-
-function MenuItem({ item }: { item: TabMenuItem }) {
-  if ("items" in item) {
-    return (
-      <ContextMenuSub>
-        <ContextMenuSubTrigger>{item.label}</ContextMenuSubTrigger>
-        <ContextMenuSubContent>
-          {item.items.map((sub) => (
-            <MenuItem key={sub.label} item={sub} />
-          ))}
-        </ContextMenuSubContent>
-      </ContextMenuSub>
-    );
-  }
-  return (
-    <ContextMenuItem disabled={item.disabled} onClick={item.onSelect}>
-      {item.label}
-      {item.hint && <ContextMenuShortcut className="tracking-normal tabular-nums">{item.hint}</ContextMenuShortcut>}
-    </ContextMenuItem>
-  );
-}
