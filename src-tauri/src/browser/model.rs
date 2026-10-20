@@ -29,11 +29,12 @@ pub struct TsId(#[specta(type = u32)] pub Id);
 pub const SWATCH_SLOTS: usize = 8;
 
 /// Most loaded webviews kept at once, the active one included. Beyond this the least recently used
-/// background tabs are unloaded (they keep their place and reload when selected).
-pub const MAX_LOADED_TABS: usize = 8;
+/// background tabs are unloaded (they keep their place and reload when selected). 5, down from 8:
+/// each loaded tab costs a renderer (docs/perf/results.md).
+pub const MAX_LOADED_TABS: usize = 5;
 
-/// Background tabs unused for this long are unloaded.
-pub const IDLE_UNLOAD_MS: u64 = 30 * 60 * 1000;
+/// Background tabs unused for this long are unloaded. 5 minutes, down from 30 (docs/perf/results.md).
+pub const IDLE_UNLOAD_MS: u64 = 5 * 60 * 1000;
 
 /// Ctrl+Tab presses this close together continue one walk through a frozen most-recently-used list,
 /// as if Ctrl were still held (the website's key-ups never reach us); a longer pause starts over.

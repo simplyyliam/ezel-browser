@@ -41,8 +41,9 @@ pub use view::{TabView, TabsState};
 const HOME_URL: &str = "https://google.com";
 const SEARCH_URL: &str = "https://google.com/";
 
-/// How often idle tabs are checked for unloading.
-const IDLE_CHECK: Duration = Duration::from_secs(60);
+/// How often idle tabs are checked for unloading: a tab rests within 15s of reaching
+/// `IDLE_UNLOAD_MS`. The check is a lock and a scan of the loaded tabs, so it costs nothing.
+const IDLE_CHECK: Duration = Duration::from_secs(15);
 
 const TAB_LABEL_PREFIX: &str = "tab-";
 
