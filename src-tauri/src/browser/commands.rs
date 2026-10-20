@@ -138,6 +138,19 @@ pub fn copy_page_url(app: AppHandle) -> Result<String> {
   Err(AppError::new(ErrorCode::Unsupported, "copying from Rust works only on Windows for now"))
 }
 
+/// The load meter: Ezel's memory in all and per loaded tab (approximate; see `browser::memory`).
+#[tauri::command]
+#[specta::specta]
+pub async fn get_memory(app: AppHandle) -> Result<super::memory::MemoryReport> {
+  #[cfg(windows)]
+  return super::memory_report(&app).await;
+  #[cfg(not(windows))]
+  {
+    let _ = app;
+    Err(AppError::new(ErrorCode::Unsupported, "the load meter reads WebView2's processes: Windows only for now"))
+  }
+}
+
 // ---- Tabs ----
 
 /// Everything the sidebar shows. Also emitted as "tabs-changed" after every change.

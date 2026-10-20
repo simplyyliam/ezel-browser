@@ -6,9 +6,11 @@ use tauri::webview::PlatformWebview;
 use crate::hotkeys::KeyPress;
 use webview2_com::{
   take_pwstr, AcceleratorKeyPressedEventHandler, CallDevToolsProtocolMethodCompletedHandler, FaviconChangedEventHandler, IsDocumentPlayingAudioChangedEventHandler,
-  PermissionRequestedEventHandler,
+  GetProcessExtendedInfosCompletedHandler, PermissionRequestedEventHandler,
   Microsoft::Web::WebView2::Win32::{
-    ICoreWebView2, ICoreWebView2PermissionRequestedEventArgs3, ICoreWebView2Settings4, ICoreWebView2_15, ICoreWebView2_19, ICoreWebView2_8,
+    ICoreWebView2, ICoreWebView2Environment13, ICoreWebView2FrameInfo2, ICoreWebView2PermissionRequestedEventArgs3,
+    ICoreWebView2ProcessExtendedInfoCollection, ICoreWebView2Settings4, ICoreWebView2_15, ICoreWebView2_19, ICoreWebView2_2,
+    ICoreWebView2_20, ICoreWebView2_8,
     COREWEBVIEW2_KEY_EVENT_KIND, COREWEBVIEW2_PERMISSION_KIND, COREWEBVIEW2_PERMISSION_KIND_NOTIFICATIONS, COREWEBVIEW2_PERMISSION_STATE,
     COREWEBVIEW2_PERMISSION_STATE_DENY,
     COREWEBVIEW2_KEY_EVENT_KIND_KEY_DOWN, COREWEBVIEW2_KEY_EVENT_KIND_SYSTEM_KEY_DOWN, COREWEBVIEW2_MEMORY_USAGE_TARGET_LEVEL_LOW,
@@ -107,6 +109,85 @@ pub fn quiet_defaults(pw: &PlatformWebview) {
   unsafe {
     let _ = core.add_PermissionRequested(&handler, &mut token);
   }
+}
+
+/// The page's main-frame id (WebView2 1.0.2210+), the id WebView2's process list uses for the
+/// frames each process renders. `None` before the first navigation (WebView2 reports 0 then).
+pub fn main_frame_id(pw: &PlatformWebview) -> Option<u32> {
+  let core = core(pw)?.cast::<ICoreWebView2_20>().ok()?;
+  let mut id = 0u32;
+  // SAFETY: main thread, live webview.
+  unsafe { core.FrameId(&mut id).ok()? };
+  (id != 0).then_some(id)
+}
+
+/// Lists every process of the WebView2 environment (WebView2 1.0.2420+) with the top-level frame
+/// ids of the frames it renders, then calls `done` (on the main thread; an empty list on failure).
+pub fn process_frames(pw: &PlatformWebview, done: impl FnOnce(Vec<(u32, Vec<u32>)>) + 'static) {
+  let env = core(pw)
+    .and_then(|c| c.cast::<ICoreWebView2_2>().ok())
+    // SAFETY: main thread, live webview.
+    .and_then(|c| unsafe { c.Environment() }.ok())
+    .and_then(|e| e.cast::<ICoreWebView2Environment13>().ok());
+  let Some(env) = env else { return done(vec![]) };
+  let handler = GetProcessExtendedInfosCompletedHandler::create(Box::new(move |result, list| {
+    let processes = match (result, list) {
+      // SAFETY: WebView2 calls this on the main thread with a live collection.
+      (Ok(()), Some(list)) => unsafe { read_processes(&list) },
+      _ => vec![],
+    };
+    done(processes);
+    Ok(())
+  }));
+  // SAFETY: main thread, live environment.
+  unsafe {
+    let _ = env.GetProcessExtendedInfos(&handler);
+  }
+}
+
+/// (process id, top-level frame ids) per process. Each frame is followed up to its top-level frame,
+/// so a cross-site iframe's process counts for the tab whose page holds it.
+unsafe fn read_processes(list: &ICoreWebView2ProcessExtendedInfoCollection) -> Vec<(u32, Vec<u32>)> {
+  let mut count = 0u32;
+  if unsafe { list.Count(&mut count) }.is_err() {
+    return vec![];
+  }
+  (0..count)
+    .filter_map(|i| {
+      let info = unsafe { list.GetValueAtIndex(i) }.ok()?;
+      let mut pid = 0i32;
+      unsafe { info.ProcessInfo().ok()?.ProcessId(&mut pid).ok()? };
+      let mut roots = vec![];
+      if let Ok(frames) = unsafe { info.AssociatedFrameInfos() }.and_then(|f| unsafe { f.GetIterator() }) {
+        let mut has = Default::default();
+        while unsafe { frames.HasCurrent(&mut has) }.is_ok() && has.as_bool() {
+          if let Some(root) = unsafe { frames.GetCurrent() }.ok().and_then(|f| f.cast::<ICoreWebView2FrameInfo2>().ok()).and_then(|f| unsafe { top_frame_id(f) }) {
+            if !roots.contains(&root) {
+              roots.push(root);
+            }
+          }
+          if unsafe { frames.MoveNext(&mut has) }.is_err() {
+            break;
+          }
+        }
+      }
+      Some((pid as u32, roots))
+    })
+    .collect()
+}
+
+/// The id of the top-level frame above `frame` (itself if it's one).
+unsafe fn top_frame_id(mut frame: ICoreWebView2FrameInfo2) -> Option<u32> {
+  // Frames nest a few levels at most; the cap only guards against a malformed chain.
+  for _ in 0..32 {
+    match unsafe { frame.ParentFrameInfo() }.ok().and_then(|p| p.cast::<ICoreWebView2FrameInfo2>().ok()) {
+      Some(parent) => frame = parent,
+      None => break,
+    }
+  }
+  let mut id = 0u32;
+  unsafe { frame.FrameId(&mut id).ok()? };
+  (id != 0).then_some(id)
 }
 
 /// Hidden tabs ask WebView2 to trim memory (it may swap out or drop caches); the shown tab gets
