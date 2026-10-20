@@ -102,6 +102,14 @@ fn emit_to_ui<R: Runtime, H: Emitter<R> + Manager<R>, E: tauri_specta::Event + S
 /// Thin overlay scrollbars that auto-hide and have no track (WebView2 125+; ignored elsewhere).
 const SCROLL_BAR_STYLE: ScrollBarStyle = ScrollBarStyle::FluentOverlay;
 
+/// Chromium arguments of the one WebView2 environment every webview shares: the UI and every tab
+/// must pass exactly these, or creating a webview fails. wry's defaults (no mini menu, PDF UI or
+/// SmartScreen), plus a quiet default: media may play sound on its own only after the page got a
+/// click or key press (Chromium's `document-user-activation-required`); muted autoplay still runs.
+/// WebView2 has no API setting for autoplay, so this is the one place it can be set (Windows only).
+const BROWSER_ARGS: &str =
+  "--disable-features=msWebOOUI,msPdfOOUI,msSmartScreenProtection --autoplay-policy=document-user-activation-required";
+
 /// Cached Windhawk settings (re-read only when the registry changes) and the last reported radius.
 #[derive(Default)]
 struct RadiusState {
@@ -170,8 +178,12 @@ fn build_window(app: &AppHandle) -> tauri::Result<()> {
 
   let ui = ui_bounds(&window)?;
   window.add_child(
-    // The UI and every tab share a data directory, so they must use the same scrollbar style.
-    WebviewBuilder::new(UI_LABEL, WebviewUrl::App("index.html".into())).scroll_bar_style(SCROLL_BAR_STYLE),
+    // The UI and every tab share a data directory, so they must use the same scrollbar style and
+    // browser arguments. Autofill is profile-wide in WebView2: off here too (see browser::create_webview).
+    WebviewBuilder::new(UI_LABEL, WebviewUrl::App("index.html".into()))
+      .scroll_bar_style(SCROLL_BAR_STYLE)
+      .additional_browser_args(BROWSER_ARGS)
+      .general_autofill_enabled(false),
     ui.position,
     ui.size,
   )?;
@@ -248,6 +260,13 @@ pub fn run() {
 #[cfg(test)]
 mod tests {
   use super::*;
+
+  #[test]
+  fn browser_args_keep_wrys_defaults_and_block_autoplay_with_sound() {
+    // Overriding the arguments drops wry's own; they must stay.
+    assert!(BROWSER_ARGS.contains("--disable-features=msWebOOUI,msPdfOOUI,msSmartScreenProtection"));
+    assert!(BROWSER_ARGS.contains("--autoplay-policy=document-user-activation-required"));
+  }
 
   /// Regenerates the real bindings file, then checks the contract is in it.
   #[test]

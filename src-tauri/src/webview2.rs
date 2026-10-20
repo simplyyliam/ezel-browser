@@ -6,8 +6,11 @@ use tauri::webview::PlatformWebview;
 use crate::hotkeys::KeyPress;
 use webview2_com::{
   take_pwstr, AcceleratorKeyPressedEventHandler, CallDevToolsProtocolMethodCompletedHandler, FaviconChangedEventHandler, IsDocumentPlayingAudioChangedEventHandler,
+  PermissionRequestedEventHandler,
   Microsoft::Web::WebView2::Win32::{
-    ICoreWebView2, ICoreWebView2_15, ICoreWebView2_19, ICoreWebView2_8, COREWEBVIEW2_KEY_EVENT_KIND,
+    ICoreWebView2, ICoreWebView2PermissionRequestedEventArgs3, ICoreWebView2Settings4, ICoreWebView2_15, ICoreWebView2_19, ICoreWebView2_8,
+    COREWEBVIEW2_KEY_EVENT_KIND, COREWEBVIEW2_PERMISSION_KIND, COREWEBVIEW2_PERMISSION_KIND_NOTIFICATIONS, COREWEBVIEW2_PERMISSION_STATE,
+    COREWEBVIEW2_PERMISSION_STATE_DENY,
     COREWEBVIEW2_KEY_EVENT_KIND_KEY_DOWN, COREWEBVIEW2_KEY_EVENT_KIND_SYSTEM_KEY_DOWN, COREWEBVIEW2_MEMORY_USAGE_TARGET_LEVEL_LOW,
     COREWEBVIEW2_MEMORY_USAGE_TARGET_LEVEL_NORMAL, COREWEBVIEW2_PHYSICAL_KEY_STATUS,
   },
@@ -60,6 +63,49 @@ pub fn open_devtools(pw: &PlatformWebview) {
   // SAFETY: main thread, live webview.
   unsafe {
     let _ = core.OpenDevToolsWindow();
+  }
+}
+
+/// What Ezel answers a website's permission request with, without asking: `None` leaves it to
+/// WebView2 (its own prompt). Notifications are denied until there's a permissions UI (calm: no
+/// "allow notifications?" prompts).
+fn quiet_permission(kind: COREWEBVIEW2_PERMISSION_KIND) -> Option<COREWEBVIEW2_PERMISSION_STATE> {
+  (kind == COREWEBVIEW2_PERMISSION_KIND_NOTIFICATIONS).then_some(COREWEBVIEW2_PERMISSION_STATE_DENY)
+}
+
+/// Quiet defaults for a tab (docs/design/decisions.md, "Quiet defaults"): no password saving (the
+/// "Save password?" bubble) and notification requests denied without a prompt, and not remembered
+/// in the profile so a later permissions UI starts clean. General autofill is off through the
+/// builder (`general_autofill_enabled`); autoplay with sound through the browser arguments.
+// TODO: turn password saving back on with the passwords UI.
+pub fn quiet_defaults(pw: &PlatformWebview) {
+  let Some(core) = core(pw) else { return };
+  // SAFETY: main thread, live webview.
+  unsafe {
+    if let Ok(settings) = core.Settings().and_then(|s| s.cast::<ICoreWebView2Settings4>()) {
+      let _ = settings.SetIsPasswordAutosaveEnabled(false);
+      let _ = settings.SetIsGeneralAutofillEnabled(false);
+    }
+  }
+  let handler = PermissionRequestedEventHandler::create(Box::new(|_, args| {
+    let Some(args) = args else { return Ok(()) };
+    // SAFETY: WebView2 calls this on the main thread with live event args.
+    unsafe {
+      let mut kind = COREWEBVIEW2_PERMISSION_KIND::default();
+      args.PermissionKind(&mut kind)?;
+      if let Some(state) = quiet_permission(kind) {
+        if let Ok(args3) = args.cast::<ICoreWebView2PermissionRequestedEventArgs3>() {
+          let _ = args3.SetSavesInProfile(false);
+        }
+        args.SetState(state)?;
+      }
+    }
+    Ok(())
+  }));
+  let mut token = 0i64;
+  // SAFETY: main thread, live webview.
+  unsafe {
+    let _ = core.add_PermissionRequested(&handler, &mut token);
   }
 }
 
@@ -155,5 +201,21 @@ pub fn forward_shortcuts(pw: &PlatformWebview, on_key: impl Fn(KeyPress) -> bool
   // SAFETY: main thread, live controller.
   unsafe {
     let _ = pw.controller().add_AcceleratorKeyPressed(&handler, &mut token);
+  }
+}
+
+#[cfg(test)]
+mod tests {
+  use super::*;
+  use webview2_com::Microsoft::Web::WebView2::Win32::{
+    COREWEBVIEW2_PERMISSION_KIND_CAMERA, COREWEBVIEW2_PERMISSION_KIND_CLIPBOARD_READ, COREWEBVIEW2_PERMISSION_KIND_GEOLOCATION,
+  };
+
+  #[test]
+  fn notifications_are_denied_and_everything_else_left_to_webview2() {
+    assert_eq!(quiet_permission(COREWEBVIEW2_PERMISSION_KIND_NOTIFICATIONS), Some(COREWEBVIEW2_PERMISSION_STATE_DENY));
+    for kind in [COREWEBVIEW2_PERMISSION_KIND_CAMERA, COREWEBVIEW2_PERMISSION_KIND_GEOLOCATION, COREWEBVIEW2_PERMISSION_KIND_CLIPBOARD_READ] {
+      assert_eq!(quiet_permission(kind), None);
+    }
   }
 }
