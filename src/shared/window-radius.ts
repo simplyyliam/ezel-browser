@@ -1,5 +1,6 @@
 import { useSyncExternalStore } from "react"
-import { getWindowRadius, onWindowRadiusChanged } from "./tauri"
+import { commands, events } from "./bindings"
+import { unwrap } from "./report-error"
 import type { WindowRadius } from "./types"
 
 // One subscription to Rust for the whole app; components read it through useWindowRadius().
@@ -17,13 +18,13 @@ function subscribe(listener: () => void) {
   listeners.add(listener)
   if (!started) {
     started = true
-    onWindowRadiusChanged((next) => {
+    events.windowRadiusChanged.listen((event) => {
       gotEvent = true
-      set(next)
+      set(event.payload)
     })
     // Don't let a slow initial read overwrite a newer event.
-    getWindowRadius().then((next) => {
-      if (!gotEvent) set(next)
+    unwrap("get window radius", commands.getWindowRadius()).then((next) => {
+      if (next && !gotEvent) set(next)
     })
   }
   return () => listeners.delete(listener)

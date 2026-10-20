@@ -17,14 +17,9 @@ import { Swatches } from "@/features/app-sidebar/swatches"
 import { TempTabs } from "@/features/app-sidebar/temp-tabs"
 import { cn } from "@/lib/utils"
 import {
-  activateTab,
   activeSpace,
-  clearTempTabs,
-  closeTab,
-  navigate,
   NEW_SPACE_ICONS,
   openCommandPalette,
-  setFolderCollapsed,
   unwrap,
   useContentCutout,
   useHotkey,
@@ -45,6 +40,13 @@ import { findTab, showTab, tabMenu } from "./tab-menu"
  * shadcn's 32px rows and 8px group padding, with room for four 45px swatches.
  */
 export const SIDEBAR_WIDTH = "244px"
+
+const activateTab = (id: Id) => unwrap("activate tab", commands.activateTab(id))
+const closeTab = (id: Id) => unwrap("close tab", commands.closeTab(id))
+const clearTempTabs = (spaceId: Id) => unwrap("clear temp tabs", commands.clearTempTabs(spaceId))
+const navigate = (input: string) => unwrap("navigate", commands.navigate(input))
+const setFolderCollapsed = (id: Id, collapsed: boolean) =>
+  unwrap("set folder collapsed", commands.setFolderCollapsed(id, collapsed))
 
 /**
  * The left sidebar: shadcn's floating card, positioned against the area below the titlebar

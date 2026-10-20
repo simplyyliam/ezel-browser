@@ -1,6 +1,13 @@
 import { useEffect, useRef } from "react"
 import { cn } from "@/lib/utils"
-import { setContentBounds, setContentRadius, setContentVisible, useWindowRadius } from "@/shared"
+import { unwrap, useWindowRadius } from "@/shared"
+import { commands } from "@/shared/bindings"
+
+const setContentBounds = (x: number, y: number, width: number, height: number) =>
+  unwrap("set content bounds", commands.setContentBounds(x, y, width, height))
+const setContentRadius = (radii: [number, number, number, number]) =>
+  unwrap("set content radius", commands.setContentRadius(radii))
+const setContentVisible = (visible: boolean) => unwrap("set content visible", commands.setContentVisible(visible))
 
 type Rect = { x: number; y: number; width: number; height: number }
 type Radii = [number, number, number, number]
@@ -46,7 +53,7 @@ export function ContentSlot({ className }: ContentSlotProps) {
       const { x, y, width, height } = el.getBoundingClientRect()
       const rect = { x, y, width, height }
       const radii = readRadii(el)
-      const calls: Promise<void>[] = []
+      const calls: Promise<unknown>[] = []
       if (!sameRect(last, rect)) {
         last = rect
         calls.push(setContentBounds(x, y, width, height))

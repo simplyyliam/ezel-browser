@@ -124,7 +124,8 @@ mod tests {
 
   #[test]
   fn saves_debounced_and_loads_back_with_backup_fallback() {
-    let dir = std::env::temp_dir().join(format!("ezel-store-test-{}", std::process::id()));
+    // Inside the crate's target dir, never the system temp folder: tests write only in the repo.
+    let dir = Path::new(env!("CARGO_MANIFEST_DIR")).join("target/test-tmp").join(format!("ezel-store-test-{}", std::process::id()));
     let _ = fs::remove_dir_all(&dir);
     let store = Store::new(dir.clone());
     let mut session = Session::new("https://a.test/", 0);

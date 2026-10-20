@@ -1,6 +1,11 @@
 import { ArrowLeft, ArrowRight, RotateCw } from "lucide-react"
 import { Button } from "@/components/ui/button"
-import { goBack, goForward, reload } from "@/shared"
+import { unwrap } from "@/shared"
+import { commands } from "@/shared/bindings"
+
+const goBack = () => unwrap("go back", commands.goBack())
+const goForward = () => unwrap("go forward", commands.goForward())
+const reload = () => unwrap("reload", commands.reload())
 
 type NavigationProps = {
   canGoBack: boolean
