@@ -36,6 +36,7 @@ fn main() {
       "activate_tab",
       "close_tab",
       "remove_tab",
+      "reopen_closed_tab",
       "unload_tab",
       "cycle_tab",
       "move_tab",

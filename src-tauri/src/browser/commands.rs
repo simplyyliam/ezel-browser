@@ -171,6 +171,19 @@ pub async fn close_tab(app: AppHandle, id: TsId) -> Result<()> {
   update(&app, |m, now| Ok(((), m.close_tab(id.0, now)?)))
 }
 
+/// Ctrl+Shift+T: reopens the most recently closed tab where it was and selects it. Its new id, or
+/// `null` when there's nothing to reopen.
+#[tauri::command]
+#[specta::specta]
+pub async fn reopen_closed_tab(app: AppHandle) -> Result<Option<TsId>> {
+  update(&app, |m, now| {
+    Ok(match m.reopen_closed_tab(now)? {
+      Some((id, effects)) => (Some(TsId(id)), effects),
+      None => (None, vec![]),
+    })
+  })
+}
+
 /// Removes any tab, pinned or not.
 #[tauri::command]
 #[specta::specta]

@@ -21,6 +21,8 @@ pub struct TabsState {
   /// Always `SWATCH_SLOTS` (8) long.
   pub swatches: Vec<Swatch>,
   pub spaces: Vec<SpaceView>,
+  /// How many closed tabs "Reopen Closed Tab" can bring back (0 hides it).
+  pub closed_count: u32,
 }
 
 /// One cell of the Swatches grid; `null` = empty cell.
@@ -103,6 +105,7 @@ impl TabsState {
           temp_tabs: tabs(&space.temp),
         })
         .collect(),
+      closed_count: s.closed.len() as u32,
     }
   }
 }
