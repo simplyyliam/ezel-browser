@@ -104,3 +104,16 @@ Clicking the website gives keyboard focus to its native webview, which has no IP
 - The frontend owns the list (`shared/hotkeys.ts`), because Settings will rebind it. It sends the list to Rust (`set_forwarded_hotkeys`); Rust catches those keys in every tab webview, hides them from the page and emits `hotkey-pressed { id }`. One event for every shortcut, so new ones need no backend work.
 - Shortcuts that open a field (`focusUi`) move OS focus to the UI webview first; JS `focus()` alone can't take focus from another webview.
 - Caught shortcuts override the page's own use of those keys (e.g. Ctrl+B bold in web editors), as in Arc and Zen.
+
+## Quiet defaults (2026-10-20)
+Ezel's "Calm" principle (docs/Ezel-Product-Vision.md, 3.8): no prompts begging for attention, no surprise sound. Each setting and how it's applied:
+
+| Setting | Value | How | Where |
+|---|---|---|---|
+| Password saving ("Save password?" bubble) | off | `ICoreWebView2Settings4::SetIsPasswordAutosaveEnabled(false)` on every tab (profile-wide in WebView2) | `webview2::quiet_defaults` |
+| General autofill (addresses, names, form suggestions) | off | `WebviewBuilder::general_autofill_enabled(false)` on the UI and every tab (wry sets `IsGeneralAutofillEnabled`; profile-wide, so all must agree), and `SetIsGeneralAutofillEnabled(false)` again per tab | `lib.rs`, `browser/mod.rs`, `webview2.rs` |
+| Web notifications | denied, no prompt | `PermissionRequested`: notification requests get `DENY` with `SavesInProfile(false)`, so nothing is remembered and a future permissions UI starts clean. Every other permission still gets WebView2's own prompt. | `webview2::quiet_permission` (tested) |
+| Autoplay with sound | blocked until the page gets a click or key press; muted autoplay still runs | WebView2 has no API setting for it, so Chromium's `--autoplay-policy=document-user-activation-required` browser argument. All webviews share one environment, so the UI and every tab pass the same `BROWSER_ARGS` (wry's defaults included: overriding the arguments drops them). Checked in a dev run: the WebView2 browser process carries the flag. | `lib.rs` `BROWSER_ARGS` |
+
+- Passwords and autofill come back with a passwords UI (TODOs in `browser/mod.rs` and `webview2.rs`). Passwords saved before this change still fill (WebView2 keeps them).
+- Not used: WebView2's `AUTOPLAY` permission kind. It blocks muted autoplay too (hover previews, background videos), which is more than "no sound".
