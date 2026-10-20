@@ -38,6 +38,9 @@ pub const IDLE_UNLOAD_MS: u64 = 30 * 60 * 1000;
 /// as if Ctrl were still held (the website's key-ups never reach us); a longer pause starts over.
 pub const CYCLE_WINDOW_MS: u64 = 1200;
 
+/// Most closed tabs remembered for "Reopen Closed Tab" (Ctrl+Shift+T); the oldest go first.
+pub const MAX_CLOSED_TABS: usize = 25;
+
 /// Bumped when the persisted shape changes incompatibly.
 const SESSION_VERSION: u32 = 1;
 
@@ -95,6 +98,21 @@ pub struct Session {
   pub active_space: Id,
   pub swatches: [Option<Id>; SWATCH_SLOTS],
   pub tabs: HashMap<Id, Tab>,
+  /// Recently closed tabs, the most recent last. Added after version 1 shipped: older files have none.
+  #[serde(default)]
+  pub closed: Vec<ClosedTab>,
+}
+
+/// A removed tab, kept so it can be reopened where it was.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ClosedTab {
+  pub url: String,
+  pub title: Option<String>,
+  pub favicon: Option<String>,
+  pub pinned_url: Option<String>,
+  /// Where it lived: its space (and folder) or swatch slot, and its index there.
+  pub location: TabLocation,
 }
 
 /// Where a tab lives. Also the target of `move_tab`.
@@ -183,6 +201,7 @@ impl Session {
       active_space: space,
       swatches: Default::default(),
       tabs: HashMap::from([(tab, new_tab(tab, home_url, now))]),
+      closed: vec![],
     }
   }
 
@@ -221,6 +240,9 @@ impl Session {
       }),
     );
     self.next_id = self.next_id.max(max_id.max().unwrap_or(0) + 1);
+    // Closed tabs point at places that may be gone; reopening checks them, so only the length matters.
+    let excess = self.closed.len().saturating_sub(MAX_CLOSED_TABS);
+    self.closed.drain(..excess);
     self
   }
 }
@@ -404,10 +426,11 @@ impl Model {
     }
   }
 
-  /// Removes a tab from wherever it lives.
+  /// Removes a tab from wherever it lives. It goes on the closed-tab stack.
   pub fn remove_tab(&mut self, id: Id, now: u64) -> Result<Vec<Effect>> {
     let location = self.locate(id).ok_or_else(|| AppError::not_found(format!("tab {id} not found")))?;
     let mut effects = self.deselect(&[id], now);
+    self.remember_closed(id, location);
     self.detach(id, location);
     self.session.tabs.remove(&id);
     if self.live.remove(&id).is_some() {
@@ -492,10 +515,14 @@ impl Model {
     Ok(())
   }
 
-  /// Trash-all: removes the space's temp tabs only.
+  /// Trash-all: removes the space's temp tabs only. They go on the closed-tab stack bottom first, so
+  /// reopening brings back the top one first and each lands at its old index.
   pub fn clear_temp_tabs(&mut self, space_id: Id, now: u64) -> Result<Vec<Effect>> {
     let ids = self.space(space_id)?.temp.clone();
     let mut effects = self.deselect(&ids, now);
+    for (index, id) in ids.iter().enumerate().rev() {
+      self.remember_closed(*id, TabLocation::Temp { space_id, index: Some(index) });
+    }
     self.space_mut(space_id)?.temp.clear();
     for id in ids {
       self.session.tabs.remove(&id);
@@ -504,6 +531,62 @@ impl Model {
       }
     }
     Ok(effects)
+  }
+
+  /// Ctrl+Shift+T: brings back the most recently closed tab where it was (its space, folder or
+  /// swatch slot, at its old index or the end if the list got shorter) and selects it. A place that
+  /// no longer exists falls back to the end of the same list in its space, then to the active
+  /// space. `None` when nothing is left to reopen.
+  pub fn reopen_closed_tab(&mut self, now: u64) -> Result<Option<(Id, Vec<Effect>)>> {
+    let Some(closed) = self.session.closed.pop() else { return Ok(None) };
+    let to = self.reopen_location(closed.location);
+    let id = self.alloc_id();
+    let tab = Tab { title: closed.title, favicon: closed.favicon, pinned_url: closed.pinned_url, ..new_tab(id, &closed.url, now) };
+    self.session.tabs.insert(id, tab);
+    self.attach(id, to);
+    Ok(Some((id, self.activate(id, now)?)))
+  }
+
+  /// Where a closed tab goes back to, given what still exists.
+  fn reopen_location(&self, was: TabLocation) -> TabLocation {
+    let space_of = |space_id: Id| if self.space(space_id).is_ok() { space_id } else { self.session.active_space };
+    match was {
+      TabLocation::Swatch { slot } => {
+        let free = |s: usize| self.session.swatches.get(s).is_some_and(|x| x.is_none());
+        match (0..SWATCH_SLOTS).find(|s| *s == slot && free(*s)).or_else(|| (0..SWATCH_SLOTS).find(|s| free(*s))) {
+          Some(slot) => TabLocation::Swatch { slot },
+          // The grid filled up meanwhile: it comes back as a temp tab on top of the active space.
+          None => TabLocation::Temp { space_id: self.session.active_space, index: Some(0) },
+        }
+      }
+      TabLocation::Temp { space_id, index } => TabLocation::Temp { space_id: space_of(space_id), index },
+      TabLocation::Pinned { space_id, folder_id, index } => {
+        let folder_alive = folder_id.is_some()
+          && self.validate(TabLocation::Pinned { space_id, folder_id, index: None }).is_ok();
+        if folder_alive {
+          TabLocation::Pinned { space_id, folder_id, index }
+        } else if folder_id.is_some() {
+          // Its folder is gone: the end of its space's pinned list.
+          TabLocation::Pinned { space_id: space_of(space_id), folder_id: None, index: None }
+        } else {
+          TabLocation::Pinned { space_id: space_of(space_id), folder_id: None, index }
+        }
+      }
+    }
+  }
+
+  /// Pushes a tab that's about to be removed onto the closed-tab stack.
+  fn remember_closed(&mut self, id: Id, location: TabLocation) {
+    let Some(tab) = self.session.tabs.get(&id) else { return };
+    self.session.closed.push(ClosedTab {
+      url: tab.url.clone(),
+      title: tab.title.clone(),
+      favicon: tab.favicon.clone(),
+      pinned_url: tab.pinned_url.clone(),
+      location,
+    });
+    let excess = self.session.closed.len().saturating_sub(MAX_CLOSED_TABS);
+    self.session.closed.drain(..excess);
   }
 
   /// Records what the webview reports, so the tab's row and a later reload use it.
@@ -1030,6 +1113,107 @@ mod tests {
     m.activate(b, 30).unwrap();
     m.cycle_tab(false, 40).unwrap();
     assert_eq!(m.active_tab(), Some(c));
+  }
+
+  #[test]
+  fn closing_temp_tabs_can_be_reopened_in_place_newest_first() {
+    let (mut m, a, b, c) = three_tabs();
+    let s = space(&m);
+    m.update_page(b, None, Some(Some("Bee".into())));
+    // Temp list, newest first: c, b, a. Close b (index 1), then c (index 0).
+    m.close_tab(b, 30).unwrap();
+    m.close_tab(c, 40).unwrap();
+    assert_eq!(m.session.closed.len(), 2);
+
+    let (c2, effects) = m.reopen_closed_tab(50).unwrap().unwrap();
+    assert_eq!(effects[0], Effect::Show(Some(c2)));
+    assert_eq!(m.tab(c2).unwrap().url, "https://c.test/");
+    let (b2, _) = m.reopen_closed_tab(60).unwrap().unwrap();
+    assert_eq!(m.tab(b2).unwrap().title.as_deref(), Some("Bee"));
+    assert_eq!(m.active_space().temp, vec![c2, b2, a], "back at their old indices");
+    assert_eq!(m.active_tab(), Some(b2));
+    assert_eq!(m.session.active_space, s);
+    assert!(m.reopen_closed_tab(70).unwrap().is_none(), "the stack is empty");
+  }
+
+  #[test]
+  fn unloading_a_pinned_tab_is_not_a_close_but_removing_it_is() {
+    let mut m = model();
+    let s = space(&m);
+    let tab = m.active_tab().unwrap();
+    m.move_tab(tab, TabLocation::Pinned { space_id: s, folder_id: None, index: None }).unwrap();
+    m.close_tab(tab, 1).unwrap();
+    assert!(m.session.closed.is_empty(), "closing a pinned tab only unloads it");
+
+    m.remove_tab(tab, 2).unwrap();
+    let (back, _) = m.reopen_closed_tab(3).unwrap().unwrap();
+    assert_eq!(m.locate(back), Some(TabLocation::Pinned { space_id: s, folder_id: None, index: Some(0) }));
+    assert_eq!(m.tab(back).unwrap().pinned_url.as_deref(), Some(HOME), "keeps its pinned URL");
+  }
+
+  #[test]
+  fn trash_all_pushes_every_temp_tab_and_reopens_the_top_one_first() {
+    let (mut m, a, b, c) = three_tabs();
+    let urls = |m: &Model| m.active_space().temp.iter().map(|id| m.tab(*id).unwrap().url.clone()).collect::<Vec<_>>();
+    let before: Vec<String> = [c, b, a].iter().map(|id| m.tab(*id).unwrap().url.clone()).collect();
+    m.clear_temp_tabs(space(&m), 30).unwrap();
+    assert_eq!(m.session.closed.len(), 3);
+    let (first, _) = m.reopen_closed_tab(40).unwrap().unwrap();
+    assert_eq!(m.tab(first).unwrap().url, before[0]);
+    m.reopen_closed_tab(50).unwrap();
+    m.reopen_closed_tab(60).unwrap();
+    assert_eq!(urls(&m), before, "same order as before the trash-all");
+  }
+
+  #[test]
+  fn reopening_falls_back_when_the_place_is_gone() {
+    let mut m = model();
+    let home = space(&m);
+    let tab = m.active_tab().unwrap();
+    let work = m.create_space("Work".into(), "hammer".into());
+    let folder = m.create_folder(work, "F".into(), None).unwrap();
+    m.move_tab(tab, TabLocation::Pinned { space_id: work, folder_id: Some(folder), index: None }).unwrap();
+    m.remove_tab(tab, 1).unwrap();
+    m.delete_folder(folder, true, 2).unwrap();
+    let (back, _) = m.reopen_closed_tab(3).unwrap().unwrap();
+    assert_eq!(m.locate(back), Some(TabLocation::Pinned { space_id: work, folder_id: None, index: Some(0) }), "folder gone: its space's list");
+
+    m.remove_tab(back, 4).unwrap();
+    m.switch_space(home, 5).unwrap();
+    m.delete_space(work, 6).unwrap();
+    let (again, _) = m.reopen_closed_tab(7).unwrap().unwrap();
+    assert!(matches!(m.locate(again), Some(TabLocation::Pinned { space_id, .. }) if space_id == home), "space gone: the active space");
+
+    let (other, _) = m.open_tab("https://o.test/".into(), 8);
+    m.move_tab(other, TabLocation::Swatch { slot: 2 }).unwrap();
+    m.remove_tab(other, 9).unwrap();
+    let (swatch, _) = m.reopen_closed_tab(10).unwrap().unwrap();
+    assert_eq!(m.session.swatches[2], Some(swatch), "its own swatch slot");
+  }
+
+  #[test]
+  fn the_closed_stack_keeps_the_newest_25() {
+    let mut m = model();
+    for i in 0..(MAX_CLOSED_TABS as u64 + 5) {
+      let (id, _) = m.open_tab(format!("https://{i}.test/"), i);
+      m.close_tab(id, i).unwrap();
+    }
+    assert_eq!(m.session.closed.len(), MAX_CLOSED_TABS);
+    assert_eq!(m.session.closed[0].url, "https://5.test/", "the oldest five were dropped");
+  }
+
+  #[test]
+  fn closed_tabs_persist_and_old_sessions_still_load() {
+    let (mut m, _, b, _) = three_tabs();
+    m.close_tab(b, 30).unwrap();
+    let json = serde_json::to_string(&m.session).unwrap();
+    let back: Session = serde_json::from_str(&json).unwrap();
+    assert_eq!(back.closed, m.session.closed);
+
+    let mut value = serde_json::to_value(&m.session).unwrap();
+    value.as_object_mut().unwrap().remove("closed");
+    let old: Session = serde_json::from_value(value).unwrap();
+    assert!(old.closed.is_empty(), "a file from before the stack existed");
   }
 
   #[test]

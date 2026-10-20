@@ -20,6 +20,7 @@ import {
   activeSpace,
   NEW_SPACE_ICONS,
   openCommandPalette,
+  reopenClosedTab,
   unwrap,
   useContentCutout,
   useHotkey,
@@ -174,7 +175,12 @@ export function AppSidebar() {
       </SidebarHeader>
 
       {/* Right-clicking empty sidebar space opens the sidebar's menu (catalog area "sidebar"). */}
-      <SidebarContextMenu onNewTab={newTab} className="flex min-h-0 flex-1 flex-col">
+      <SidebarContextMenu
+        onNewTab={newTab}
+        closedCount={tabs?.closedCount ?? 0}
+        onReopenClosedTab={reopenClosedTab}
+        className="flex min-h-0 flex-1 flex-col"
+      >
       <SidebarContent className="gap-0 overflow-hidden">
         <DndContext {...tabDrag.context}>
         <ScrollArea className="flex-1" viewportClassName="pt-2">

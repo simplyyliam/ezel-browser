@@ -57,6 +57,7 @@ pub fn specta_builder() -> tauri_specta::Builder<tauri::Wry> {
       activate_tab,
       close_tab,
       remove_tab,
+      reopen_closed_tab,
       unload_tab,
       cycle_tab,
       move_tab,
@@ -255,7 +256,7 @@ mod tests {
 
     let ts = std::fs::read_to_string(path).unwrap();
     assert!(ts.starts_with(BINDINGS_HEADER));
-    for command in ["navigate", "get_page", "hard_reload", "stop_loading", "open_devtools", "copy_page_url", "cycle_tab", "set_content_bounds", "get_window_radius", "get_tabs", "move_tab", "switch_space", "set_forwarded_hotkeys"] {
+    for command in ["navigate", "get_page", "hard_reload", "stop_loading", "open_devtools", "copy_page_url", "cycle_tab", "reopen_closed_tab", "set_content_bounds", "get_window_radius", "get_tabs", "move_tab", "switch_space", "set_forwarded_hotkeys"] {
       assert!(ts.contains(&format!("\"{command}\"")), "{command} command missing");
     }
     for event in ["page-changed", "tabs-changed", "tab-updated", "hotkey-pressed", "window-radius-changed"] {

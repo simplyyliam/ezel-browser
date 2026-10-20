@@ -143,4 +143,25 @@ mod tests {
     assert_eq!(fs::read_to_string(dir.join("session.json.unreadable")).unwrap(), "{ corrupt", "kept, not overwritten");
     let _ = fs::remove_dir_all(&dir);
   }
+
+  #[test]
+  fn closed_tabs_survive_a_save_and_load() {
+    use crate::browser::model::{ClosedTab, TabLocation};
+    let dir = Path::new(env!("CARGO_MANIFEST_DIR")).join("target/test-tmp").join(format!("ezel-closed-test-{}", std::process::id()));
+    let _ = fs::remove_dir_all(&dir);
+    let store = Store::new(dir.clone());
+    let mut session = Session::new("https://a.test/", 0);
+    let closed = ClosedTab {
+      url: "https://gone.test/".into(),
+      title: Some("Gone".into()),
+      favicon: None,
+      pinned_url: None,
+      location: TabLocation::Temp { space_id: 1, index: Some(3) },
+    };
+    session.closed.push(closed.clone());
+    store.save(&session);
+    store.flush();
+    assert_eq!(load(&dir).unwrap().closed, vec![closed]);
+    let _ = fs::remove_dir_all(&dir);
+  }
 }

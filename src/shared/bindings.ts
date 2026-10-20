@@ -44,6 +44,11 @@ export const commands = {
 	closeTab: (id: Id) => typedError<null, AppError>(__TAURI_INVOKE("close_tab", { id })),
 	/**  Removes any tab, pinned or not. */
 	removeTab: (id: Id) => typedError<null, AppError>(__TAURI_INVOKE("remove_tab", { id })),
+	/**
+	 *  Ctrl+Shift+T: reopens the most recently closed tab where it was and selects it. Its new id, or
+	 *  `null` when there's nothing to reopen.
+	 */
+	reopenClosedTab: () => typedError<number | null, AppError>(__TAURI_INVOKE("reopen_closed_tab")),
 	/**  Frees the tab's memory; it keeps its place and page, and reloads when selected. */
 	unloadTab: (id: Id) => typedError<null, AppError>(__TAURI_INVOKE("unload_tab", { id })),
 	/**  Ctrl+Tab / Ctrl+Shift+Tab (`backward`): the active space's next tab in most-recently-used order. */
@@ -202,6 +207,8 @@ export type TabsState = {
 	/**  Always `SWATCH_SLOTS` (8) long. */
 	swatches: Swatch[],
 	spaces: Space[],
+	/**  How many closed tabs "Reopen Closed Tab" can bring back (0 hides it). */
+	closedCount: number,
 };
 
 /**

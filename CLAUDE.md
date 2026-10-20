@@ -52,9 +52,10 @@ Commands (`invoke`):
 - `get_window_radius()` → `{ radius: number | null, customized: boolean }`: the corner radius Windows 11 actually draws for the window, logical px. Without the Windhawk "Custom Window Corner Radius" mod: 8, or 0 when fullscreen/maximized/snapped. With it (`customized: true`): the mod's radius, or 0 where it leaves windows square. `radius: null` = unknown (not Windows): keep the UI's default radii. The UI sets `--radius-frame` to `radius − 4` (frame padding).
 
 Tab commands (ids are numbers; every change also emits `tabs-changed`):
-- `get_tabs()` → `TabsState`: `{ activeSpaceId, activeTabId | null, swatches: (TabView | null)[8], spaces: { id, name, icon, items: ({kind:"tab", tab} | {kind:"folder", folder:{ id, name, collapsed, tabs }})[], tempTabs }[] }`. `TabView`: `{ id, url, title | null, favicon | null, pinnedUrl | null, isLoaded, isLoading, isPlayingAudio }`. `icon` is a lucide icon name.
+- `get_tabs()` → `TabsState`: `{ activeSpaceId, activeTabId | null, closedCount, swatches: (TabView | null)[8], spaces: { id, name, icon, items: ({kind:"tab", tab} | {kind:"folder", folder:{ id, name, collapsed, tabs }})[], tempTabs }[] }`. `TabView`: `{ id, url, title | null, favicon | null, pinnedUrl | null, isLoaded, isLoading, isPlayingAudio }`. `icon` is a lucide icon name.
 - `open_tab(input?: string)` → id: new temp tab on top of the active space, selected (home page without input). Links opened in a new window (`target=_blank`) do the same; sized popups (OAuth) get a native popup window.
 - `cycle_tab(backward)`: Ctrl+Tab / Ctrl+Shift+Tab. The active space's next tab in most-recently-used order (`model.rs`, `CYCLE_WINDOW_MS`): presses within 1.2s walk deeper into one frozen order (Ctrl "held"; the website's key-ups never reach us), after a pause it returns to the previous tab. Swatches aren't in the walk, but a shown swatch starts it.
+- `reopen_closed_tab()` → id | null: Ctrl+Shift+T. Pops the closed-tab stack (`session.closed`, newest last, max `MAX_CLOSED_TABS` = 25, persisted in session.json) and puts the tab back in its space, folder or swatch slot at its old index (clamped to the end); a folder that's gone → the end of its space's pinned list, a space that's gone → the active space, a full swatch grid → top of the active space's temp tabs. Selected. A tab goes on the stack when it's removed (temp close, `remove_tab`, trash-all, top tab reopened first); closing a pinned tab or swatch only unloads it, so it doesn't.
 - `activate_tab(id)`; `close_tab(id)`: a temp tab is removed, a pinned/swatch tab is unloaded and reset to its pinned URL; `remove_tab(id)`: removes any tab; `unload_tab(id)`: frees memory, keeps the page.
 - `move_tab(id, to)`: pin/unpin, swatch, folder, reorder, other space. `to`: `{kind:"swatch", slot}` (occupied: swap) | `{kind:"pinned", spaceId, folderId: id | null, index: number | null}` (null = end) | `{kind:"temp", spaceId, index: number | null}` (null = top). Pinned/swatch tabs remember a `pinnedUrl`; temp tabs forget it.
 - `reset_tab(id)`: back to its pinned URL; `update_pinned_url(id)`: current URL becomes the pinned URL; `clear_temp_tabs(spaceId)`: trash-all.
@@ -123,7 +124,7 @@ Zen's behaviour, rebuilt on dnd-kit (HTML5 drag events are swallowed by Tauri on
 - Temp tabs and pinned tabs both survive an app restart.
 - Closing a temp tab removes it immediately.
 - Closing a pinned tab only unloads the site; the pinned tab stays in its space and can be reopened.
-- Trash-all clears temp tabs only.
+- Trash-all clears temp tabs only (they go on the closed-tab stack, so Ctrl+Shift+T brings them back one by one).
 
 ## Command palette
 Ezel's address bar and quick switcher (Arc's command bar, Zen's floating new-tab URL bar): `widgets/command-palette`, opened from anywhere with `openCommandPalette(target)` (`shared/command-palette.ts`). Design: `docs/design/decisions.md`, "Command palette".
@@ -147,6 +148,7 @@ Every app shortcut is in `shared/hotkeys.ts` (`HOTKEYS`: id, label, default keys
   - Alt+← / Alt+→ back / forward (`back` / `forward`), Esc stop loading (`stopLoading`, `whileLoading`)
   - F12 or Ctrl+Shift+I the page's DevTools (`devTools`)
   - Ctrl+Shift+C copy the page's link with a toast (`copyUrl`; the page keeps focus)
+  - Ctrl+Shift+T reopen the last closed tab (`reopenClosedTab`; also in the sidebar's right-click menu)
 - These also act while the UI has focus: Ctrl+R/F5 reload the page, not the UI, and F12 opens the page's DevTools (the UI's own DevTools: right-click › Inspect in a debug build).
 - **Toasts**: `showToast({ title, detail?, tone? })` (`shared/toast.ts`), drawn by `Toaster` (`shared/components/toast`, mounted in `AppLayout`): one small pill at a time, bottom-left inside the sidebar's width above its footer, cut out of the website while it shows (`useContentCutout("toast")`), 1.8s. Passive confirmations only (HIG feedback.md); a check draws itself for `tone: "done"`.
 

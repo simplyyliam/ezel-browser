@@ -20,10 +20,13 @@ type SidebarContextMenuProps = {
   /** The area that opens the menu on right-click. */
   children: ReactNode
   onNewTab: () => void
+  /** Closed tabs Reopen Closed Tab can bring back; 0 hides the item. */
+  closedCount: number
+  onReopenClosedTab: () => void
   className?: string
 }
 
-export function SidebarContextMenu({ children, onNewTab, className }: SidebarContextMenuProps) {
+export function SidebarContextMenu({ children, onNewTab, closedCount, onReopenClosedTab, className }: SidebarContextMenuProps) {
   const { open, setOpen } = useSidebar()
 
   return (
@@ -36,6 +39,9 @@ export function SidebarContextMenu({ children, onNewTab, className }: SidebarCon
         </ContextMenuCheckboxItem>
         <ContextMenuSeparator />
         <ContextMenuItem onClick={onNewTab}>{menuLabel("sidebar", "newTab")}</ContextMenuItem>
+        {closedCount > 0 && (
+          <ContextMenuItem onClick={onReopenClosedTab}>{menuLabel("sidebar", "reopenClosed")}</ContextMenuItem>
+        )}
       </ContextMenuContent>
     </ContextMenu>
   )
