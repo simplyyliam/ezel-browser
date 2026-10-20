@@ -11,6 +11,7 @@
 //! touching a webview, because webview events lock `model` on the main thread.
 
 pub mod commands;
+pub mod layers;
 pub mod memory;
 mod model;
 mod store;
@@ -212,6 +213,11 @@ fn apply(app: &AppHandle, effect: Effect) {
         let _ = webview.navigate(url);
       }
     }
+    Effect::Layer(id, layer, on) => {
+      if let Some(webview) = tab_webview(app, id) {
+        let _ = webview.eval(if on { layer.apply_script() } else { layer.remove_script() });
+      }
+    }
     Effect::SetMuted(id, muted) => {
       if let Some(webview) = tab_webview(app, id) {
         set_muted(&webview, muted);
@@ -303,7 +309,7 @@ fn create_webview(app: &AppHandle, id: Id) -> tauri::Result<Webview> {
 /// `title: Some(None)` clears the title (a new navigation started); `loading: None` = unchanged.
 fn on_page_event(webview: &Webview, id: Id, url: Option<String>, title: Option<Option<String>>, loading: Option<bool>) {
   let app = webview.app_handle();
-  {
+  let layers = {
     let browser = browser(app);
     let mut model = browser.model.lock().unwrap();
     model.update_page(id, url, title);
@@ -312,6 +318,14 @@ fn on_page_event(webview: &Webview, id: Id, url: Option<String>, title: Option<O
     }
     browser.store.save(&model.session);
     emit_tab(app, &model, id);
+    model.live.get(&id).map(|l| l.layers.clone()).unwrap_or_default()
+  };
+  // A new document (load started) or a finished one: its lenses go back on. The scripts are
+  // idempotent; "started" is WebView2's ContentLoading, when the new document exists.
+  if loading.is_some() {
+    for layer in layers {
+      let _ = webview.eval(layer.apply_script());
+    }
   }
   publish_page(webview, id);
 }

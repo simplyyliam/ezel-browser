@@ -6,7 +6,7 @@
 use tauri::{AppHandle, Url};
 
 use super::{
-  browser, edit, page_of, shown_webview, update,
+  browser, edit, layers::PageLayer, page_of, shown_webview, update,
   model::{TabLocation, TsId},
   view::TabsState,
   PageChanged, SEARCH_URL,
@@ -149,6 +149,14 @@ pub async fn get_memory(app: AppHandle) -> Result<super::memory::MemoryReport> {
     let _ = app;
     Err(AppError::new(ErrorCode::Unsupported, "the load meter reads WebView2's processes: Windows only for now"))
   }
+}
+
+/// Turns a page layer (lens) on or off in the shown tab; it stays on across navigations in that tab
+/// and goes off when another tab is shown. Returns whether it's now on.
+#[tauri::command]
+#[specta::specta]
+pub async fn toggle_page_layer(app: AppHandle, layer: PageLayer) -> Result<bool> {
+  update(&app, |m, _| m.toggle_layer(layer))
 }
 
 // ---- Tabs ----

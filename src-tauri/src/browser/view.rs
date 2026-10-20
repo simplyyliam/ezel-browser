@@ -7,6 +7,7 @@ use serde::Serialize;
 use specta::Type;
 use tauri_specta::Event;
 
+use super::layers::PageLayer;
 use super::model::{is_dev_url, Id, Model, Pinned, TsId};
 
 /// Payload of "tabs-changed" and `get_tabs`.
@@ -79,6 +80,8 @@ pub struct TabView {
   pub is_muted: bool,
   /// Served from this machine (localhost, 127.0.0.1, [::1], *.localhost): never auto-unloaded.
   pub is_dev: bool,
+  /// Page layers (lenses) on in this tab; only the shown tab has any.
+  pub layers: Vec<PageLayer>,
 }
 
 impl TabsState {
@@ -129,6 +132,7 @@ impl TabView {
       is_playing_audio: live.is_some_and(|l| l.playing_audio),
       is_muted: tab.muted,
       is_dev: is_dev_url(&tab.url),
+      layers: live.map(|l| l.layers.clone()).unwrap_or_default(),
     })
   }
 }

@@ -14,6 +14,7 @@
     "allow-open-devtools",
     "allow-copy-page-url",
     "allow-get-memory",
+    "allow-toggle-page-layer",
     "allow-get-page",
     "allow-set-content-bounds",
     "allow-set-content-visible",

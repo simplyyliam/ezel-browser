@@ -13,6 +13,7 @@ use std::{
 use serde::{Deserialize, Serialize};
 use specta::Type;
 
+use super::layers::PageLayer;
 use crate::error::{AppError, ErrorCode};
 
 pub type Id = u64;
@@ -159,6 +160,8 @@ pub enum Effect {
   Navigate(Id, String),
   /// Mute or unmute the tab's loaded webview.
   SetMuted(Id, bool),
+  /// Add (`true`) or remove a page layer in the tab's page (see `layers.rs`).
+  Layer(Id, PageLayer, bool),
 }
 
 /// Per-tab runtime state of a loaded tab (has a webview). Never persisted.
@@ -168,6 +171,9 @@ pub struct Live {
   pub can_go_back: bool,
   pub can_go_forward: bool,
   pub playing_audio: bool,
+  /// Page layers on (lenses), in a fixed order. Only the shown tab has any: switching tabs turns
+  /// them off, and a new webview starts without.
+  pub layers: Vec<PageLayer>,
 }
 
 pub type Result<T> = std::result::Result<T, AppError>;
@@ -392,8 +398,40 @@ impl Model {
     self.space_mut(space)?.active_tab = Some(id);
     self.touch(id, now);
     let mut effects = vec![Effect::Show(Some(id))];
+    effects.extend(self.drop_layers_except(Some(id)));
     effects.extend(self.enforce_limit());
     Ok(effects)
+  }
+
+  /// Turns a page layer (a lens) on or off in the shown tab. Returns whether it's now on.
+  pub fn toggle_layer(&mut self, layer: PageLayer) -> Result<(bool, Vec<Effect>)> {
+    let no_tab = || AppError::new(ErrorCode::NoTabShown, "no tab is shown");
+    let id = self.active_tab().ok_or_else(no_tab)?;
+    let live = self.live.get_mut(&id).ok_or_else(no_tab)?;
+    let on = match live.layers.iter().position(|l| *l == layer) {
+      Some(i) => {
+        live.layers.remove(i);
+        false
+      }
+      None => {
+        live.layers.push(layer);
+        live.layers.sort();
+        true
+      }
+    };
+    Ok((on, vec![Effect::Layer(id, layer, on)]))
+  }
+
+  /// Lenses belong to the tab they were turned on in while it's on screen: every other tab's go.
+  fn drop_layers_except(&mut self, keep: Option<Id>) -> Vec<Effect> {
+    let mut ids: Vec<Id> = self.live.iter().filter(|(id, l)| Some(**id) != keep && !l.layers.is_empty()).map(|(id, _)| *id).collect();
+    ids.sort();
+    let mut effects = vec![];
+    for id in ids {
+      let layers = std::mem::take(&mut self.live.get_mut(&id).expect("listed above").layers);
+      effects.extend(layers.into_iter().map(|layer| Effect::Layer(id, layer, false)));
+    }
+    effects
   }
 
   /// Ctrl+Tab (`backward`: Ctrl+Shift+Tab): selects the next tab of the active space in
@@ -752,7 +790,11 @@ impl Model {
     self.session.active_space = id;
     match tab {
       Some(tab) => self.activate(tab, now),
-      None => Ok(vec![Effect::Show(None)]),
+      None => {
+        let mut effects = vec![Effect::Show(None)];
+        effects.extend(self.drop_layers_except(None));
+        Ok(effects)
+      }
     }
   }
 
@@ -1327,6 +1369,43 @@ mod tests {
     assert!(effects.contains(&Effect::Destroy(second)), "the next least recently used goes instead");
     assert_eq!(m.live.len(), MAX_LOADED_TABS);
     assert!(m.unload_tab(first, 100).unwrap().contains(&Effect::Destroy(first)), "by hand it still unloads");
+  }
+
+  #[test]
+  fn lenses_toggle_on_the_shown_tab() {
+    let (mut m, _, _, c) = three_tabs();
+    assert_eq!(m.toggle_layer(PageLayer::Squint).unwrap(), (true, vec![Effect::Layer(c, PageLayer::Squint, true)]));
+    m.toggle_layer(PageLayer::Greyscale).unwrap();
+    assert_eq!(m.live[&c].layers, vec![PageLayer::Squint, PageLayer::Greyscale], "they stack");
+    assert_eq!(m.toggle_layer(PageLayer::Squint).unwrap(), (false, vec![Effect::Layer(c, PageLayer::Squint, false)]));
+    assert_eq!(m.live[&c].layers, vec![PageLayer::Greyscale]);
+  }
+
+  #[test]
+  fn switching_tabs_turns_lenses_off() {
+    let (mut m, a, b, c) = three_tabs();
+    m.toggle_layer(PageLayer::Squint).unwrap();
+    m.toggle_layer(PageLayer::Greyscale).unwrap();
+    let effects = m.activate(b, 30).unwrap();
+    assert!(effects.contains(&Effect::Layer(c, PageLayer::Squint, false)));
+    assert!(effects.contains(&Effect::Layer(c, PageLayer::Greyscale, false)));
+    assert!(m.live[&c].layers.is_empty());
+    m.activate(c, 40).unwrap();
+    assert!(m.live[&c].layers.is_empty(), "back on the tab: off until toggled again");
+
+    m.toggle_layer(PageLayer::Squint).unwrap();
+    assert!(m.activate(c, 50).unwrap().iter().all(|e| !matches!(e, Effect::Layer(..))), "re-selecting the same tab keeps them");
+    let work = m.create_space("Work".into(), "hammer".into());
+    assert!(m.switch_space(work, 60).unwrap().contains(&Effect::Layer(c, PageLayer::Squint, false)), "an empty space shows no tab");
+    let _ = a;
+  }
+
+  #[test]
+  fn lenses_need_a_shown_tab() {
+    let mut m = model();
+    let work = m.create_space("Work".into(), "hammer".into());
+    m.switch_space(work, 1).unwrap();
+    assert_eq!(m.toggle_layer(PageLayer::Squint).unwrap_err().code, ErrorCode::NoTabShown);
   }
 
   #[test]

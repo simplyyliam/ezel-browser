@@ -26,6 +26,11 @@ export const commands = {
 	copyPageUrl: () => typedError<string, AppError>(__TAURI_INVOKE("copy_page_url")),
 	/**  The load meter: Ezel's memory in all and per loaded tab (approximate; see `browser::memory`). */
 	getMemory: () => typedError<MemoryReport, AppError>(__TAURI_INVOKE("get_memory")),
+	/**
+	 *  Turns a page layer (lens) on or off in the shown tab; it stays on across navigations in that tab
+	 *  and goes off when another tab is shown. Returns whether it's now on.
+	 */
+	togglePageLayer: (layer: PageLayer) => typedError<boolean, AppError>(__TAURI_INVOKE("toggle_page_layer", { layer })),
 	/**  Places the content webview. Logical px, relative to the window's top-left. Reported by the frontend. */
 	setContentBounds: (x: Px, y: Px, width: Px, height: Px) => typedError<null, AppError>(__TAURI_INVOKE("set_content_bounds", { x, y, width, height })),
 	setContentVisible: (visible: boolean) => typedError<null, AppError>(__TAURI_INVOKE("set_content_visible", { visible })),
@@ -179,6 +184,13 @@ export type PageChanged = {
 	isLoading: boolean,
 };
 
+/**  A named CSS layer. Serialized as its name ("squint"). */
+export type PageLayer = 
+/**  The squint test: blurs the page so only hierarchy and contrast remain. */
+"squint" | 
+/**  Removes colour: does the design still work without it? */
+"greyscale";
+
 /**  Logical px. */
 export type Px = number;
 
@@ -212,6 +224,8 @@ export type Tab = {
 	isMuted: boolean,
 	/**  Served from this machine (localhost, 127.0.0.1, [::1], *.localhost): never auto-unloaded. */
 	isDev: boolean,
+	/**  Page layers (lenses) on in this tab; only the shown tab has any. */
+	layers: PageLayer[],
 };
 
 /**  Where a tab lives. Also the target of `move_tab`. */
