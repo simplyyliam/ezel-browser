@@ -7,10 +7,13 @@
 //! the share marked approximate; processes that serve no tab (Ezel itself, its UI, WebView2's
 //! browser, GPU and utility processes) are reported as shared, never spread over the tabs.
 
+use std::sync::atomic::{AtomicBool, Ordering};
+
 use serde::Serialize;
 use specta::Type;
 
 use super::model::{Id, TsId};
+use crate::error::AppError;
 
 /// One process: its memory (private bytes) and the main frames of the pages it renders, as the
 /// ids of each frame's top-level frame (`ICoreWebView2_20::FrameId` of the webview that owns it).
@@ -76,6 +79,53 @@ pub fn attribute(processes: &[Process], tabs: &[(Id, Option<u32>)]) -> MemoryRep
     .collect();
   tabs.sort_by(|a, b| b.mb.total_cmp(&a.mb));
   MemoryReport { total_mb: total, shared_mb: shared, tabs }
+}
+
+/// What WebView2 answered for its process list: each process id with the top-level frame ids it
+/// renders. `None` = it didn't answer (failed, timed out, or too old a runtime).
+pub type ProcessList = Option<Vec<(u32, Vec<u32>)>>;
+
+/// Builds the report from WebView2's answer, adding Ezel's own process (`own_pid`). No answer, or an
+/// empty list (WebView2 always has a browser process), is `unavailable`: the meter hides instead of
+/// showing a wrong number. A process whose memory can't be read (it just exited) counts as 0.
+pub fn report(
+  list: ProcessList,
+  tabs: &[(Id, Option<u32>)],
+  own_pid: u32,
+  bytes: impl Fn(u32) -> Option<u64>,
+) -> Result<MemoryReport, AppError> {
+  let list = list.filter(|l| !l.is_empty()).ok_or_else(|| AppError::unavailable("WebView2 didn't list its processes"))?;
+  let mut processes: Vec<Process> =
+    list.into_iter().map(|(pid, roots)| Process { bytes: bytes(pid).unwrap_or(0), roots }).collect();
+  processes.push(Process { bytes: bytes(own_pid).unwrap_or(0), roots: vec![] });
+  Ok(attribute(&processes, tabs))
+}
+
+/// Lets one memory reading run at a time: a request while one is out is answered `unavailable`
+/// instead of asking WebView2 again (the UI polls; it just tries on the next tick).
+pub struct SingleFlight(AtomicBool);
+
+/// Held while a reading runs; dropping it (also on an early return or a panic) frees the slot.
+#[derive(Debug)]
+pub struct Flight<'a>(&'a AtomicBool);
+
+impl SingleFlight {
+  pub const fn new() -> Self {
+    Self(AtomicBool::new(false))
+  }
+
+  pub fn start(&self) -> Result<Flight<'_>, AppError> {
+    if self.0.swap(true, Ordering::AcqRel) {
+      return Err(AppError::unavailable("a memory reading is already running"));
+    }
+    Ok(Flight(&self.0))
+  }
+}
+
+impl Drop for Flight<'_> {
+  fn drop(&mut self) {
+    self.0.store(false, Ordering::Release);
+  }
 }
 
 /// A process's private bytes (what it alone commits), or `None` if it's gone or not ours to read.
@@ -148,6 +198,39 @@ mod tests {
     let report = attribute(&[Process { bytes: M, roots: vec![1] }], &[(4, Some(1))]);
     let json = serde_json::to_value(&report).unwrap();
     assert_eq!(json, serde_json::json!({ "totalMb": 1.0, "sharedMb": 0.0, "tabs": [{ "id": 4, "mb": 1.0, "approximate": false }] }));
+  }
+
+  #[test]
+  fn no_answer_from_webview2_is_unavailable_not_a_crash_or_a_zero() {
+    let bytes = |_| Some(M);
+    for list in [None, Some(vec![])] {
+      let err = report(list, &[(1, Some(7))], 99, bytes).unwrap_err();
+      assert_eq!(err.code, crate::error::ErrorCode::Unavailable);
+    }
+  }
+
+  #[test]
+  fn unreadable_processes_count_as_zero_and_ezel_itself_is_shared() {
+    let list = Some(vec![(10, vec![7]), (11, vec![])]);
+    // 11 exited between the list and the read; 99 is Ezel.
+    let bytes = |pid| match pid {
+      10 => Some(40 * M),
+      99 => Some(10 * M),
+      _ => None,
+    };
+    let r = report(list, &[(1, Some(7))], 99, bytes).unwrap();
+    assert_eq!(r.total_mb, 50.0);
+    assert_eq!(r.shared_mb, 10.0);
+    assert_eq!(r.tabs, vec![TabMemory { id: 1, mb: 40.0, approximate: false }]);
+  }
+
+  #[test]
+  fn only_one_reading_runs_at_a_time() {
+    let flight = SingleFlight::new();
+    let first = flight.start().unwrap();
+    assert_eq!(flight.start().unwrap_err().code, crate::error::ErrorCode::Unavailable);
+    drop(first);
+    assert!(flight.start().is_ok(), "free again once the first one ends");
   }
 
   #[cfg(windows)]

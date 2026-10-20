@@ -26,6 +26,9 @@ pub enum ErrorCode {
   Webview,
   /// Not available on this platform yet (most WebView2-only features outside Windows).
   Unsupported,
+  /// Can't be read right now (the load meter while WebView2 doesn't answer, or another reading is
+  /// already running). Try again later; nothing is wrong.
+  Unavailable,
 }
 
 impl ErrorCode {
@@ -39,6 +42,7 @@ impl ErrorCode {
       Self::NoTabShown => "no_tab_shown",
       Self::Webview => "webview",
       Self::Unsupported => "unsupported",
+      Self::Unavailable => "unavailable",
     }
   }
 }
@@ -74,6 +78,10 @@ impl AppError {
   pub fn not_found(message: impl Into<String>) -> Self {
     Self::new(ErrorCode::NotFound, message)
   }
+
+  pub fn unavailable(message: impl Into<String>) -> Self {
+    Self::new(ErrorCode::Unavailable, message)
+  }
 }
 
 impl From<tauri::Error> for AppError {
@@ -106,6 +114,7 @@ mod tests {
       ErrorCode::NoTabShown,
       ErrorCode::Webview,
       ErrorCode::Unsupported,
+      ErrorCode::Unavailable,
     ] {
       assert_eq!(serde_json::to_value(code).unwrap(), json!(code.as_str()));
     }

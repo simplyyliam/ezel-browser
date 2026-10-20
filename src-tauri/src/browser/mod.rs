@@ -88,12 +88,19 @@ pub fn shown_webview(app: &AppHandle) -> Option<Webview> {
 }
 
 /// The load meter's numbers (`get_memory`): every WebView2 process and Ezel's own, split over the
-/// loaded tabs by the frames each process renders (see [`memory`]). Waits on the main thread's
-/// replies off the async runtime's threads, and never holds the model lock across webview calls.
+/// loaded tabs by the frames each process renders (see [`memory`]).
+/// - WebView2's COM calls run on the main thread (its rule), posted there through `with_webview`;
+///   all waiting happens on a blocking worker, never on the UI thread or an async worker.
+/// - Only loaded tabs that still have a webview are asked; one that goes away meanwhile just
+///   doesn't answer. The model lock is never held across a webview call.
+/// - One reading at a time, and every failure (no answer, a timeout, a dead worker) is
+///   `unavailable`: the meter hides, the app carries on.
 #[cfg(windows)]
 pub async fn memory_report(app: &AppHandle) -> Result<memory::MemoryReport, AppError> {
   use std::sync::mpsc;
   const REPLY: Duration = Duration::from_secs(2);
+  static FLIGHT: memory::SingleFlight = memory::SingleFlight::new();
+  let flight = FLIGHT.start()?;
 
   let loaded: Vec<Id> = browser(app).model.lock().unwrap().live.keys().copied().collect();
   let (frame_tx, frame_rx) = mpsc::channel();
@@ -106,13 +113,14 @@ pub async fn memory_report(app: &AppHandle) -> Result<memory::MemoryReport, AppE
     }
   }
   drop(frame_tx);
-  let ui = app.get_webview(crate::UI_LABEL).ok_or_else(|| AppError::internal("no ui webview"))?;
+  let ui = app.get_webview(crate::UI_LABEL).ok_or_else(|| AppError::unavailable("no ui webview"))?;
   let (process_tx, process_rx) = mpsc::channel();
   ui.with_webview(move |pw| {
     crate::webview2::process_frames(&pw, move |list| {
       let _ = process_tx.send(list);
     })
-  })?;
+  })
+  .map_err(|e| AppError::unavailable(format!("webview: {e}")))?;
 
   tauri::async_runtime::spawn_blocking(move || {
     // Every asked tab answers (or its closure is dropped, ending the channel) well within REPLY.
@@ -121,18 +129,15 @@ pub async fn memory_report(app: &AppHandle) -> Result<memory::MemoryReport, AppE
     while let Ok(reply) = frame_rx.recv_timeout(deadline.saturating_duration_since(std::time::Instant::now())) {
       tabs.push(reply);
     }
-    let list = process_rx
-      .recv_timeout(REPLY)
-      .map_err(|_| AppError::new(crate::error::ErrorCode::Webview, "WebView2 didn't list its processes"))?;
-    let bytes = |pid: u32| memory::process_bytes(pid).unwrap_or(0);
-    let mut processes: Vec<memory::Process> =
-      list.into_iter().map(|(pid, roots)| memory::Process { bytes: bytes(pid), roots }).collect();
-    // Ezel itself (the app process, not one of WebView2's).
-    processes.push(memory::Process { bytes: bytes(std::process::id()), roots: vec![] });
-    Ok(memory::attribute(&processes, &tabs))
+    // No answer within REPLY (or the main thread dropped the request) is no list.
+    let list = process_rx.recv_timeout(REPLY).ok().flatten();
+    let report = memory::report(list, &tabs, std::process::id(), memory::process_bytes);
+    // The slot frees only once WebView2 has answered or given up, so readings never overlap.
+    drop(flight);
+    report
   })
   .await
-  .map_err(|e| AppError::internal(e.to_string()))?
+  .map_err(|e| AppError::unavailable(format!("memory worker: {e}")))?
 }
 
 /// True while the shown tab's page is loading (Esc then stops it instead of reaching the page).
