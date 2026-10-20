@@ -182,7 +182,11 @@ pub fn init(app: &AppHandle) -> tauri::Result<()> {
   let app = app.clone();
   thread::Builder::new().name("tab-unloader".into()).spawn(move || loop {
     thread::sleep(IDLE_CHECK);
-    let _ = update(&app, |m, now| Ok(((), m.unload_idle(now))));
+    let _ = update(&app, |m, now| {
+      let mut effects = m.unload_idle(now);
+      effects.extend(m.suspend_idle(now));
+      Ok(((), effects))
+    });
   })?;
   Ok(())
 }
@@ -261,6 +265,14 @@ fn apply(app: &AppHandle, effect: Effect) {
         let _ = webview.eval(if on { layer.apply_script() } else { layer.remove_script() });
       }
     }
+    Effect::Suspend(id) => {
+      #[cfg(windows)]
+      if let Some(webview) = tab_webview(app, id) {
+        let _ = webview.with_webview(|pw| crate::webview2::try_suspend(&pw));
+      }
+      #[cfg(not(windows))]
+      let _ = id;
+    }
     Effect::SetMuted(id, muted) => {
       if let Some(webview) = tab_webview(app, id) {
         set_muted(&webview, muted);
@@ -286,6 +298,8 @@ fn show(app: &AppHandle, next: Option<Id>) {
       Ok(webview) => {
         content::present(&webview);
         set_low_memory(&webview, false);
+        #[cfg(windows)]
+        let _ = webview.with_webview(|pw| crate::webview2::resume(&pw));
         publish_page(&webview, id);
       }
       Err(e) => {

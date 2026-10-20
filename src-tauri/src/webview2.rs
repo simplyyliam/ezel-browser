@@ -6,11 +6,11 @@ use tauri::webview::PlatformWebview;
 use crate::hotkeys::KeyPress;
 use webview2_com::{
   take_pwstr, AcceleratorKeyPressedEventHandler, CallDevToolsProtocolMethodCompletedHandler, FaviconChangedEventHandler, IsDocumentPlayingAudioChangedEventHandler,
-  GetProcessExtendedInfosCompletedHandler, PermissionRequestedEventHandler,
+  GetProcessExtendedInfosCompletedHandler, PermissionRequestedEventHandler, TrySuspendCompletedHandler,
   Microsoft::Web::WebView2::Win32::{
     ICoreWebView2, ICoreWebView2Environment13, ICoreWebView2FrameInfo2, ICoreWebView2PermissionRequestedEventArgs3,
     ICoreWebView2ProcessExtendedInfoCollection, ICoreWebView2Settings4, ICoreWebView2_15, ICoreWebView2_19, ICoreWebView2_2,
-    ICoreWebView2_20, ICoreWebView2_8,
+    ICoreWebView2_20, ICoreWebView2_3, ICoreWebView2_8,
     COREWEBVIEW2_KEY_EVENT_KIND, COREWEBVIEW2_PERMISSION_KIND, COREWEBVIEW2_PERMISSION_KIND_NOTIFICATIONS, COREWEBVIEW2_PERMISSION_STATE,
     COREWEBVIEW2_PERMISSION_STATE_DENY,
     COREWEBVIEW2_KEY_EVENT_KIND_KEY_DOWN, COREWEBVIEW2_KEY_EVENT_KIND_SYSTEM_KEY_DOWN, COREWEBVIEW2_MEMORY_USAGE_TARGET_LEVEL_LOW,
@@ -211,6 +211,26 @@ unsafe fn top_frame_id(mut frame: ICoreWebView2FrameInfo2) -> Option<u32> {
   let mut id = 0u32;
   unsafe { frame.FrameId(&mut id).ok()? };
   (id != 0).then_some(id)
+}
+
+/// Freezes a hidden webview (WebView2 1.0.705+): its scripts and timers stop and WebView2 trims its
+/// memory. Fails harmlessly if the page is visible or can't be suspended (WebView2 decides).
+pub fn try_suspend(pw: &PlatformWebview) {
+  let Some(core) = core(pw).and_then(|c| c.cast::<ICoreWebView2_3>().ok()) else { return };
+  let handler = TrySuspendCompletedHandler::create(Box::new(|_, _| Ok(())));
+  // SAFETY: main thread, live webview.
+  unsafe {
+    let _ = core.TrySuspend(&handler);
+  }
+}
+
+/// Wakes a suspended webview (a no-op if it isn't). WebView2 also resumes it when it's shown.
+pub fn resume(pw: &PlatformWebview) {
+  let Some(core) = core(pw).and_then(|c| c.cast::<ICoreWebView2_3>().ok()) else { return };
+  // SAFETY: main thread, live webview.
+  unsafe {
+    let _ = core.Resume();
+  }
 }
 
 /// Hidden tabs ask WebView2 to trim memory (it may swap out or drop caches); the shown tab gets
