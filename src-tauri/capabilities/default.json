@@ -13,6 +13,7 @@
     "allow-stop-loading",
     "allow-open-devtools",
     "allow-copy-page-url",
+    "allow-get-memory",
     "allow-get-page",
     "allow-set-content-bounds",
     "allow-set-content-visible",

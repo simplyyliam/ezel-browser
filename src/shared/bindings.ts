@@ -24,6 +24,8 @@ export const commands = {
 	 *  shortcut leaves focus in the website, where the UI's clipboard API can't write.
 	 */
 	copyPageUrl: () => typedError<string, AppError>(__TAURI_INVOKE("copy_page_url")),
+	/**  The load meter: Ezel's memory in all and per loaded tab (approximate; see `browser::memory`). */
+	getMemory: () => typedError<MemoryReport, AppError>(__TAURI_INVOKE("get_memory")),
 	/**  Places the content webview. Logical px, relative to the window's top-left. Reported by the frontend. */
 	setContentBounds: (x: Px, y: Px, width: Px, height: Px) => typedError<null, AppError>(__TAURI_INVOKE("set_content_bounds", { x, y, width, height })),
 	setContentVisible: (visible: boolean) => typedError<null, AppError>(__TAURI_INVOKE("set_content_visible", { visible })),
@@ -155,6 +157,19 @@ export type HotkeyPressed = {
 /**  A tab, folder or space id: a number from one shared counter, never reused. */
 export type Id = number;
 
+/**  What `get_memory` returns. MB, so the UI never deals in bytes. */
+export type MemoryReport = {
+	/**
+	 *  Everything Ezel runs: its own process, WebView2's processes and every page. Always approximate:
+	 *  processes share memory the counters can't split.
+	 */
+	totalMb: number | null,
+	/**  The part no single tab accounts for (Ezel, its UI, WebView2's browser/GPU/utility processes). */
+	sharedMb: number | null,
+	/**  Loaded tabs only, largest first. Unloaded tabs use nothing (the UI shows them as resting). */
+	tabs: TabMemory[],
+};
+
 /**  Payload of "page-changed": the shown tab's page. */
 export type PageChanged = {
 	url: string,
@@ -205,6 +220,13 @@ export type TabLocation = { kind: "swatch"; slot: number } |
 { kind: "pinned"; spaceId: Id; folderId: Id | null; index: number | null } | 
 /**  `index: None` = the top (newest first). */
 { kind: "temp"; spaceId: Id; index: number | null };
+
+export type TabMemory = {
+	id: Id,
+	mb: number | null,
+	/**  Part of its memory is a process it shares with other tabs (split evenly): a rough share. */
+	approximate: boolean,
+};
 
 /**  Payload of "tabs-changed" and `get_tabs`. */
 export type TabsState = {

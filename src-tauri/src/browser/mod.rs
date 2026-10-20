@@ -11,6 +11,7 @@
 //! touching a webview, because webview events lock `model` on the main thread.
 
 pub mod commands;
+pub mod memory;
 mod model;
 mod store;
 mod view;
@@ -83,6 +84,54 @@ fn tab_webview(app: &AppHandle, id: Id) -> Option<Webview> {
 pub fn shown_webview(app: &AppHandle) -> Option<Webview> {
   let id = (*browser(app).shown.lock().unwrap())?;
   tab_webview(app, id)
+}
+
+/// The load meter's numbers (`get_memory`): every WebView2 process and Ezel's own, split over the
+/// loaded tabs by the frames each process renders (see [`memory`]). Waits on the main thread's
+/// replies off the async runtime's threads, and never holds the model lock across webview calls.
+#[cfg(windows)]
+pub async fn memory_report(app: &AppHandle) -> Result<memory::MemoryReport, AppError> {
+  use std::sync::mpsc;
+  const REPLY: Duration = Duration::from_secs(2);
+
+  let loaded: Vec<Id> = browser(app).model.lock().unwrap().live.keys().copied().collect();
+  let (frame_tx, frame_rx) = mpsc::channel();
+  for id in loaded {
+    if let Some(webview) = tab_webview(app, id) {
+      let tx = frame_tx.clone();
+      let _ = webview.with_webview(move |pw| {
+        let _ = tx.send((id, crate::webview2::main_frame_id(&pw)));
+      });
+    }
+  }
+  drop(frame_tx);
+  let ui = app.get_webview(crate::UI_LABEL).ok_or_else(|| AppError::internal("no ui webview"))?;
+  let (process_tx, process_rx) = mpsc::channel();
+  ui.with_webview(move |pw| {
+    crate::webview2::process_frames(&pw, move |list| {
+      let _ = process_tx.send(list);
+    })
+  })?;
+
+  tauri::async_runtime::spawn_blocking(move || {
+    // Every asked tab answers (or its closure is dropped, ending the channel) well within REPLY.
+    let deadline = std::time::Instant::now() + REPLY;
+    let mut tabs: Vec<(Id, Option<u32>)> = vec![];
+    while let Ok(reply) = frame_rx.recv_timeout(deadline.saturating_duration_since(std::time::Instant::now())) {
+      tabs.push(reply);
+    }
+    let list = process_rx
+      .recv_timeout(REPLY)
+      .map_err(|_| AppError::new(crate::error::ErrorCode::Webview, "WebView2 didn't list its processes"))?;
+    let bytes = |pid: u32| memory::process_bytes(pid).unwrap_or(0);
+    let mut processes: Vec<memory::Process> =
+      list.into_iter().map(|(pid, roots)| memory::Process { bytes: bytes(pid), roots }).collect();
+    // Ezel itself (the app process, not one of WebView2's).
+    processes.push(memory::Process { bytes: bytes(std::process::id()), roots: vec![] });
+    Ok(memory::attribute(&processes, &tabs))
+  })
+  .await
+  .map_err(|e| AppError::internal(e.to_string()))?
 }
 
 /// True while the shown tab's page is loading (Esc then stops it instead of reaching the page).
