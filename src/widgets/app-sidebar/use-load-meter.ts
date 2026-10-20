@@ -11,7 +11,8 @@ const REFRESH_MS = 4000
  * The load meter's numbers (`get_memory`), refreshed every few seconds only while the sidebar can
  * be seen (docked or peeking) and the window isn't hidden. The call never blocks the UI: it's async,
  * and a refresh is skipped while the previous one is still out. Stops for good where it's
- * unsupported (not Windows). Null until the first answer.
+ * unsupported (not Windows). Null until the first answer, and again after a failed one (the readout
+ * hides; `unavailable` is expected and not logged).
  */
 export function useLoadMeter(visible: boolean, tabs: TabsState | null): LoadMeterData | null {
   const [report, setReport] = useState<MemoryReport | null>(null)
@@ -29,8 +30,14 @@ export function useLoadMeter(visible: boolean, tabs: TabsState | null): LoadMete
         if (cancelled) return
         if (result.status === "ok") setReport(result.data)
         else if (result.error.code === "unsupported") setUnsupported(true)
-        else reportError("read memory", result.error)
+        else {
+          // No reading this time: the readout hides until the next good one. "unavailable" is
+          // expected now and then (WebView2 slow to answer, a reading already running), so it's quiet.
+          setReport(null)
+          if (result.error.code !== "unavailable") reportError("read memory", result.error)
+        }
       } catch (error) {
+        if (!cancelled) setReport(null)
         reportError("read memory", error)
       } finally {
         inFlight = false
