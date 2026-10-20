@@ -5,7 +5,10 @@
 //! Modelled on Zen (workspaces, pinned tabs, folders, essentials) and Arc (spaces, pinned/today tabs,
 //! favorites). See `docs/design/decisions.md`, "Tabs, folders and spaces".
 
-use std::collections::{HashMap, HashSet};
+use std::{
+  cmp::Reverse,
+  collections::{HashMap, HashSet},
+};
 
 use serde::{Deserialize, Serialize};
 use specta::Type;
@@ -30,6 +33,10 @@ pub const MAX_LOADED_TABS: usize = 8;
 
 /// Background tabs unused for this long are unloaded.
 pub const IDLE_UNLOAD_MS: u64 = 30 * 60 * 1000;
+
+/// Ctrl+Tab presses this close together continue one walk through a frozen most-recently-used list,
+/// as if Ctrl were still held (the website's key-ups never reach us); a longer pause starts over.
+pub const CYCLE_WINDOW_MS: u64 = 1200;
 
 /// Bumped when the persisted shape changes incompatibly.
 const SESSION_VERSION: u32 = 1;
@@ -141,10 +148,21 @@ pub struct Live {
 
 pub type Result<T> = std::result::Result<T, AppError>;
 
+/// A Ctrl+Tab walk in progress: the space's tabs, most recently used first, frozen at the first press.
+#[derive(Clone, Debug, PartialEq)]
+pub struct Cycle {
+  space: Id,
+  order: Vec<Id>,
+  index: usize,
+  at: u64,
+}
+
 pub struct Model {
   pub session: Session,
   /// Loaded tabs. The model decides what's loaded; the runtime makes the webviews match.
   pub live: HashMap<Id, Live>,
+  /// The Ctrl+Tab walk, if one is running. Never persisted.
+  cycle: Option<Cycle>,
 }
 
 impl Session {
@@ -219,7 +237,7 @@ fn new_tab(id: Id, url: &str, now: u64) -> Tab {
 impl Model {
   /// A restored session starts with nothing loaded; [`Model::restore`] loads only the active tab.
   pub fn new(session: Session) -> Self {
-    Model { session, live: HashMap::new() }
+    Model { session, live: HashMap::new(), cycle: None }
   }
 
   /// Shows the active space's tab (lazy restore: every other tab loads when selected).
@@ -332,6 +350,49 @@ impl Model {
     let mut effects = vec![Effect::Show(Some(id))];
     effects.extend(self.enforce_limit());
     Ok(effects)
+  }
+
+  /// Ctrl+Tab (`backward`: Ctrl+Shift+Tab): selects the next tab of the active space in
+  /// most-recently-used order. Presses within [`CYCLE_WINDOW_MS`] of each other walk deeper into the
+  /// same frozen order (Firefox's "Ctrl+Tab cycles through tabs in recently used order"); after a
+  /// pause, a press goes back to the previous tab. A swatch shown in the space starts the walk too.
+  pub fn cycle_tab(&mut self, backward: bool, now: u64) -> Result<Vec<Effect>> {
+    let space = self.session.active_space;
+    let active = self.active_tab();
+    let continues = self.cycle.as_ref().is_some_and(|c| {
+      c.space == space
+        && now.saturating_sub(c.at) <= CYCLE_WINDOW_MS
+        && active == c.order.get(c.index).copied()
+        && c.order.iter().all(|id| self.session.tabs.contains_key(id))
+    });
+    if !continues {
+      let mut order: Vec<Id> = Self::space_tabs(self.active_space()).collect();
+      // Stable: tabs never selected since a restore keep their sidebar order.
+      order.sort_by_key(|id| Reverse(self.session.tabs[id].last_accessed));
+      if let Some(active) = active {
+        order.retain(|id| *id != active);
+        order.insert(0, active);
+      }
+      self.cycle = Some(Cycle { space, order, index: 0, at: now });
+    }
+    let cycle = self.cycle.as_mut().expect("set above");
+    let len = cycle.order.len();
+    if len == 0 {
+      return Ok(vec![]);
+    }
+    cycle.index = match (active == Some(cycle.order[cycle.index]), backward) {
+      // Nothing shown yet: forward starts at the most recent tab, backward at the least.
+      (false, false) => 0,
+      (false, true) => len - 1,
+      (true, false) => (cycle.index + 1) % len,
+      (true, true) => (cycle.index + len - 1) % len,
+    };
+    cycle.at = now;
+    let next = cycle.order[cycle.index];
+    if Some(next) == active {
+      return Ok(vec![]);
+    }
+    self.activate(next, now)
   }
 
   /// Zen/Arc close: a temp tab is removed; a pinned or swatch tab only unloads (it keeps its place).
@@ -908,6 +969,67 @@ mod tests {
     assert_eq!(s.spaces[0].active_tab, None);
     assert!(!s.tabs.contains_key(&500), "orphan removed");
     assert!(s.next_id > tab);
+  }
+
+  /// Three temp tabs in the active space, selected a, b, c in that order (c shown).
+  fn three_tabs() -> (Model, Id, Id, Id) {
+    let mut m = model();
+    let a = m.active_tab().unwrap();
+    let (b, _) = m.open_tab("https://b.test/".into(), 10);
+    let (c, _) = m.open_tab("https://c.test/".into(), 20);
+    (m, a, b, c)
+  }
+
+  #[test]
+  fn ctrl_tab_walks_recently_used_order_while_presses_are_close() {
+    let (mut m, a, b, c) = three_tabs();
+    m.cycle_tab(false, 100).unwrap();
+    assert_eq!(m.active_tab(), Some(b));
+    m.cycle_tab(false, 100 + CYCLE_WINDOW_MS).unwrap();
+    assert_eq!(m.active_tab(), Some(a), "keeps walking deeper, not back to c");
+    m.cycle_tab(false, 100 + 2 * CYCLE_WINDOW_MS).unwrap();
+    assert_eq!(m.active_tab(), Some(c), "wraps around");
+  }
+
+  #[test]
+  fn ctrl_tab_after_a_pause_returns_to_the_previous_tab() {
+    let (mut m, _, b, c) = three_tabs();
+    m.cycle_tab(false, 100).unwrap();
+    assert_eq!(m.active_tab(), Some(b));
+    m.cycle_tab(false, 100 + CYCLE_WINDOW_MS + 1).unwrap();
+    assert_eq!(m.active_tab(), Some(c), "a fresh walk: b is now the most recent");
+  }
+
+  #[test]
+  fn ctrl_shift_tab_walks_backwards_and_selecting_a_tab_restarts_the_walk() {
+    let (mut m, a, b, c) = three_tabs();
+    m.cycle_tab(true, 100).unwrap();
+    assert_eq!(m.active_tab(), Some(a), "backward from c reaches the least recently used first");
+    m.cycle_tab(true, 200).unwrap();
+    assert_eq!(m.active_tab(), Some(b));
+    m.activate(c, 300).unwrap();
+    m.cycle_tab(false, 400).unwrap();
+    assert_eq!(m.active_tab(), Some(b), "a click in between starts a new walk");
+  }
+
+  #[test]
+  fn ctrl_tab_stays_in_the_active_space() {
+    let (mut m, _, _, c) = three_tabs();
+    let work = m.create_space("Work".into(), "hammer".into());
+    m.switch_space(work, 30).unwrap();
+    let (w, _) = m.open_tab("https://w.test/".into(), 40);
+    assert_eq!(m.cycle_tab(false, 50).unwrap(), vec![], "the only tab: nothing to switch to");
+    assert_eq!(m.active_tab(), Some(w));
+    assert_ne!(m.active_tab(), Some(c));
+  }
+
+  #[test]
+  fn ctrl_tab_from_a_swatch_moves_into_the_space() {
+    let (mut m, _, b, c) = three_tabs();
+    m.move_tab(b, TabLocation::Swatch { slot: 0 }).unwrap();
+    m.activate(b, 30).unwrap();
+    m.cycle_tab(false, 40).unwrap();
+    assert_eq!(m.active_tab(), Some(c));
   }
 
   #[test]

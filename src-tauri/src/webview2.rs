@@ -5,7 +5,7 @@ use tauri::webview::PlatformWebview;
 
 use crate::hotkeys::KeyPress;
 use webview2_com::{
-  take_pwstr, AcceleratorKeyPressedEventHandler, FaviconChangedEventHandler, IsDocumentPlayingAudioChangedEventHandler,
+  take_pwstr, AcceleratorKeyPressedEventHandler, CallDevToolsProtocolMethodCompletedHandler, FaviconChangedEventHandler, IsDocumentPlayingAudioChangedEventHandler,
   Microsoft::Web::WebView2::Win32::{
     ICoreWebView2, ICoreWebView2_15, ICoreWebView2_19, ICoreWebView2_8, COREWEBVIEW2_KEY_EVENT_KIND,
     COREWEBVIEW2_KEY_EVENT_KIND_KEY_DOWN, COREWEBVIEW2_KEY_EVENT_KIND_SYSTEM_KEY_DOWN, COREWEBVIEW2_MEMORY_USAGE_TARGET_LEVEL_LOW,
@@ -13,7 +13,7 @@ use webview2_com::{
   },
 };
 use windows::{
-  core::{Interface, PWSTR},
+  core::{Interface, HSTRING, PWSTR},
   Win32::UI::Input::KeyboardAndMouse::{GetKeyState, VK_CONTROL, VK_MENU, VK_SHIFT},
 };
 
@@ -32,6 +32,35 @@ pub fn history(pw: &PlatformWebview) -> (bool, bool) {
     let _ = core.CanGoForward(&mut forward);
   }
   (back.as_bool(), forward.as_bool())
+}
+
+/// Stops the page loading (Esc).
+pub fn stop(pw: &PlatformWebview) {
+  let Some(core) = core(pw) else { return };
+  // SAFETY: main thread, live webview.
+  unsafe {
+    let _ = core.Stop();
+  }
+}
+
+/// Reloads the page bypassing the cache (Ctrl+Shift+R), through the DevTools protocol: WebView2
+/// has no API of its own for it.
+pub fn hard_reload(pw: &PlatformWebview) {
+  let Some(core) = core(pw) else { return };
+  let handler = CallDevToolsProtocolMethodCompletedHandler::create(Box::new(|_, _| Ok(())));
+  // SAFETY: main thread, live webview; the strings outlive the call.
+  unsafe {
+    let _ = core.CallDevToolsProtocolMethod(&HSTRING::from("Page.reload"), &HSTRING::from(r#"{"ignoreCache":true}"#), &handler);
+  }
+}
+
+/// Opens the page's DevTools in their own window (F12). The tab must be built with `devtools(true)`.
+pub fn open_devtools(pw: &PlatformWebview) {
+  let Some(core) = core(pw) else { return };
+  // SAFETY: main thread, live webview.
+  unsafe {
+    let _ = core.OpenDevToolsWindow();
+  }
 }
 
 /// Hidden tabs ask WebView2 to trim memory (it may swap out or drop caches); the shown tab gets

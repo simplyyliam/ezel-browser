@@ -13,6 +13,17 @@ export const commands = {
 	goBack: () => typedError<null, AppError>(__TAURI_INVOKE("go_back")),
 	goForward: () => typedError<null, AppError>(__TAURI_INVOKE("go_forward")),
 	reload: () => typedError<null, AppError>(__TAURI_INVOKE("reload")),
+	/**  Reloads the shown tab bypassing the cache (Ctrl+Shift+R). */
+	hardReload: () => typedError<null, AppError>(__TAURI_INVOKE("hard_reload")),
+	/**  Stops the shown tab loading (Esc). */
+	stopLoading: () => typedError<null, AppError>(__TAURI_INVOKE("stop_loading")),
+	/**  Opens the shown tab's DevTools in their own window (F12, Ctrl+Shift+I). */
+	openDevtools: () => typedError<null, AppError>(__TAURI_INVOKE("open_devtools")),
+	/**
+	 *  Copies the shown tab's URL to the clipboard (Ctrl+Shift+C) and returns it. Done here because the
+	 *  shortcut leaves focus in the website, where the UI's clipboard API can't write.
+	 */
+	copyPageUrl: () => typedError<string, AppError>(__TAURI_INVOKE("copy_page_url")),
 	/**  Places the content webview. Logical px, relative to the window's top-left. Reported by the frontend. */
 	setContentBounds: (x: Px, y: Px, width: Px, height: Px) => typedError<null, AppError>(__TAURI_INVOKE("set_content_bounds", { x, y, width, height })),
 	setContentVisible: (visible: boolean) => typedError<null, AppError>(__TAURI_INVOKE("set_content_visible", { visible })),
@@ -35,6 +46,8 @@ export const commands = {
 	removeTab: (id: Id) => typedError<null, AppError>(__TAURI_INVOKE("remove_tab", { id })),
 	/**  Frees the tab's memory; it keeps its place and page, and reloads when selected. */
 	unloadTab: (id: Id) => typedError<null, AppError>(__TAURI_INVOKE("unload_tab", { id })),
+	/**  Ctrl+Tab / Ctrl+Shift+Tab (`backward`): the active space's next tab in most-recently-used order. */
+	cycleTab: (backward: boolean) => typedError<null, AppError>(__TAURI_INVOKE("cycle_tab", { backward })),
 	/**  Pin, unpin, add to swatches or a folder, reorder, or move to another space. */
 	moveTab: (id: Id, to: TabLocation) => typedError<null, AppError>(__TAURI_INVOKE("move_tab", { id, to })),
 	/**  Navigates a pinned or swatch tab back to its pinned URL. */
@@ -99,7 +112,9 @@ export type ErrorCode =
 /**  No tab is shown, so there's no page to act on (`go_back`, `go_forward`, `reload`). */
 "no_tab_shown" | 
 /**  The native webview refused the call. */
-"webview";
+"webview" | 
+/**  Not available on this platform yet (most WebView2-only features outside Windows). */
+"unsupported";
 
 export type Folder = {
 	id: Id,
@@ -111,13 +126,18 @@ export type Folder = {
 /**  One shortcut as the frontend describes it (`shared/hotkeys.ts`). */
 export type ForwardedHotkey = {
 	id: string,
-	/**  Lowercase: "a"–"z", "0"–"9", "f1"–"f12". */
+	/**  Lowercase: "a"–"z", "0"–"9", "f1"–"f12", "tab", "escape", "left", "right". */
 	key: string,
 	ctrl: boolean,
 	shift: boolean,
 	alt: boolean,
 	/**  Move keyboard focus to the `ui` webview before emitting (shortcuts that open a field). */
 	focusUi: boolean,
+	/**
+	 *  Caught only while the shown tab is loading; otherwise the page gets the key (Esc stops a load,
+	 *  but closes the website's own dialogs the rest of the time).
+	 */
+	whileLoading: boolean,
 };
 
 /**  Payload of "hotkey-pressed": a forwarded shortcut was pressed while the website had focus. */
