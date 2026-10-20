@@ -1,4 +1,6 @@
 mod browser;
+#[cfg(windows)]
+mod clipboard;
 mod content;
 mod error;
 mod hotkeys;
@@ -41,6 +43,10 @@ pub fn specta_builder() -> tauri_specta::Builder<tauri::Wry> {
       go_back,
       go_forward,
       reload,
+      hard_reload,
+      stop_loading,
+      open_devtools,
+      copy_page_url,
       set_content_bounds,
       set_content_visible,
       set_content_radius,
@@ -52,6 +58,7 @@ pub fn specta_builder() -> tauri_specta::Builder<tauri::Wry> {
       close_tab,
       remove_tab,
       unload_tab,
+      cycle_tab,
       move_tab,
       reset_tab,
       update_pinned_url,
@@ -248,7 +255,7 @@ mod tests {
 
     let ts = std::fs::read_to_string(path).unwrap();
     assert!(ts.starts_with(BINDINGS_HEADER));
-    for command in ["navigate", "get_page", "set_content_bounds", "get_window_radius", "get_tabs", "move_tab", "switch_space", "set_forwarded_hotkeys"] {
+    for command in ["navigate", "get_page", "hard_reload", "stop_loading", "open_devtools", "copy_page_url", "cycle_tab", "set_content_bounds", "get_window_radius", "get_tabs", "move_tab", "switch_space", "set_forwarded_hotkeys"] {
       assert!(ts.contains(&format!("\"{command}\"")), "{command} command missing");
     }
     for event in ["page-changed", "tabs-changed", "tab-updated", "hotkey-pressed", "window-radius-changed"] {

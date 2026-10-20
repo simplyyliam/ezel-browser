@@ -24,6 +24,8 @@ pub enum ErrorCode {
   NoTabShown,
   /// The native webview refused the call.
   Webview,
+  /// Not available on this platform yet (most WebView2-only features outside Windows).
+  Unsupported,
 }
 
 impl ErrorCode {
@@ -36,6 +38,7 @@ impl ErrorCode {
       Self::LastSpace => "last_space",
       Self::NoTabShown => "no_tab_shown",
       Self::Webview => "webview",
+      Self::Unsupported => "unsupported",
     }
   }
 }
@@ -102,6 +105,7 @@ mod tests {
       ErrorCode::LastSpace,
       ErrorCode::NoTabShown,
       ErrorCode::Webview,
+      ErrorCode::Unsupported,
     ] {
       assert_eq!(serde_json::to_value(code).unwrap(), json!(code.as_str()));
     }

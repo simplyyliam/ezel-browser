@@ -81,6 +81,63 @@ pub fn reload(app: AppHandle) -> Result<()> {
   Ok(shown(&app)?.reload()?)
 }
 
+/// Runs a WebView2 call on the shown tab (on the main thread, with a live controller).
+#[cfg(windows)]
+fn with_shown_webview2(app: &AppHandle, f: fn(&tauri::webview::PlatformWebview)) -> Result<()> {
+  Ok(shown(app)?.with_webview(move |pw| f(&pw))?)
+}
+
+/// Reloads the shown tab bypassing the cache (Ctrl+Shift+R).
+#[tauri::command]
+#[specta::specta]
+pub fn hard_reload(app: AppHandle) -> Result<()> {
+  #[cfg(windows)]
+  return with_shown_webview2(&app, crate::webview2::hard_reload);
+  // TODO: bypass the cache on macOS and Linux.
+  #[cfg(not(windows))]
+  Ok(shown(&app)?.reload()?)
+}
+
+/// Stops the shown tab loading (Esc).
+#[tauri::command]
+#[specta::specta]
+pub fn stop_loading(app: AppHandle) -> Result<()> {
+  #[cfg(windows)]
+  return with_shown_webview2(&app, crate::webview2::stop);
+  #[cfg(not(windows))]
+  Ok(shown(&app)?.eval("window.stop()")?)
+}
+
+/// Opens the shown tab's DevTools in their own window (F12, Ctrl+Shift+I).
+#[tauri::command]
+#[specta::specta]
+pub fn open_devtools(app: AppHandle) -> Result<()> {
+  #[cfg(windows)]
+  return with_shown_webview2(&app, crate::webview2::open_devtools);
+  #[cfg(not(windows))]
+  {
+    shown(&app)?;
+    Err(AppError::new(ErrorCode::Unsupported, "DevTools open only on Windows for now"))
+  }
+}
+
+/// Copies the shown tab's URL to the clipboard (Ctrl+Shift+C) and returns it. Done here because the
+/// shortcut leaves focus in the website, where the UI's clipboard API can't write.
+#[tauri::command]
+#[specta::specta]
+pub fn copy_page_url(app: AppHandle) -> Result<String> {
+  let browser = browser(&app);
+  let id = (*browser.shown.lock().unwrap()).ok_or_else(|| AppError::new(ErrorCode::NoTabShown, "no tab is shown"))?;
+  let url = browser.model.lock().unwrap().tab(id)?.url.clone();
+  #[cfg(windows)]
+  {
+    crate::clipboard::set_text(&url).map_err(|e| AppError::internal(format!("clipboard: {e}")))?;
+    Ok(url)
+  }
+  #[cfg(not(windows))]
+  Err(AppError::new(ErrorCode::Unsupported, "copying from Rust works only on Windows for now"))
+}
+
 // ---- Tabs ----
 
 /// Everything the sidebar shows. Also emitted as "tabs-changed" after every change.
@@ -126,6 +183,13 @@ pub async fn remove_tab(app: AppHandle, id: TsId) -> Result<()> {
 #[specta::specta]
 pub async fn unload_tab(app: AppHandle, id: TsId) -> Result<()> {
   update(&app, |m, now| Ok(((), m.unload_tab(id.0, now)?)))
+}
+
+/// Ctrl+Tab / Ctrl+Shift+Tab (`backward`): the active space's next tab in most-recently-used order.
+#[tauri::command]
+#[specta::specta]
+pub async fn cycle_tab(app: AppHandle, backward: bool) -> Result<()> {
+  update(&app, |m, now| Ok(((), m.cycle_tab(backward, now)?)))
 }
 
 /// Pin, unpin, add to swatches or a folder, reorder, or move to another space.

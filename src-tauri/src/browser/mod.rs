@@ -85,6 +85,14 @@ pub fn shown_webview(app: &AppHandle) -> Option<Webview> {
   tab_webview(app, id)
 }
 
+/// True while the shown tab's page is loading (Esc then stops it instead of reaching the page).
+pub fn shown_is_loading(app: &AppHandle) -> bool {
+  let browser = browser(app);
+  let Some(id) = *browser.shown.lock().unwrap() else { return false };
+  let loading = browser.model.lock().unwrap().live.get(&id).is_some_and(|l| l.is_loading);
+  loading
+}
+
 /// Loads the saved session and shows its active tab. Call once the window exists.
 pub fn init(app: &AppHandle) -> tauri::Result<()> {
   // A folder of our own: the app data dir is named after the bundle identifier, which is still
@@ -195,6 +203,8 @@ fn create_webview(app: &AppHandle, id: Id) -> tauri::Result<Webview> {
   let builder = WebviewBuilder::new(label(id), WebviewUrl::External(url))
     // Every tab shares the ui webview's data directory, so they must use the same scrollbar style.
     .scroll_bar_style(SCROLL_BAR_STYLE)
+    // F12 / Ctrl+Shift+I open the page's DevTools, release builds included (a designers' browser).
+    .devtools(true)
     .on_page_load(move |webview, payload| {
       let started = matches!(payload.event(), PageLoadEvent::Started);
       on_page_event(&webview, id, Some(payload.url().to_string()), started.then_some(None), Some(started));

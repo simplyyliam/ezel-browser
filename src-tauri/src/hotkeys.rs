@@ -16,13 +16,16 @@ use crate::{emit_to_ui, error::AppError, UI_LABEL};
 #[serde(rename_all = "camelCase")]
 pub struct ForwardedHotkey {
   id: String,
-  /// Lowercase: "a"–"z", "0"–"9", "f1"–"f12".
+  /// Lowercase: "a"–"z", "0"–"9", "f1"–"f12", "tab", "escape", "left", "right".
   key: String,
   ctrl: bool,
   shift: bool,
   alt: bool,
   /// Move keyboard focus to the `ui` webview before emitting (shortcuts that open a field).
   focus_ui: bool,
+  /// Caught only while the shown tab is loading; otherwise the page gets the key (Esc stops a load,
+  /// but closes the website's own dialogs the rest of the time).
+  while_loading: bool,
 }
 
 /// Payload of "hotkey-pressed": a forwarded shortcut was pressed while the website had focus.
@@ -50,6 +53,7 @@ struct Hotkey {
   shift: bool,
   alt: bool,
   focus_ui: bool,
+  while_loading: bool,
 }
 
 /// The current list (managed state). Empty until the frontend sends one: nothing is caught.
@@ -58,6 +62,13 @@ pub struct ForwardedHotkeys(Mutex<Vec<Hotkey>>);
 
 /// Windows virtual-key code: letters and digits are their uppercase ASCII, F1 is 0x70.
 fn virtual_key(key: &str) -> Option<u16> {
+  match key {
+    "tab" => return Some(0x09),
+    "escape" => return Some(0x1B),
+    "left" => return Some(0x25),
+    "right" => return Some(0x27),
+    _ => {}
+  }
   match key.as_bytes() {
     [c @ (b'a'..=b'z' | b'0'..=b'9')] => Some(c.to_ascii_uppercase() as u16),
     [b'f', ..] => match key[1..].parse::<u16>() {
@@ -76,7 +87,7 @@ pub fn set_forwarded_hotkeys(state: State<ForwardedHotkeys>, hotkeys: Vec<Forwar
     .into_iter()
     .map(|h| {
       let vk = virtual_key(&h.key).ok_or_else(|| AppError::invalid_input(format!("unsupported hotkey key {:?}", h.key)))?;
-      Ok(Hotkey { id: h.id, vk, ctrl: h.ctrl, shift: h.shift, alt: h.alt, focus_ui: h.focus_ui })
+      Ok(Hotkey { id: h.id, vk, ctrl: h.ctrl, shift: h.shift, alt: h.alt, focus_ui: h.focus_ui, while_loading: h.while_loading })
     })
     .collect::<Result<Vec<_>, AppError>>()?;
   *state.0.lock().unwrap() = list;
@@ -92,9 +103,12 @@ pub fn handle(app: &AppHandle, key: KeyPress) -> bool {
     list
       .iter()
       .find(|h| h.vk == key.vk && h.ctrl == key.ctrl && h.shift == key.shift && h.alt == key.alt)
-      .map(|h| (h.id.clone(), h.focus_ui))
+      .map(|h| (h.id.clone(), h.focus_ui, h.while_loading))
   };
-  let Some((id, focus_ui)) = found else { return false };
+  let Some((id, focus_ui, while_loading)) = found else { return false };
+  if while_loading && !crate::browser::shown_is_loading(app) {
+    return false;
+  }
   if !key.repeat {
     // JS focus() in the UI can't take OS focus from another webview; the palette must get typing.
     if focus_ui {
@@ -120,11 +134,16 @@ mod tests {
     assert_eq!(virtual_key("f"), Some(0x46));
     assert_eq!(virtual_key("f1"), Some(0x70));
     assert_eq!(virtual_key("f12"), Some(0x7B));
+    assert_eq!(virtual_key("f5"), Some(0x74));
+    assert_eq!(virtual_key("tab"), Some(0x09));
+    assert_eq!(virtual_key("escape"), Some(0x1B));
+    assert_eq!(virtual_key("left"), Some(0x25));
+    assert_eq!(virtual_key("right"), Some(0x27));
   }
 
   #[test]
   fn rejects_other_keys() {
-    for key in ["", "A", "F1", "f0", "f13", "f01", "fx", "ab", "-", "enter", " "] {
+    for key in ["", "A", "F1", "f0", "f13", "f01", "fx", "ab", "-", "enter", " ", "Tab", "arrowleft", "esc"] {
       assert_eq!(virtual_key(key), None, "{key:?}");
     }
   }
