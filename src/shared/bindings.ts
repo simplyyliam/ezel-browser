@@ -195,6 +195,8 @@ export type Tab = {
 	isPlayingAudio: boolean,
 	/**  Muted by the user (shown with a crossed speaker whether or not it's playing). */
 	isMuted: boolean,
+	/**  Served from this machine (localhost, 127.0.0.1, [::1], *.localhost): never auto-unloaded. */
+	isDev: boolean,
 };
 
 /**  Where a tab lives. Also the target of `move_tab`. */

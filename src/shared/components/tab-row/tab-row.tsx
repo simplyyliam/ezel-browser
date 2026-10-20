@@ -86,7 +86,10 @@ export const TabRow = ({
         {editing ? (
           <AddressField initial={editValue} onDone={(input) => onEditDone?.(input)} />
         ) : (
-          <span>{label}</span>
+          <>
+            <span className="min-w-0 truncate">{label}</span>
+            {tab.isDev && <DevBadge />}
+          </>
         )}
       </SidebarMenuButton>
       {speaker && (
@@ -120,6 +123,22 @@ export const TabRow = ({
     </>
   );
 };
+
+/**
+ * Marks a tab served from this machine (localhost): it's never unloaded in the background, so a
+ * build under review keeps its state. Quiet: small mono text on a faint chip, like a code token.
+ * Last in the row's text, so shadcn's last-span truncation would hit it; it opts out (`shrink-0`).
+ */
+function DevBadge() {
+  return (
+    <span
+      title="Local dev server: never unloaded in the background"
+      className="ml-auto shrink-0 overflow-visible! rounded-[5px] bg-sidebar-foreground/7 px-1 font-mono text-[10px] leading-4 font-medium tracking-tight text-sidebar-foreground/65"
+    >
+      dev
+    </span>
+  );
+}
 
 /** The title's place, as plain text: no border, background or ring, just a caret and the URL. */
 function AddressField({ initial, onDone }: { initial: string; onDone: (input: string | null) => void }) {

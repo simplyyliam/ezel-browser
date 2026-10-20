@@ -7,7 +7,7 @@ use serde::Serialize;
 use specta::Type;
 use tauri_specta::Event;
 
-use super::model::{Id, Model, Pinned, TsId};
+use super::model::{is_dev_url, Id, Model, Pinned, TsId};
 
 /// Payload of "tabs-changed" and `get_tabs`.
 #[derive(Clone, Serialize, Type, Event)]
@@ -77,6 +77,8 @@ pub struct TabView {
   pub is_playing_audio: bool,
   /// Muted by the user (shown with a crossed speaker whether or not it's playing).
   pub is_muted: bool,
+  /// Served from this machine (localhost, 127.0.0.1, [::1], *.localhost): never auto-unloaded.
+  pub is_dev: bool,
 }
 
 impl TabsState {
@@ -126,6 +128,7 @@ impl TabView {
       is_loading: live.is_some_and(|l| l.is_loading),
       is_playing_audio: live.is_some_and(|l| l.playing_audio),
       is_muted: tab.muted,
+      is_dev: is_dev_url(&tab.url),
     })
   }
 }

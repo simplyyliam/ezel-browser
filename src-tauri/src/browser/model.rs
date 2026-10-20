@@ -253,6 +253,22 @@ impl Session {
   }
 }
 
+/// A "dev tab": its page is served from this machine (`localhost`, `127.0.0.1`, `[::1]` or any
+/// `*.localhost`, any port). Dev tabs are never unloaded automatically: a build under review keeps
+/// its state (forms, scroll, HMR connection) however long it sits in the background.
+pub fn is_dev_url(url: &str) -> bool {
+  let Some((_, rest)) = url.split_once("://") else { return false };
+  let authority = rest.split(['/', '?', '#']).next().unwrap_or("");
+  let host_port = authority.rsplit_once('@').map_or(authority, |(_, h)| h);
+  let host = if host_port.starts_with('[') {
+    host_port.split_inclusive(']').next().unwrap_or("")
+  } else {
+    host_port.split(':').next().unwrap_or("")
+  };
+  let host = host.trim_end_matches('.').to_ascii_lowercase();
+  host == "localhost" || host == "127.0.0.1" || host == "[::1]" || host.ends_with(".localhost")
+}
+
 /// Inserts at `index`, clamped to the end.
 fn insert_at<T>(list: &mut Vec<T>, index: usize, item: T) {
   list.insert(index.min(list.len()), item);
@@ -762,10 +778,17 @@ impl Model {
     self.unload_tabs(&candidates, false, 0).unwrap_or_default()
   }
 
-  /// Loaded tabs that may be unloaded automatically: not shown by any space, not playing audio.
+  /// Loaded tabs that may be unloaded automatically: not shown by any space, not playing audio,
+  /// not a dev tab ([`is_dev_url`]). People can still unload any of them by hand.
   fn unloadable(&self) -> Vec<Id> {
     let shown: HashSet<Id> = self.session.spaces.iter().filter_map(|s| s.active_tab).collect();
-    self.live.iter().filter(|(id, live)| !shown.contains(id) && !live.playing_audio).map(|(id, _)| *id).collect()
+    let dev = |id: &Id| self.session.tabs.get(id).is_some_and(|t| is_dev_url(&t.url));
+    self
+      .live
+      .iter()
+      .filter(|(id, live)| !shown.contains(id) && !live.playing_audio && !dev(id))
+      .map(|(id, _)| *id)
+      .collect()
   }
 
   // ---- Internals ----
@@ -1248,6 +1271,62 @@ mod tests {
     let json = r#"{"id":5,"url":"https://a.test/","title":null,"favicon":null,"pinnedUrl":null,"lastAccessed":0}"#;
     let tab: Tab = serde_json::from_str(json).unwrap();
     assert!(!tab.muted);
+  }
+
+  #[test]
+  fn dev_urls_are_the_ones_served_from_this_machine() {
+    for url in [
+      "http://localhost:5173/",
+      "https://localhost",
+      "http://LOCALHOST:3000/a?b#c",
+      "http://127.0.0.1:8080/",
+      "http://[::1]:4000/",
+      "http://app.localhost:1420/",
+      "http://user:pw@localhost:9000/",
+      "http://localhost./",
+    ] {
+      assert!(is_dev_url(url), "{url}");
+    }
+    for url in [
+      "https://example.com/",
+      "https://localhost.example.com/",
+      "https://notlocalhost/",
+      "https://127.0.0.2/",
+      "https://example.com/?next=http://localhost",
+      "https://example.com/#localhost",
+      "about:blank",
+      "localhost:5173",
+      "",
+    ] {
+      assert!(!is_dev_url(url), "{url}");
+    }
+  }
+
+  #[test]
+  fn idle_unload_never_unloads_a_dev_tab() {
+    let mut m = model();
+    let quiet = m.active_tab().unwrap();
+    let (dev, _) = m.open_tab("http://localhost:5173/".into(), 0);
+    m.open_tab("https://a.test/".into(), 0);
+    let effects = m.unload_idle(IDLE_UNLOAD_MS * 10);
+    assert_eq!(effects, vec![Effect::Destroy(quiet)]);
+    assert!(m.live.contains_key(&dev));
+  }
+
+  #[test]
+  fn the_loaded_tab_cap_skips_dev_tabs() {
+    let mut m = model();
+    let first = m.active_tab().unwrap();
+    m.update_page(first, Some("http://app.localhost:1420/".into()), None);
+    let (second, _) = m.open_tab("https://second.test/".into(), 1);
+    let mut effects = vec![];
+    for i in 2..=MAX_LOADED_TABS as u64 {
+      effects = m.open_tab(format!("https://{i}.test/"), i).1;
+    }
+    assert!(m.live.contains_key(&first), "the oldest tab is a dev tab: kept");
+    assert!(effects.contains(&Effect::Destroy(second)), "the next least recently used goes instead");
+    assert_eq!(m.live.len(), MAX_LOADED_TABS);
+    assert!(m.unload_tab(first, 100).unwrap().contains(&Effect::Destroy(first)), "by hand it still unloads");
   }
 
   #[test]
