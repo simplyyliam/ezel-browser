@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-toggle-page-layer"
+description = "Enables the toggle_page_layer command without any pre-configured scope."
+commands.allow = ["toggle_page_layer"]
+
+[[permission]]
+identifier = "deny-toggle-page-layer"
+description = "Denies the toggle_page_layer command without any pre-configured scope."
+commands.deny = ["toggle_page_layer"]

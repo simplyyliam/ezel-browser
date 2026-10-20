@@ -48,6 +48,7 @@ pub fn specta_builder() -> tauri_specta::Builder<tauri::Wry> {
       open_devtools,
       copy_page_url,
       get_memory,
+      toggle_page_layer,
       set_content_bounds,
       set_content_visible,
       set_content_radius,
@@ -277,13 +278,13 @@ mod tests {
 
     let ts = std::fs::read_to_string(path).unwrap();
     assert!(ts.starts_with(BINDINGS_HEADER));
-    for command in ["navigate", "get_page", "hard_reload", "stop_loading", "open_devtools", "copy_page_url", "cycle_tab", "reopen_closed_tab", "set_tab_muted", "get_memory", "set_content_bounds", "get_window_radius", "get_tabs", "move_tab", "switch_space", "set_forwarded_hotkeys"] {
+    for command in ["navigate", "get_page", "hard_reload", "stop_loading", "open_devtools", "copy_page_url", "cycle_tab", "reopen_closed_tab", "set_tab_muted", "get_memory", "toggle_page_layer", "set_content_bounds", "get_window_radius", "get_tabs", "move_tab", "switch_space", "set_forwarded_hotkeys"] {
       assert!(ts.contains(&format!("\"{command}\"")), "{command} command missing");
     }
     for event in ["page-changed", "tabs-changed", "tab-updated", "hotkey-pressed", "window-radius-changed"] {
       assert!(ts.contains(&format!("\"{event}\"")), "{event} event missing");
     }
-    for ty in ["MemoryReport", "TabMemory", "AppError", "ErrorCode", "Id", "Tab", "Folder", "Space", "SpaceItem", "Swatch", "TabsState", "TabLocation", "PageChanged", "WindowRadius"] {
+    for ty in ["PageLayer", "MemoryReport", "TabMemory", "AppError", "ErrorCode", "Id", "Tab", "Folder", "Space", "SpaceItem", "Swatch", "TabsState", "TabLocation", "PageChanged", "WindowRadius"] {
       assert!(ts.contains(&format!("export type {ty} =")), "{ty} type missing");
     }
   }

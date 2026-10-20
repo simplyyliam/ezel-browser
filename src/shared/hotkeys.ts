@@ -70,6 +70,9 @@ export const HOTKEYS = {
   devTools: { label: "Developer Tools", keys: [{ key: "f12" }, { ctrl: true, shift: true, key: "i" }], focusUi: false },
   /** The most recently closed tab, back where it was (Rust's closed-tab stack, 25 deep). */
   reopenClosedTab: { label: "Reopen Closed Tab", keys: { ctrl: true, shift: true, key: "t" }, focusUi: false },
+  /** Lenses (Rust's page layers): the squint test (blur) and greyscale, on the shown tab. */
+  squint: { label: "Squint", keys: { ctrl: true, alt: true, key: "s" }, focusUi: false },
+  greyscale: { label: "Greyscale", keys: { ctrl: true, alt: true, key: "g" }, focusUi: false },
   /** Arc's and Zen's Ctrl+Shift+C: the page keeps focus, a toast confirms. */
   copyUrl: { label: "Copy Link", keys: { ctrl: true, shift: true, key: "c" }, focusUi: false },
 } satisfies Record<string, HotkeyDef>
