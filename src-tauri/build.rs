@@ -39,6 +39,7 @@ fn main() {
       "reopen_closed_tab",
       "unload_tab",
       "cycle_tab",
+      "set_tab_muted",
       "move_tab",
       "reset_tab",
       "update_pinned_url",

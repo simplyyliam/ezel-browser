@@ -27,6 +27,7 @@
     "allow-reopen-closed-tab",
     "allow-unload-tab",
     "allow-cycle-tab",
+    "allow-set-tab-muted",
     "allow-move-tab",
     "allow-reset-tab",
     "allow-update-pinned-url",
