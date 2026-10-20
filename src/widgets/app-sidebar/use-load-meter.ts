@@ -7,12 +7,19 @@ import { findTab } from "./tab-menu"
 /** Often enough to feel live, rarely enough to cost nothing (the call walks every WebView2 process). */
 const REFRESH_MS = 4000
 
+/** Failed readings keep the last good one on screen; with none good for this long, it hides. */
+const STALE_MS = 15000
+
 /**
  * The load meter's numbers (`get_memory`), refreshed every few seconds only while the sidebar can
  * be seen (docked or peeking) and the window isn't hidden. The call never blocks the UI: it's async,
  * and a refresh is skipped while the previous one is still out. Stops for good where it's
- * unsupported (not Windows). Null until the first answer, and again after a failed one (the readout
- * hides; `unavailable` is expected and not logged).
+ * unsupported (not Windows). Null until the first answer.
+ *
+ * A failed reading changes nothing on screen: the last good one stays. Only when readings keep
+ * failing for STALE_MS after the last good one (counted while polling; a fresh window each time the
+ * sidebar shows) does the readout hide, until the next good one. `unavailable` is expected now and
+ * then (WebView2 slow to answer, a reading already running), so it isn't logged.
  */
 export function useLoadMeter(visible: boolean, tabs: TabsState | null): LoadMeterData | null {
   const [report, setReport] = useState<MemoryReport | null>(null)
@@ -22,22 +29,37 @@ export function useLoadMeter(visible: boolean, tabs: TabsState | null): LoadMete
     if (!visible || unsupported) return
     let cancelled = false
     let inFlight = false
+    // The 15s count starts when polling starts, and again at every good reading.
+    let lastGood = Date.now()
+    let staleTimer = 0
+    const succeeded = (next: MemoryReport) => {
+      lastGood = Date.now()
+      window.clearTimeout(staleTimer)
+      staleTimer = 0
+      setReport(next)
+    }
+    const failed = () => {
+      if (staleTimer) return
+      // Hide exactly STALE_MS after the last good reading, unless a good one arrives first.
+      staleTimer = window.setTimeout(() => {
+        staleTimer = 0
+        if (!cancelled) setReport(null)
+      }, Math.max(0, lastGood + STALE_MS - Date.now()))
+    }
     const refresh = async () => {
       if (inFlight || document.visibilityState !== "visible") return
       inFlight = true
       try {
         const result = await commands.getMemory()
         if (cancelled) return
-        if (result.status === "ok") setReport(result.data)
+        if (result.status === "ok") succeeded(result.data)
         else if (result.error.code === "unsupported") setUnsupported(true)
         else {
-          // No reading this time: the readout hides until the next good one. "unavailable" is
-          // expected now and then (WebView2 slow to answer, a reading already running), so it's quiet.
-          setReport(null)
+          failed()
           if (result.error.code !== "unavailable") reportError("read memory", result.error)
         }
       } catch (error) {
-        if (!cancelled) setReport(null)
+        if (!cancelled) failed()
         reportError("read memory", error)
       } finally {
         inFlight = false
@@ -48,6 +70,7 @@ export function useLoadMeter(visible: boolean, tabs: TabsState | null): LoadMete
     return () => {
       cancelled = true
       window.clearInterval(timer)
+      window.clearTimeout(staleTimer)
     }
   }, [visible, unsupported])
 
