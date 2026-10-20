@@ -7,6 +7,9 @@ import {
 } from "@/components/ui/dropdown-menu"
 import { SidebarMenu, SidebarMenuButton, SidebarMenuItem } from "@/components/ui/sidebar"
 import { menuLabel } from "@/shared"
+import { LoadMeter, type LoadMeterData } from "./load-meter"
+
+export type { LoadMeterData } from "./load-meter"
 
 /** Small icon-only pills, as in the design. */
 const action = "h-6 w-7 justify-center bg-sidebar-foreground/5 p-0 hover:bg-sidebar-foreground/8 [&_svg]:size-3.5"
@@ -18,10 +21,12 @@ type BottomActionsProps = {
   onTrashAll: () => void
   onAddSpace: () => void
   onAddTab: () => void
+  /** The load meter's numbers; null hides it (not read yet, or unsupported here). */
+  load: LoadMeterData | null
 }
 
 /** Pinned to the bottom of the sidebar (render inside SidebarFooter). */
-export function BottomActions({ hasTempTabs, onTrashAll, onAddSpace, onAddTab }: BottomActionsProps) {
+export function BottomActions({ hasTempTabs, onTrashAll, onAddSpace, onAddTab, load }: BottomActionsProps) {
   return (
     <SidebarMenu className="flex-row items-center gap-1.5">
       <SidebarMenuItem>
@@ -41,6 +46,8 @@ export function BottomActions({ hasTempTabs, onTrashAll, onAddSpace, onAddTab }:
           <Trash2 aria-hidden />
         </SidebarMenuButton>
       </SidebarMenuItem>
+      {/* Between the actions: grows into the free space, truncates before it pushes "+" out. */}
+      {load && <LoadMeter data={load} />}
       <SidebarMenuItem className="ml-auto">
         <DropdownMenu>
           <DropdownMenuTrigger render={<SidebarMenuButton size="sm" aria-label="Add" className={action} />}>

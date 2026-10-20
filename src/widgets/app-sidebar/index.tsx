@@ -31,6 +31,7 @@ import {
 } from "@/shared"
 import { commands } from "@/shared/bindings"
 import { ScrollArea, type TabRowActions } from "@/shared/components"
+import { useLoadMeter } from "./use-load-meter"
 import { useSidebarPeek } from "./use-sidebar-peek"
 import { TabDragPreview } from "./tab-drag-preview"
 import { useTabDrag } from "./use-tab-drag"
@@ -120,6 +121,8 @@ export function AppSidebar() {
   // shadcn's Ctrl+B only hears keys while the UI has focus; this covers the website having it.
   useHotkey("toggleSidebar", toggleSidebar)
   const { peeking, edgeRef, sidebarRef } = useSidebarPeek(!open)
+  // Read only while the sidebar can be seen: docked, or peeking over the page.
+  const load = useLoadMeter(open || peeking, tabs)
   // The sidebar shows above the page wherever they overlap; floating, that includes its 1px ring
   // (drawn just outside the card). Docked it sits beside the page, so the hole changes nothing.
   const getSidebarCard = useCallback(
@@ -258,6 +261,7 @@ export function AppSidebar() {
           onTrashAll={() => space && clearTempTabs(space.id)}
           onAddSpace={newSpace}
           onAddTab={newTab}
+          load={load}
         />
       </SidebarFooter>
     </Sidebar>
