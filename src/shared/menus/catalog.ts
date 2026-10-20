@@ -94,7 +94,8 @@ export const MENU_CATALOG = {
         item({ id: "newTabBelow", label: "New Tab Below", origin: "browser", status: "built", uses: "open_tab + move_tab", note: "Opens its name field, empty" }),
         item({ id: "duplicate", label: "Duplicate Tab", origin: "browser", status: "built", uses: "open_tab + move_tab" }),
         item({ id: "reload", label: "Reload Tab", origin: "browser", status: "built", when: "the shown tab, loaded", uses: "reload", note: "Background tabs need reload_tab(id)" }),
-        item({ id: "mute", label: "Mute Tab", origin: "browser", status: "needs-backend", when: "playing audio (Unmute Tab when muted)", uses: "missing: set_tab_muted(id, muted)" }),
+        item({ id: "mute", label: "Mute Tab", origin: "browser", status: "built", when: "playing audio, not muted", uses: "set_tab_muted" }),
+        item({ id: "unmute", label: "Unmute Tab", origin: "browser", status: "built", when: "muted", uses: "set_tab_muted" }),
         item({ id: "copyLink", label: "Copy Link", origin: "browser", status: "built" }),
       ],
       [
@@ -127,6 +128,8 @@ export const MENU_CATALOG = {
       [
         item({ id: "reload", label: "Reload Tab", origin: "browser", status: "built", when: "the shown tab, loaded", uses: "reload" }),
         item({ id: "duplicate", label: "Duplicate Tab", origin: "browser", status: "built", uses: "open_tab" }),
+        item({ id: "mute", label: "Mute Tab", origin: "browser", status: "built", when: "playing audio, not muted", uses: "set_tab_muted" }),
+        item({ id: "unmute", label: "Unmute Tab", origin: "browser", status: "built", when: "muted", uses: "set_tab_muted" }),
         item({ id: "copyLink", label: "Copy Link", origin: "browser", status: "built" }),
       ],
       [

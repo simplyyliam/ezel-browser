@@ -44,6 +44,7 @@ export const SIDEBAR_WIDTH = "244px"
 
 const activateTab = (id: Id) => unwrap("activate tab", commands.activateTab(id))
 const closeTab = (id: Id) => unwrap("close tab", commands.closeTab(id))
+const setTabMuted = (id: Id, muted: boolean) => unwrap(muted ? "mute tab" : "unmute tab", commands.setTabMuted(id, muted))
 const clearTempTabs = (spaceId: Id) => unwrap("clear temp tabs", commands.clearTempTabs(spaceId))
 const navigate = (input: string) => unwrap("navigate", commands.navigate(input))
 const setFolderCollapsed = (id: Id, collapsed: boolean) =>
@@ -134,6 +135,7 @@ export function AppSidebar() {
     activeTabId,
     onSelect: activateTab,
     onClose: closeTab,
+    onSetMuted: setTabMuted,
     menuFor: (tabId) =>
       tabs && space ? tabMenu(tabId, { tabs, activeSpaceId: space.id, onEdit: editTab, onOpened: startNewTab }) : [],
     editing,

@@ -86,6 +86,15 @@ export function tabMenu(tabId: Id, { tabs, activeSpaceId, onEdit, onOpened }: Ta
     ...(shown && tab.isLoaded
       ? [{ label: menuLabel(area, "reload"), onSelect: run("reload", () => unwrap("reload", commands.reload())) }]
       : []),
+    // Only while there's sound to silence, or a mute to undo (HIG: toggles name their next state).
+    ...(tab.isPlayingAudio || tab.isMuted
+      ? [
+          {
+            label: menuLabel(area, tab.isMuted ? "unmute" : "mute"),
+            onSelect: run("mute tab", () => unwrap("mute tab", commands.setTabMuted(tab.id, !tab.isMuted))),
+          },
+        ]
+      : []),
     { label: menuLabel(area, "copyLink"), onSelect: run("copy link", () => navigator.clipboard.writeText(tab.url)) },
   ]
 
