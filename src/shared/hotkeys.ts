@@ -44,6 +44,8 @@ export const HOTKEYS = {
   newTab: { label: "New Tab", keys: { ctrl: true, key: "t" }, focusUi: true },
   /** The command palette holding the shown tab's URL; it loads in that tab. */
   editAddress: { label: "Change Address", keys: { ctrl: true, key: "l" }, focusUi: true },
+  /** Chrome's Ctrl+K (search from the address bar): the same palette, for commands and lenses too. */
+  commandPalette: { label: "Command Palette", keys: { ctrl: true, key: "k" }, focusUi: true },
   /** shadcn's SIDEBAR_KEYBOARD_SHORTCUT. Its key can't change until the sidebar's own listener goes. */
   toggleSidebar: { label: "Toggle Sidebar", keys: { ctrl: true, key: "b" }, focusUi: false, builtIn: true },
   /** Closes the shown tab (a pinned tab or swatch unloads, as its close button does). */
