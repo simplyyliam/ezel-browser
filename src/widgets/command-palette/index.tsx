@@ -65,7 +65,11 @@ export function CommandPalette() {
   // without opening a new one. Heard in the UI and, forwarded by Rust, in the website (shared/hotkeys).
   useHotkey("newTab", () => openCommandPalette("new-tab"))
   // No tab on screen: there's no address to change, so it's a new tab.
-  useHotkey("editAddress", () => openCommandPalette(tabs?.activeTabId != null ? "current-tab" : "new-tab"))
+  const openOnShownTab = () => openCommandPalette(tabs?.activeTabId != null ? "current-tab" : "new-tab")
+  useHotkey("editAddress", openOnShownTab)
+  // Ctrl+K: Chrome's "search from the address bar"; typing replaces the selected URL, and actions
+  // (lenses, Copy Link, Reload…) are found by name.
+  useHotkey("commandPalette", openOnShownTab)
 
   return (
     <Dialog open={open} onOpenChange={(next) => !next && closeCommandPalette()}>

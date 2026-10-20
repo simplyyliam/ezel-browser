@@ -141,7 +141,7 @@ Zen's behaviour, rebuilt on dnd-kit (HTML5 drag events are swallowed by Tauri on
 
 ## Command palette
 Ezel's address bar and quick switcher (Arc's command bar, Zen's floating new-tab URL bar): `widgets/command-palette`, opened from anywhere with `openCommandPalette(target)` (`shared/command-palette.ts`). Design: `docs/design/decisions.md`, "Command palette".
-- Targets: `new-tab` (New Tab, Ctrl+T: blank; the result is `open_tab(input)`) and `current-tab` (Ctrl+L: holds the shown tab's URL, selected; Enter `navigate`s the shown tab, Shift+Enter opens a new tab instead). Escape or a click on the page closes it without creating anything.
+- Targets: `new-tab` (New Tab, Ctrl+T: blank; the result is `open_tab(input)`) and `current-tab` (Ctrl+L or Ctrl+K: holds the shown tab's URL, selected; Enter `navigate`s the shown tab, Shift+Enter opens a new tab instead). Escape or a click on the page closes it without creating anything.
 - Rows: open the typed address (favicon from Google's favicon service) and a Google search (always offered; passes an explicit search URL), "Switch to Tab" across every space and the Swatches, then actions found by name (Copy Link, Reload, Back/Forward, Squint Lens, Greyscale Lens, Toggle Sidebar, Close Temporary Tabs, Go to <space>). Empty new tab: Swatches as tiles plus the space's tabs. `widgets/command-palette/address.ts` mirrors Rust's `resolve_input` so the first row says what Enter does.
 - Autofill completes open tabs' hosts (Tab/→ accepts, Backspace removes); Ctrl+Enter turns a word into `www.<word>.com`.
 - Built on shadcn `Command` (cmdk, `shouldFilter={false}`: the widget ranks) inside Base UI's `Dialog`, composed at the call site with **no backdrop** (it would dim the UI but not the page). The popup keeps `data-slot="dialog-content"`, so `usePopupCutouts` cuts it out of the website.
@@ -153,7 +153,7 @@ Every app shortcut is in `shared/hotkeys.ts` (`HOTKEYS`: id, label, default keys
 - Ctrl+B is also shadcn's own sidebar shortcut in the UI (`builtIn`), so its key can't be rebound yet.
 - `whileLoading` (Esc): Rust catches it only while the shown page loads, so websites keep Esc for their own dialogs; in the UI it runs only when nothing there wants it (no field focused, no popup open, not already handled) and is never `preventDefault`ed.
 - Current (ids in brackets):
-  - Ctrl+T new tab palette (`newTab`), Ctrl+L change address (`editAddress`), Ctrl+B toggle sidebar (`toggleSidebar`)
+  - Ctrl+T new tab palette (`newTab`), Ctrl+L change address (`editAddress`), Ctrl+K the same palette on the shown tab, for commands (`commandPalette`; Chrome's Ctrl+K), Ctrl+B toggle sidebar (`toggleSidebar`)
   - Ctrl+W close the shown tab (`closeTab`; pinned tabs and swatches unload, like their close button)
   - Ctrl+Tab / Ctrl+Shift+Tab recent tabs of the space (`nextTab` / `previousTab`, `cycle_tab`)
   - Ctrl+1…8 the n-th swatch as the grid shows it (`swatch1`…`swatch8`); Ctrl+9 the space's bottom row (`lastTab`)
