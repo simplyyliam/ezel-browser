@@ -18,7 +18,8 @@ One frameless window (`main`, `decorations(false)`):
 - `ui`: the React app, covers the whole window (Rust re-applies full-window bounds on every resize). It draws its own titlebar, window controls and drag region.
 - `tab-<id>`: one webview per **loaded** tab (`src-tauri/src/browser/`). Only the shown tab is visible, placed wherever the frontend reports via `set_content_bounds`; the "content" commands below always apply to it. Hidden until `set_content_visible(true)`.
 
-Only `ui` has IPC; tab webviews have none. All use WebView2's Fluent overlay scrollbars (they share a data directory, so the style must match).
+Only `ui` has IPC; tab webviews have none. All use WebView2's Fluent overlay scrollbars and the same `BROWSER_ARGS` (they share a data directory and one WebView2 environment, so these must match).
+Quiet defaults (`docs/design/decisions.md`, "Quiet defaults"): no password saving or autofill, notification requests denied without a prompt, no autoplay with sound before the page is used.
 
 ### Tabs backend (`src-tauri/src/browser/`)
 Studied from Zen (workspaces, pinned tabs, folders, essentials, session store) and Arc (spaces, pinned/today tabs, favorites); see `docs/design/decisions.md`, "Tabs, folders and spaces".

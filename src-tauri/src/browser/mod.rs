@@ -29,7 +29,7 @@ use tauri::{
 };
 use tauri_specta::Event;
 
-use crate::{content, emit_to_ui, error::AppError, SCROLL_BAR_STYLE};
+use crate::{content, emit_to_ui, error::AppError, BROWSER_ARGS, SCROLL_BAR_STYLE};
 use model::{Effect, Id, Model, Session};
 pub use view::{TabView, TabsState};
 
@@ -214,8 +214,13 @@ fn create_webview(app: &AppHandle, id: Id) -> tauri::Result<Webview> {
 
   let opener = app.clone();
   let builder = WebviewBuilder::new(label(id), WebviewUrl::External(url))
-    // Every tab shares the ui webview's data directory, so they must use the same scrollbar style.
+    // Every tab shares the ui webview's data directory, so they must use the same scrollbar style
+    // and browser arguments (which also block autoplay with sound until the page is used).
     .scroll_bar_style(SCROLL_BAR_STYLE)
+    .additional_browser_args(BROWSER_ARGS)
+    // Quiet defaults (docs/design/decisions.md): no address/form suggestions for now.
+    // TODO: turn autofill and password saving back on with the passwords UI.
+    .general_autofill_enabled(false)
     // F12 / Ctrl+Shift+I open the page's DevTools, release builds included (a designers' browser).
     .devtools(true)
     .on_page_load(move |webview, payload| {
@@ -339,6 +344,7 @@ fn watch_platform_events(webview: &Webview, id: Id) {
         }
         emit_tab(&a, &model, id);
       });
+      webview2::quiet_defaults(&pw);
       webview2::forward_shortcuts(&pw, move |key| crate::hotkeys::handle(&app, key));
     });
   }
