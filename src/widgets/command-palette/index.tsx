@@ -237,6 +237,7 @@ function PaletteBody({ target, tabs, page, inputRef, onToggleSidebar }: PaletteB
             id: "action-copy",
             icon: { kind: "glyph" as const, icon: Link },
             title: "Copy Link",
+            detail: hotkeyLabel("copyUrl"),
             keywords: "copy url address share clipboard",
             hint: "Copy",
             run: () => {
@@ -254,6 +255,7 @@ function PaletteBody({ target, tabs, page, inputRef, onToggleSidebar }: PaletteB
             id: "action-reload",
             icon: { kind: "glyph" as const, icon: RotateCw },
             title: "Reload Page",
+            detail: hotkeyLabel("reload"),
             keywords: "refresh",
             hint: "Reload",
             run: () => {

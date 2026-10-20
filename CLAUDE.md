@@ -41,17 +41,20 @@ New commands must also be allow-listed in `src-tauri/build.rs` (app manifest) an
 Commands (`invoke`):
 - `navigate(input: string)`: loads in the shown tab (a new temp tab if none is shown). A URL is loaded (`https://` added if missing); anything else is searched on Google (`SEARCH_URL`)
 - `go_back()`, `go_forward()`, `reload()`: the shown tab
+- `hard_reload()` (bypasses the cache, through the DevTools protocol), `stop_loading()`, `open_devtools()` (its own window; tab webviews are built with `devtools(true)`, release included): the shown tab. Windows only for now (`unsupported` elsewhere, except reload/stop fallbacks).
+- `copy_page_url()` → the shown tab's URL, written to the OS clipboard by Rust (Win32), because a shortcut pressed in the website leaves focus there and the UI's `navigator.clipboard` can't write without focus. `no_tab_shown` when none is.
 - `get_page()`: the shown tab's page (`page-changed` shape), so the UI can catch up on mount
 - `set_content_bounds(x: number, y: number, width: number, height: number)`: places the content webview; logical px relative to the window's top-left
 - `set_content_radius(radii: [number, number, number, number])`: clips the content webview to rounded corners; logical px, CSS order (top-left, top-right, bottom-right, bottom-left). Windows only for now.
 - `set_content_cutout(id: string, rect: [x, y, width, height] | null, radius: number)`: cuts a window-relative rounded rect (logical px) out of the content webview's clip region under `id`, so the UI below shows through without moving or resizing the page. `rect: null` clears that id. Holes: `"titlebar"`, `"sidebar"`. Use `useContentCutout` (`shared/content-cutout.ts`), which follows an element every frame while it moves. Windows only for now.
 - `set_content_visible(visible: boolean)`: shows or hides the content webview. It starts hidden, so report bounds first, then show it.
-- `set_forwarded_hotkeys(hotkeys: { id, key, ctrl, shift, alt, focusUi }[])`: replaces the shortcuts Rust catches in the tab webviews (see Hotkeys). `key`: `a`–`z`, `0`–`9`, `f1`–`f12` (anything else: `invalid_input`). Empty until first called: nothing is caught.
+- `set_forwarded_hotkeys(hotkeys: { id, key, ctrl, shift, alt, focusUi, whileLoading }[])`: replaces the shortcuts Rust catches in the tab webviews (see Hotkeys). `key`: `a`–`z`, `0`–`9`, `f1`–`f12`, `tab`, `escape`, `left`, `right` (anything else: `invalid_input`). Several entries may share an id (alternate keys). `whileLoading`: caught only while the shown tab loads, otherwise the page gets the key (Esc). Empty until first called: nothing is caught.
 - `get_window_radius()` → `{ radius: number | null, customized: boolean }`: the corner radius Windows 11 actually draws for the window, logical px. Without the Windhawk "Custom Window Corner Radius" mod: 8, or 0 when fullscreen/maximized/snapped. With it (`customized: true`): the mod's radius, or 0 where it leaves windows square. `radius: null` = unknown (not Windows): keep the UI's default radii. The UI sets `--radius-frame` to `radius − 4` (frame padding).
 
 Tab commands (ids are numbers; every change also emits `tabs-changed`):
 - `get_tabs()` → `TabsState`: `{ activeSpaceId, activeTabId | null, swatches: (TabView | null)[8], spaces: { id, name, icon, items: ({kind:"tab", tab} | {kind:"folder", folder:{ id, name, collapsed, tabs }})[], tempTabs }[] }`. `TabView`: `{ id, url, title | null, favicon | null, pinnedUrl | null, isLoaded, isLoading, isPlayingAudio }`. `icon` is a lucide icon name.
 - `open_tab(input?: string)` → id: new temp tab on top of the active space, selected (home page without input). Links opened in a new window (`target=_blank`) do the same; sized popups (OAuth) get a native popup window.
+- `cycle_tab(backward)`: Ctrl+Tab / Ctrl+Shift+Tab. The active space's next tab in most-recently-used order (`model.rs`, `CYCLE_WINDOW_MS`): presses within 1.2s walk deeper into one frozen order (Ctrl "held"; the website's key-ups never reach us), after a pause it returns to the previous tab. Swatches aren't in the walk, but a shown swatch starts it.
 - `activate_tab(id)`; `close_tab(id)`: a temp tab is removed, a pinned/swatch tab is unloaded and reset to its pinned URL; `remove_tab(id)`: removes any tab; `unload_tab(id)`: frees memory, keeps the page.
 - `move_tab(id, to)`: pin/unpin, swatch, folder, reorder, other space. `to`: `{kind:"swatch", slot}` (occupied: swap) | `{kind:"pinned", spaceId, folderId: id | null, index: number | null}` (null = end) | `{kind:"temp", spaceId, index: number | null}` (null = top). Pinned/swatch tabs remember a `pinnedUrl`; temp tabs forget it.
 - `reset_tab(id)`: back to its pinned URL; `update_pinned_url(id)`: current URL becomes the pinned URL; `clear_temp_tabs(spaceId)`: trash-all.
@@ -130,11 +133,22 @@ Ezel's address bar and quick switcher (Arc's command bar, Zen's floating new-tab
 - Built on shadcn `Command` (cmdk, `shouldFilter={false}`: the widget ranks) inside Base UI's `Dialog`, composed at the call site with **no backdrop** (it would dim the UI but not the page). The popup keeps `data-slot="dialog-content"`, so `usePopupCutouts` cuts it out of the website.
 
 ## Hotkeys
-Every app shortcut is in `shared/hotkeys.ts` (`HOTKEYS`: id, label, default keys, `focusUi`). A future Settings page rebinds them there; never hard-code a key check elsewhere.
+Every app shortcut is in `shared/hotkeys.ts` (`HOTKEYS`: id, label, default keys (one combination or several), `focusUi`, `whileLoading`). A future Settings page rebinds them there; never hard-code a key check elsewhere. What the browser shortcuts do is in `shared/browser-hotkeys.ts` (`useBrowserHotkeys`, mounted in `AppLayout`).
 - Components call `useHotkey(id, handler)`. `useHotkeys()` (mounted once in `AppLayout`) dispatches both paths: the UI's `keydown`, and `hotkey-pressed` from Rust for keys pressed in the website (tab webviews have no IPC, so the UI never sees those keys otherwise). It sends the whole list to Rust with `set_forwarded_hotkeys`; resend it after a rebinding.
 - `focusUi: true` for shortcuts that open something to type in (the palette): Rust moves keyboard focus to `ui`. `false` leaves focus in the page.
 - Ctrl+B is also shadcn's own sidebar shortcut in the UI (`builtIn`), so its key can't be rebound yet.
-- Current: Ctrl+T new tab palette, Ctrl+L change address, Ctrl+B toggle sidebar.
+- `whileLoading` (Esc): Rust catches it only while the shown page loads, so websites keep Esc for their own dialogs; in the UI it runs only when nothing there wants it (no field focused, no popup open, not already handled) and is never `preventDefault`ed.
+- Current (ids in brackets):
+  - Ctrl+T new tab palette (`newTab`), Ctrl+L change address (`editAddress`), Ctrl+B toggle sidebar (`toggleSidebar`)
+  - Ctrl+W close the shown tab (`closeTab`; pinned tabs and swatches unload, like their close button)
+  - Ctrl+Tab / Ctrl+Shift+Tab recent tabs of the space (`nextTab` / `previousTab`, `cycle_tab`)
+  - Ctrl+1…8 the n-th swatch as the grid shows it (`swatch1`…`swatch8`); Ctrl+9 the space's bottom row (`lastTab`)
+  - Ctrl+R or F5 reload (`reload`), Ctrl+Shift+R reload without cache (`hardReload`)
+  - Alt+← / Alt+→ back / forward (`back` / `forward`), Esc stop loading (`stopLoading`, `whileLoading`)
+  - F12 or Ctrl+Shift+I the page's DevTools (`devTools`)
+  - Ctrl+Shift+C copy the page's link with a toast (`copyUrl`; the page keeps focus)
+- These also act while the UI has focus: Ctrl+R/F5 reload the page, not the UI, and F12 opens the page's DevTools (the UI's own DevTools: right-click › Inspect in a debug build).
+- **Toasts**: `showToast({ title, detail?, tone? })` (`shared/toast.ts`), drawn by `Toaster` (`shared/components/toast`, mounted in `AppLayout`): one small pill at a time, bottom-left inside the sidebar's width above its footer, cut out of the website while it shows (`useContentCutout("toast")`), 1.8s. Passive confirmations only (HIG feedback.md); a check draws itself for `tone: "done"`.
 
 ## Theme
 `src/theme/`: `ThemeProvider` (in `App.tsx`, `defaultTheme="system"`, no persistence yet; pass `storageKey` to persist) around a framework-agnostic store (`theme-store.ts`).

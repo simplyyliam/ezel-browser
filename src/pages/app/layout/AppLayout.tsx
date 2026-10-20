@@ -1,8 +1,8 @@
 import type { CSSProperties } from "react"
 import { Outlet } from "react-router-dom"
 import { SidebarInset, SidebarProvider } from "@/components/ui/sidebar"
-import { useDismissPopupsOnBlur, useHotkeys, usePopupCutouts } from "@/shared"
-import { WindowFrame } from "@/shared/components"
+import { useBrowserHotkeys, useDismissPopupsOnBlur, useHotkeys, usePopupCutouts } from "@/shared"
+import { Toaster, WindowFrame } from "@/shared/components"
 import { AppSidebar, SIDEBAR_WIDTH } from "@/widgets/app-sidebar"
 import { AppTitlebar } from "@/widgets/app-titlebar/AppTitlebar"
 import { CommandPalette } from "@/widgets/command-palette"
@@ -14,6 +14,8 @@ export default function AppLayout() {
   useDismissPopupsOnBlur()
   // App shortcuts, wherever focus is: the UI's keydown, or Rust forwarding them from the website.
   useHotkeys()
+  // Ctrl+W, Ctrl+Tab, Ctrl+1…9, Ctrl+R/F5, Alt+←/→, Esc, F12, Ctrl+Shift+C (shared/browser-hotkeys).
+  useBrowserHotkeys()
 
   return (
     // Wraps the whole frame so the titlebar can toggle the sidebar too (Ctrl+B does the same).
@@ -36,6 +38,8 @@ export default function AppLayout() {
       </WindowFrame>
       {/* New Tab, Ctrl+T, Ctrl+L. Inside the provider: one of its actions toggles the sidebar. */}
       <CommandPalette />
+      {/* "Link copied" and other passive confirmations, bottom-left inside the sidebar's width. */}
+      <Toaster />
     </SidebarProvider>
   )
 }
