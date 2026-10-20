@@ -77,6 +77,7 @@ export const MENU_CATALOG = {
       [item({ id: "compactMode", label: "Compact Mode", origin: "ezel", status: "built", note: "Checkmark toggle: sidebar peeks from the left edge" })],
       [
         item({ id: "newTab", label: "New Tab", origin: "browser", status: "built", uses: "open_tab" }),
+        item({ id: "reopenClosed", label: "Reopen Closed Tab", origin: "browser", status: "built", when: "a closed tab to reopen (closedCount > 0)", uses: "reopen_closed_tab", note: "Not on tab rows: it restores another tab, not the one right-clicked" }),
         item({ id: "newFolder", label: "New Folder", origin: "ezel", status: "needs-feature", uses: "create_folder" }),
       ],
       [item({ id: "editTheme", label: "Edit Theme…", origin: "ezel", status: "needs-feature", note: "Theme editor (theme/ setTokens)" })],
@@ -109,11 +110,11 @@ export const MENU_CATALOG = {
       [
         item({ id: "close", label: "Close Tab", origin: "browser", status: "built", uses: "close_tab", note: "Pinned tabs unload and reset instead" }),
         item({ id: "closeMultiple", label: "Close Multiple Tabs", origin: "browser", status: "built", submenu: ["Close Tabs Above", "Close Tabs Below", "Close Other Tabs"], when: "a temp tab with others", uses: "close_tab" }),
-        item({ id: "reopenClosed", label: "Reopen Closed Tab", origin: "browser", status: "needs-backend", uses: "missing: closed-tab history" }),
       ],
     ],
     notHere: [
       { label: "New Folder", lives: "sidebar" },
+      { label: "Reopen Closed Tab", lives: "sidebar (it acts on the closed-tab history, not this tab)" },
       { label: "Bookmark / Share / Send to Device", lives: "nowhere yet: no such features" },
     ],
   },

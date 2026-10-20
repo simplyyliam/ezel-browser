@@ -40,4 +40,4 @@ Zen's tab menu is Firefox's tab menu plus Zen's own items (Move to Folder, Add S
 | Arrange | Unload Tab, Move Tab ▸ Move to Start / Move to End | Unload only when loaded; Move on temp and top-level pinned tabs |
 | Close | Close Tab, Close Multiple Tabs ▸ Close Tabs Above / Below / Other Tabs | the submenu on temp tabs only |
 
-Labels in Title Case, like the sidebar menu and Firefox/Zen. Left out until the backend has them: Mute Tab, Reopen Closed Tab, Reload for a background tab. Left out until the feature exists: Move to Folder, Bookmark, Share, Move to New Window.
+Labels in Title Case, like the sidebar menu and Firefox/Zen. Reopen Closed Tab lives in the sidebar menu (after New Tab, shown while there's a closed tab), not here: it brings back another tab, not the one right-clicked. Left out until the backend has them: Mute Tab, Reload for a background tab. Left out until the feature exists: Move to Folder, Bookmark, Share, Move to New Window.

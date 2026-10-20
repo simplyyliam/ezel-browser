@@ -29,6 +29,12 @@ function hostOf(url: string) {
   }
 }
 
+/** Ctrl+Shift+T and the sidebar menu's Reopen Closed Tab. Says so when there's nothing to reopen. */
+export async function reopenClosedTab() {
+  const id = await unwrap("reopen closed tab", commands.reopenClosedTab())
+  if (id === null) showToast({ title: "No closed tabs to reopen", tone: "info" })
+}
+
 async function copyUrl() {
   try {
     const result = await commands.copyPageUrl()
@@ -74,5 +80,6 @@ export function useBrowserHotkeys() {
   useHotkey("forward", () => page.canGoForward && unwrap("go forward", commands.goForward()))
   useHotkey("stopLoading", () => page.isLoading && unwrap("stop loading", commands.stopLoading()))
   useHotkey("devTools", () => unwrap("open developer tools", commands.openDevtools()))
+  useHotkey("reopenClosedTab", reopenClosedTab)
   useHotkey("copyUrl", copyUrl)
 }
