@@ -7,43 +7,6 @@ export { PEEK_TRANSITION, INSTANT } from "./motion"
 export { useWindowRadius } from "./window-radius"
 export { useContentCutout, usePopupCutouts, trackContentCutout } from "./content-cutout"
 export { OPEN_POPUP_SELECTOR, isPopupOpen, dismissPopups, useDismissPopupsOnBlur } from "./outside-press"
-export {
-  getPage,
-  navigate,
-  goBack,
-  goForward,
-  reload,
-  setContentBounds,
-  setContentRadius,
-  setContentCutout,
-  setContentVisible,
-  onPageChanged,
-  getWindowRadius,
-  onWindowRadiusChanged,
-  getTabs,
-  openTab,
-  activateTab,
-  closeTab,
-  removeTab,
-  unloadTab,
-  moveTab,
-  resetTab,
-  updatePinnedUrl,
-  clearTempTabs,
-  createFolder,
-  renameFolder,
-  setFolderCollapsed,
-  moveFolder,
-  deleteFolder,
-  unloadFolder,
-  createSpace,
-  updateSpace,
-  moveSpace,
-  deleteSpace,
-  switchSpace,
-  onTabsChanged,
-  onTabUpdated,
-} from "./tauri"
 export { minimizeWindow, toggleMaximizeWindow, closeWindow, getCursorPosition, getWindowClientRect } from "./window"
 export { reportError, unwrap } from "./report-error"
 export { MENU_CATALOG, MENU_RULES, menuLabel } from "./menus/catalog"

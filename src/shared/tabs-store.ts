@@ -1,5 +1,6 @@
 import { useSyncExternalStore } from "react"
-import { getTabs, onTabsChanged, onTabUpdated } from "./tauri"
+import { commands, events } from "./bindings"
+import { unwrap } from "./report-error"
 import type { Folder, Space, SpaceItem, Tab, TabsState } from "./types"
 
 // A read-only mirror of Rust's tab state: `get_tabs` once, then `tabs-changed` (whole state) and
@@ -38,14 +39,14 @@ function start() {
   // a `tabs-changed` that arrives first is newer than the snapshot, so it wins.
   let gotState = false
   const unlisteners = [
-    onTabsChanged((next) => {
+    events.tabsChanged.listen((event) => {
       gotState = true
-      set(next)
+      set(event.payload)
     }),
-    onTabUpdated(patchTab),
+    events.tabUpdated.listen((event) => patchTab(event.payload)),
   ]
-  getTabs().then((snapshot) => {
-    if (!gotState) set(snapshot)
+  unwrap("get tabs", commands.getTabs()).then((snapshot) => {
+    if (snapshot && !gotState) set(snapshot)
   })
   return () => unlisteners.forEach((unlisten) => unlisten.then((fn) => fn()))
 }

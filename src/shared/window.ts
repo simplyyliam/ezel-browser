@@ -1,6 +1,6 @@
 import { cursorPosition, getCurrentWindow } from "@tauri-apps/api/window"
 
-// Tauri's window APIs (not backend commands, so not in shared/tauri.ts).
+// Tauri's window APIs (not backend commands, so not in shared/bindings.ts).
 
 export const minimizeWindow = () => getCurrentWindow().minimize()
 export const toggleMaximizeWindow = () => getCurrentWindow().toggleMaximize()

@@ -1,12 +1,12 @@
 import { useEffect, useRef } from "react"
 import { OPEN_POPUP_SELECTOR } from "./outside-press"
-import { setContentCutout } from "./tauri"
+import { commands } from "./bindings"
 
 // Calls per hole id, chained: each goes out after the previous one settles, so a later call (the
 // final clear) can never overtake an earlier one, even when a popup id is reused right away.
 const queues = new Map<string, Promise<unknown>>()
 function sendCutout(id: string, rect: [number, number, number, number] | null, radius = 0) {
-  const next = (queues.get(id) ?? Promise.resolve()).then(() => setContentCutout(id, rect, radius)).catch(() => {})
+  const next = (queues.get(id) ?? Promise.resolve()).then(() => commands.setContentCutout(id, rect, radius)).catch(() => {})
   queues.set(id, next)
 }
 
