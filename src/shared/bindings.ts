@@ -128,7 +128,12 @@ export type ErrorCode =
 /**  The native webview refused the call. */
 "webview" | 
 /**  Not available on this platform yet (most WebView2-only features outside Windows). */
-"unsupported";
+"unsupported" | 
+/**
+ *  Can't be read right now (the load meter while WebView2 doesn't answer, or another reading is
+ *  already running). Try again later; nothing is wrong.
+ */
+"unavailable";
 
 export type Folder = {
 	id: Id,

@@ -122,31 +122,48 @@ pub fn main_frame_id(pw: &PlatformWebview) -> Option<u32> {
 }
 
 /// Lists every process of the WebView2 environment (WebView2 1.0.2420+) with the top-level frame
-/// ids of the frames it renders, then calls `done` (on the main thread; an empty list on failure).
-pub fn process_frames(pw: &PlatformWebview, done: impl FnOnce(Vec<(u32, Vec<u32>)>) + 'static) {
+/// ids of the frames it renders, then calls `done` on the main thread: `None` if WebView2 can't
+/// answer (an older runtime, a failed call, a failed callback).
+pub fn process_frames(pw: &PlatformWebview, done: impl FnOnce(Option<Vec<(u32, Vec<u32>)>>) + 'static) {
   let env = core(pw)
     .and_then(|c| c.cast::<ICoreWebView2_2>().ok())
     // SAFETY: main thread, live webview.
     .and_then(|c| unsafe { c.Environment() }.ok())
     .and_then(|e| e.cast::<ICoreWebView2Environment13>().ok());
-  let Some(env) = env else { return done(vec![]) };
+  let Some(env) = env else { return done(None) };
+  // The handler may never run if the call fails, so `done` is shared with the failure path below.
+  let done = std::rc::Rc::new(std::cell::Cell::new(Some(done)));
+  let answer = done.clone();
   let handler = GetProcessExtendedInfosCompletedHandler::create(Box::new(move |result, list| {
     let processes = match (result, list) {
       // SAFETY: WebView2 calls this on the main thread with a live collection.
-      (Ok(()), Some(list)) => unsafe { read_processes(&list) },
-      _ => vec![],
+      (Ok(()), Some(list)) => Some(unsafe { read_processes(&list) }),
+      _ => None,
     };
-    done(processes);
+    if let Some(done) = answer.take() {
+      done(processes);
+    }
     Ok(())
   }));
   // SAFETY: main thread, live environment.
-  unsafe {
-    let _ = env.GetProcessExtendedInfos(&handler);
+  if unsafe { env.GetProcessExtendedInfos(&handler) }.is_err() {
+    if let Some(done) = done.take() {
+      done(None);
+    }
   }
 }
 
+/// More frames than any real page has; only guards the loop against a runtime that never ends it.
+const MAX_FRAMES_PER_PROCESS: usize = 4096;
+
 /// (process id, top-level frame ids) per process. Each frame is followed up to its top-level frame,
-/// so a cross-site iframe's process counts for the tab whose page holds it.
+/// so a cross-site iframe's process counts for the tab whose page holds it. Every call's result is
+/// checked; a process that can't be read is left out, its frames that can't be read are skipped.
+///
+/// Why unsafe: WebView2's COM interfaces are only reachable through these raw calls.
+/// SAFETY: called from the completion handler, on the main thread, with the live collection
+/// WebView2 passed in. Every COM object is held in a local for as long as anything derived from it
+/// is used (see the frame collection below).
 unsafe fn read_processes(list: &ICoreWebView2ProcessExtendedInfoCollection) -> Vec<(u32, Vec<u32>)> {
   let mut count = 0u32;
   if unsafe { list.Count(&mut count) }.is_err() {
@@ -158,9 +175,15 @@ unsafe fn read_processes(list: &ICoreWebView2ProcessExtendedInfoCollection) -> V
       let mut pid = 0i32;
       unsafe { info.ProcessInfo().ok()?.ProcessId(&mut pid).ok()? };
       let mut roots = vec![];
-      if let Ok(frames) = unsafe { info.AssociatedFrameInfos() }.and_then(|f| unsafe { f.GetIterator() }) {
+      // Keep the collection alive while its iterator is used: WebView2's iterator doesn't hold a
+      // reference to it, so dropping it after `GetIterator` (as this code once did) left
+      // `GetCurrent` reading freed memory and crashed the app (STATUS_ACCESS_VIOLATION).
+      let collection = unsafe { info.AssociatedFrameInfos() }.ok();
+      if let Some(frames) = collection.as_ref().and_then(|c| unsafe { c.GetIterator() }.ok()) {
         let mut has = Default::default();
-        while unsafe { frames.HasCurrent(&mut has) }.is_ok() && has.as_bool() {
+        let mut seen = 0;
+        while seen < MAX_FRAMES_PER_PROCESS && unsafe { frames.HasCurrent(&mut has) }.is_ok() && has.as_bool() {
+          seen += 1;
           if let Some(root) = unsafe { frames.GetCurrent() }.ok().and_then(|f| f.cast::<ICoreWebView2FrameInfo2>().ok()).and_then(|f| unsafe { top_frame_id(f) }) {
             if !roots.contains(&root) {
               roots.push(root);
