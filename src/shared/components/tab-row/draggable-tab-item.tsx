@@ -12,6 +12,8 @@ export interface TabRowActions {
   onSelect: (tabId: Id) => void;
   /** Temp tabs are removed; pinned tabs only unload. */
   onClose: (tabId: Id) => void;
+  /** The row's speaker button (shown while the tab plays sound or is muted). */
+  onSetMuted: (tabId: Id, muted: boolean) => void;
   /** The tab's right-click menu. */
   menuFor: (tabId: Id) => MenuGroups;
   /** The tab whose name is being edited as an address, and the text it starts with. */
@@ -44,7 +46,8 @@ export const DraggableTabItem = ({ tab, source, actions, indicator = null, sub =
       // An address being typed isn't dragged.
       {...(editValue === null ? listeners : {})}
       {...(sub ? {} : DROP_ROW)}
-      className={cn(actions.draggedTabId === tab.id && "opacity-40")}
+      // `group/tab`: this tab's own hover (its speaker and close buttons), even inside a folder.
+      className={cn("group/tab", actions.draggedTabId === tab.id && "opacity-40")}
     >
       {/* `contents`: the trigger adds no box, so the row and its close button stay siblings (peer hover). */}
       <TabContextMenu tabId={tab.id} menuFor={actions.menuFor} className="contents">
@@ -53,6 +56,7 @@ export const DraggableTabItem = ({ tab, source, actions, indicator = null, sub =
           active={tab.id === actions.activeTabId}
           onSelect={() => actions.onSelect(tab.id)}
           onClose={() => actions.onClose(tab.id)}
+          onToggleMute={() => actions.onSetMuted(tab.id, !tab.isMuted)}
           editValue={editValue}
           onEdit={() => actions.onEdit(tab.id)}
           onEditDone={actions.onEditDone}

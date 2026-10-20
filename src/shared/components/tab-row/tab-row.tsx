@@ -4,6 +4,7 @@ import { SidebarMenuAction, SidebarMenuButton } from "@/components/ui/sidebar";
 import { cn } from "@/lib/utils";
 import type { Tab } from "../../types";
 import { Favicon } from "../favicon/favicon";
+import { SpeakerIcon } from "./speaker-icon";
 
 interface TabRowProps {
   tab: Tab;
@@ -11,6 +12,8 @@ interface TabRowProps {
   onSelect?: () => void;
   /** Shows a close button while the row is hovered or focused. */
   onClose?: () => void;
+  /** While the tab plays sound or is muted, a speaker button toggles its mute. */
+  onToggleMute?: () => void;
   /**
    * The name is being edited as an address: it shows this text (the URL, or "" for a new tab)
    * in place of the title. Null = not editing.
@@ -44,6 +47,7 @@ export const TabRow = ({
   active = false,
   onSelect,
   onClose,
+  onToggleMute,
   editValue = null,
   onEdit,
   onEditDone,
@@ -51,6 +55,7 @@ export const TabRow = ({
 }: TabRowProps) => {
   const label = tabLabel(tab);
   const editing = editValue !== null;
+  const speaker = !editing && !!onToggleMute && (tab.isPlayingAudio || tab.isMuted);
   const icon = tab.isLoading ? (
     <span role="status" className="flex size-4 shrink-0 items-center justify-center">
       <LoaderCircle aria-hidden className="size-3.5 animate-spin text-sidebar-foreground/50 motion-reduce:animate-none" />
@@ -70,7 +75,12 @@ export const TabRow = ({
         title={editing ? undefined : label}
         onClick={editing ? undefined : onSelect}
         onDoubleClick={editing ? undefined : onEdit}
-        className={cn(!tab.isLoaded && !active && !editing && "text-sidebar-foreground/45 [&_img]:opacity-50", className)}
+        className={cn(
+          !tab.isLoaded && !active && !editing && "text-sidebar-foreground/45 [&_img]:opacity-50",
+          // Room for the speaker and, on hover, the close button beside it.
+          speaker && "group-hover/tab:pr-14 group-focus-within/tab:pr-14",
+          className,
+        )}
       >
         {icon}
         {editing ? (
@@ -79,13 +89,30 @@ export const TabRow = ({
           <span>{label}</span>
         )}
       </SidebarMenuButton>
+      {speaker && (
+        // At the row's end; on hover it steps left to make room for the close button.
+        <SidebarMenuAction
+          aria-label={`${tab.isMuted ? "Unmute" : "Mute"} ${label}`}
+          aria-pressed={tab.isMuted}
+          title={tab.isMuted ? "Unmute" : "Mute"}
+          onClick={onToggleMute}
+          // A press here isn't the start of a tab drag.
+          onPointerDown={(event) => event.stopPropagation()}
+          className={cn(
+            "transition-[right] duration-150 ease-out group-hover/tab:right-7 group-focus-within/tab:right-7 motion-reduce:transition-none [&>svg]:size-3.5",
+            tab.isMuted ? "text-sidebar-foreground/50" : "text-sidebar-foreground/80",
+          )}
+        >
+          <SpeakerIcon muted={tab.isMuted} />
+        </SidebarMenuAction>
+      )}
       {onClose && !editing && (
-        // Hover is tracked on the row itself (peer), not the menu item: in a folder the item is the
-        // whole folder, so its group-hover would reveal every tab's button at once.
+        // Hover is tracked on the row itself (peer) or this tab's own item (`group/tab`), never the
+        // menu item: in a folder that's the whole folder, so its hover would reveal every tab's button.
         <SidebarMenuAction
           aria-label={`Close ${label}`}
           onClick={onClose}
-          className="opacity-0 peer-hover/menu-button:opacity-100 hover:opacity-100 focus-visible:opacity-100 [&>svg]:size-3.5"
+          className="opacity-0 peer-hover/menu-button:opacity-100 group-hover/tab:opacity-100 hover:opacity-100 focus-visible:opacity-100 [&>svg]:size-3.5"
         >
           <X aria-hidden />
         </SidebarMenuAction>

@@ -55,6 +55,10 @@ pub struct Tab {
   pub pinned_url: Option<String>,
   /// Unix ms of the last time the tab was selected. Drives LRU unloading and the close fallback.
   pub last_accessed: u64,
+  /// Muted by the user. Kept across unloads and restarts (a new webview starts unmuted, so the
+  /// runtime re-applies it); added after version 1, so older files read false.
+  #[serde(default)]
+  pub muted: bool,
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
@@ -153,6 +157,8 @@ pub enum Effect {
   /// Close the tab's webview (unload or close).
   Destroy(Id),
   Navigate(Id, String),
+  /// Mute or unmute the tab's loaded webview.
+  SetMuted(Id, bool),
 }
 
 /// Per-tab runtime state of a loaded tab (has a webview). Never persisted.
@@ -253,7 +259,7 @@ fn insert_at<T>(list: &mut Vec<T>, index: usize, item: T) {
 }
 
 fn new_tab(id: Id, url: &str, now: u64) -> Tab {
-  Tab { id, url: url.into(), title: None, favicon: None, pinned_url: None, last_accessed: now }
+  Tab { id, url: url.into(), title: None, favicon: None, pinned_url: None, last_accessed: now, muted: false }
 }
 
 impl Model {
@@ -503,6 +509,13 @@ impl Model {
     }
     self.session.tabs.get_mut(&id).expect("checked above").url = url;
     Ok(vec![])
+  }
+
+  /// Mutes or unmutes a tab. A loaded tab's webview follows now; an unloaded one when it loads.
+  pub fn set_muted(&mut self, id: Id, muted: bool) -> Result<Vec<Effect>> {
+    let tab = self.session.tabs.get_mut(&id).ok_or_else(|| AppError::not_found(format!("tab {id} not found")))?;
+    tab.muted = muted;
+    Ok(if self.live.contains_key(&id) { vec![Effect::SetMuted(id, muted)] } else { vec![] })
   }
 
   /// Makes the tab's current URL its pinned URL.
@@ -1214,6 +1227,27 @@ mod tests {
     value.as_object_mut().unwrap().remove("closed");
     let old: Session = serde_json::from_value(value).unwrap();
     assert!(old.closed.is_empty(), "a file from before the stack existed");
+  }
+
+  #[test]
+  fn muting_follows_the_webview_and_survives_unloading() {
+    let (mut m, a, _, c) = three_tabs();
+    assert_eq!(m.set_muted(c, true).unwrap(), vec![Effect::SetMuted(c, true)], "loaded: applied now");
+    m.unload_tab(a, 30).unwrap();
+    assert_eq!(m.set_muted(a, true).unwrap(), vec![], "unloaded: applied when it loads");
+    assert!(m.tab(a).unwrap().muted);
+    m.unload_tab(c, 40).unwrap();
+    assert!(m.tab(c).unwrap().muted, "unloading keeps the mute");
+    assert_eq!(m.set_muted(c, false).unwrap(), vec![]);
+    assert!(!m.tab(c).unwrap().muted);
+    assert!(m.set_muted(999, true).is_err());
+  }
+
+  #[test]
+  fn tabs_saved_before_mute_existed_load_unmuted() {
+    let json = r#"{"id":5,"url":"https://a.test/","title":null,"favicon":null,"pinnedUrl":null,"lastAccessed":0}"#;
+    let tab: Tab = serde_json::from_str(json).unwrap();
+    assert!(!tab.muted);
   }
 
   #[test]

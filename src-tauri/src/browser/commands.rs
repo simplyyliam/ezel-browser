@@ -205,6 +205,13 @@ pub async fn cycle_tab(app: AppHandle, backward: bool) -> Result<()> {
   update(&app, |m, now| Ok(((), m.cycle_tab(backward, now)?)))
 }
 
+/// Mutes or unmutes a tab (its speaker icon, or Mute Tab / Unmute Tab in its menu).
+#[tauri::command]
+#[specta::specta]
+pub async fn set_tab_muted(app: AppHandle, id: TsId, muted: bool) -> Result<()> {
+  update(&app, |m, _| Ok(((), m.set_muted(id.0, muted)?)))
+}
+
 /// Pin, unpin, add to swatches or a folder, reorder, or move to another space.
 #[tauri::command]
 #[specta::specta]

@@ -35,9 +35,9 @@ Zen's tab menu is Firefox's tab menu plus Zen's own items (Move to Folder, Add S
 | Group | Items | Where |
 |---|---|---|
 | Open | New Tab Below, Duplicate Tab | all; the new tab goes right below a temp tab, else on top of the temp tabs. New Tab Below opens its name field empty |
-| Page | Reload Tab, Copy Link | Reload only on the shown, loaded tab (`reload` acts on the shown tab) |
+| Page | Reload Tab, Mute Tab / Unmute Tab, Copy Link | Reload only on the shown, loaded tab (`reload` acts on the shown tab); Mute while it plays sound, Unmute while muted (also on swatches) |
 | Keep | Change URL…, Add to Swatches (`n / 8`, disabled when full) / Remove from Swatches, Pin Tab / Unpin Tab | Change URL… on list rows only (swatches have no name field); Remove → top of the active space's temp tabs |
 | Arrange | Unload Tab, Move Tab ▸ Move to Start / Move to End | Unload only when loaded; Move on temp and top-level pinned tabs |
 | Close | Close Tab, Close Multiple Tabs ▸ Close Tabs Above / Below / Other Tabs | the submenu on temp tabs only |
 
-Labels in Title Case, like the sidebar menu and Firefox/Zen. Reopen Closed Tab lives in the sidebar menu (after New Tab, shown while there's a closed tab), not here: it brings back another tab, not the one right-clicked. Left out until the backend has them: Mute Tab, Reload for a background tab. Left out until the feature exists: Move to Folder, Bookmark, Share, Move to New Window.
+Labels in Title Case, like the sidebar menu and Firefox/Zen. Reopen Closed Tab lives in the sidebar menu (after New Tab, shown while there's a closed tab), not here: it brings back another tab, not the one right-clicked. Left out until the backend has it: Reload for a background tab. Left out until the feature exists: Move to Folder, Bookmark, Share, Move to New Window.

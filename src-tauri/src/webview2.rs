@@ -92,6 +92,15 @@ pub fn on_favicon_changed(pw: &PlatformWebview, f: impl Fn(Option<String>) + 'st
   }
 }
 
+/// Mutes or unmutes everything the page plays (WebView2 1.0.1072+).
+pub fn set_muted(pw: &PlatformWebview, muted: bool) {
+  let Some(core) = core(pw).and_then(|c| c.cast::<ICoreWebView2_8>().ok()) else { return };
+  // SAFETY: main thread, live webview.
+  unsafe {
+    let _ = core.SetIsMuted(muted);
+  }
+}
+
 /// Calls `f` whenever the page starts or stops playing audio.
 pub fn on_audio_changed(pw: &PlatformWebview, f: impl Fn(bool) + 'static) {
   let Some(core) = core(pw).and_then(|c| c.cast::<ICoreWebView2_8>().ok()) else { return };

@@ -163,7 +163,20 @@ fn apply(app: &AppHandle, effect: Effect) {
         let _ = webview.navigate(url);
       }
     }
+    Effect::SetMuted(id, muted) => {
+      if let Some(webview) = tab_webview(app, id) {
+        set_muted(&webview, muted);
+      }
+    }
   }
+}
+
+fn set_muted(webview: &Webview, muted: bool) {
+  #[cfg(windows)]
+  let _ = webview.with_webview(move |pw| crate::webview2::set_muted(&pw, muted));
+  // TODO: per-tab mute on macOS and Linux.
+  #[cfg(not(windows))]
+  let _ = (webview, muted);
 }
 
 /// Puts `next` on screen (creating its webview if needed), then hides the previous tab, in that
@@ -225,6 +238,10 @@ fn create_webview(app: &AppHandle, id: Id) -> tauri::Result<Webview> {
     });
   let webview = window.add_child(builder, LogicalPosition::new(0.0, 0.0), LogicalSize::new(0.0, 0.0))?;
   watch_platform_events(&webview, id);
+  // A new webview starts unmuted; a muted tab stays muted when it (re)loads.
+  if browser(app).model.lock().unwrap().tab(id).is_ok_and(|t| t.muted) {
+    set_muted(&webview, true);
+  }
   Ok(webview)
 }
 

@@ -53,6 +53,8 @@ export const commands = {
 	unloadTab: (id: Id) => typedError<null, AppError>(__TAURI_INVOKE("unload_tab", { id })),
 	/**  Ctrl+Tab / Ctrl+Shift+Tab (`backward`): the active space's next tab in most-recently-used order. */
 	cycleTab: (backward: boolean) => typedError<null, AppError>(__TAURI_INVOKE("cycle_tab", { backward })),
+	/**  Mutes or unmutes a tab (its speaker icon, or Mute Tab / Unmute Tab in its menu). */
+	setTabMuted: (id: Id, muted: boolean) => typedError<null, AppError>(__TAURI_INVOKE("set_tab_muted", { id, muted })),
 	/**  Pin, unpin, add to swatches or a folder, reorder, or move to another space. */
 	moveTab: (id: Id, to: TabLocation) => typedError<null, AppError>(__TAURI_INVOKE("move_tab", { id, to })),
 	/**  Navigates a pinned or swatch tab back to its pinned URL. */
@@ -191,6 +193,8 @@ export type Tab = {
 	isLoaded: boolean,
 	isLoading: boolean,
 	isPlayingAudio: boolean,
+	/**  Muted by the user (shown with a crossed speaker whether or not it's playing). */
+	isMuted: boolean,
 };
 
 /**  Where a tab lives. Also the target of `move_tab`. */

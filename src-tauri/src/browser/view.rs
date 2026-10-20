@@ -75,6 +75,8 @@ pub struct TabView {
   pub is_loaded: bool,
   pub is_loading: bool,
   pub is_playing_audio: bool,
+  /// Muted by the user (shown with a crossed speaker whether or not it's playing).
+  pub is_muted: bool,
 }
 
 impl TabsState {
@@ -123,6 +125,7 @@ impl TabView {
       is_loaded: live.is_some(),
       is_loading: live.is_some_and(|l| l.is_loading),
       is_playing_audio: live.is_some_and(|l| l.playing_audio),
+      is_muted: tab.muted,
     })
   }
 }
