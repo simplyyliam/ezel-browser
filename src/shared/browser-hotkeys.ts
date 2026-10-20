@@ -1,5 +1,5 @@
-import { commands } from "./bindings"
-import { useHotkey } from "./hotkeys"
+import { commands, type PageLayer } from "./bindings"
+import { hotkeyLabel, useHotkey } from "./hotkeys"
 import { usePage } from "./page"
 import { reportError, unwrap } from "./report-error"
 import { activeSpace, useTabs } from "./tabs-store"
@@ -33,6 +33,33 @@ function hostOf(url: string) {
 export async function reopenClosedTab() {
   const id = await unwrap("reopen closed tab", commands.reopenClosedTab())
   if (id === null) showToast({ title: "No closed tabs to reopen", tone: "info" })
+}
+
+/** What each lens is called, and the shortcut that toggles it. */
+export const LENSES: Record<PageLayer, { name: string; hotkey: "squint" | "greyscale" }> = {
+  squint: { name: "Squint", hotkey: "squint" },
+  greyscale: { name: "Greyscale", hotkey: "greyscale" },
+}
+
+/**
+ * Turns a lens on or off in the shown tab (Ctrl+Alt+S / G and the palette). The page shows the
+ * change; the toast names it and, when it goes on, how to take it off again.
+ */
+export async function toggleLens(layer: PageLayer) {
+  const { name, hotkey } = LENSES[layer]
+  try {
+    const result = await commands.togglePageLayer(layer)
+    if (result.status === "ok") {
+      showToast(
+        result.data
+          ? { title: `${name} on`, detail: `${hotkeyLabel(hotkey)} to clear`, tone: "info" }
+          : { title: `${name} off`, tone: "info" },
+      )
+    } else if (result.error.code === "no_tab_shown") showToast({ title: "Open a page to use a lens", tone: "info" })
+    else reportError(`toggle ${layer}`, result.error)
+  } catch (error) {
+    reportError(`toggle ${layer}`, error)
+  }
 }
 
 async function copyUrl() {
@@ -81,5 +108,7 @@ export function useBrowserHotkeys() {
   useHotkey("stopLoading", () => page.isLoading && unwrap("stop loading", commands.stopLoading()))
   useHotkey("devTools", () => unwrap("open developer tools", commands.openDevtools()))
   useHotkey("reopenClosedTab", reopenClosedTab)
+  useHotkey("squint", () => toggleLens("squint"))
+  useHotkey("greyscale", () => toggleLens("greyscale"))
   useHotkey("copyUrl", copyUrl)
 }

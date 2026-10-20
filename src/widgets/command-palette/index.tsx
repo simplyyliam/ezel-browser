@@ -5,8 +5,10 @@ import {
   ArrowLeft,
   ArrowRight,
   Link,
+  Contrast,
   PanelLeft,
   RotateCw,
+  ScanEye,
   Search,
   Trash2,
   type LucideIcon,
@@ -22,6 +24,8 @@ import {
   activeSpace,
   closeCommandPalette,
   hotkeyLabel,
+  LENSES,
+  toggleLens,
   useHotkey,
   openCommandPalette,
   spaceIcon,
@@ -264,6 +268,25 @@ function PaletteBody({ target, tabs, page, inputRef, onToggleSidebar }: PaletteB
             },
           },
         ]
+      : []),
+    // Lenses: found by name or what they do ("blur", "grey"). Toggles name their next state.
+    ...(hasPage && shownTabId !== null
+      ? (["squint", "greyscale"] as const).map((layer) => {
+          const on = findShown(tabs, shownTabId)?.layers.includes(layer) ?? false
+          const { name, hotkey } = LENSES[layer]
+          return {
+            id: `lens-${layer}`,
+            icon: { kind: "glyph" as const, icon: layer === "squint" ? ScanEye : Contrast },
+            title: `${name} Lens`,
+            detail: `${on ? "On · " : ""}${hotkeyLabel(hotkey)}`,
+            keywords:
+              layer === "squint"
+                ? "lens blur squint test hierarchy eye"
+                : "lens greyscale grayscale grey gray colour color mono black white",
+            hint: on ? "Turn Off" : "Turn On",
+            run: () => (closeCommandPalette(), toggleLens(layer)),
+          }
+        })
       : []),
     ...(page.canGoBack
       ? [{ id: "action-back", icon: { kind: "glyph" as const, icon: ArrowLeft }, title: "Go Back", keywords: "previous history", hint: "Back", run: () => (closeCommandPalette(), unwrap("go back", commands.goBack())) }]
