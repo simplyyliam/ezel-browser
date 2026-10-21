@@ -77,6 +77,11 @@ The agent follows these in every release. They're the lessons from earlier goals
 
 - Conventional Commits subject under ~70 characters, then at most 5 short bullets. No paragraphs. Merge commits: `merge: <branch>`.
 
+**Polish (after the release's features, before the release step)**
+
+- Do up to 3 unticked items from the top of the "Polish backlog" section, each on its own `polish/…` branch with the same checks.
+- Tick each finished item (`- [x]`) and add the version, e.g. `(v0.3.0)`. Skip an item that turns out to be big, and say why in the report.
+
 **Release step (after all features)**
 
 1. Check that `main` is clean and every check passes. If not, stop and report.
@@ -84,7 +89,7 @@ The agent follows these in every release. They're the lessons from earlier goals
 3. Add a section to the top of `CHANGELOG.md`: Added, Changed, Fixed, Known issues (max 8, plain language), Privacy. Drop known issues that are now fixed. Commit `docs: add changelog for vX.Y.Z`.
 4. Update `docs/browser-basics.md` (tick what's done) and `docs/security-review.md` (mark what's fixed).
 5. Create an annotated tag on the latest commit: `git tag -a vX.Y.Z -m "<one-line summary>"`. Don't push.
-6. Write `docs/releases/vX.Y.Z-report.md`: STATUS (per feature: merged, skipped or left on a branch, one line each), CHECKS, MANUAL TESTS (exact steps per merged feature), NEEDS YOUR DECISION (every choice made for me, every skipped item, every new dependency, every new file path the app writes to), PERFORMANCE (the memory numbers). Commit it before tagging, so the tag stays on the latest commit.
+6. Write `docs/releases/vX.Y.Z-report.md`: STATUS (per feature and polish item: merged, skipped or left on a branch, one line each), CHECKS, MANUAL TESTS (exact steps per merged feature), NEEDS YOUR DECISION (every choice made for me, every skipped item, every new dependency, every new file path the app writes to), PERFORMANCE (the memory numbers). Commit it before tagging, so the tag stays on the latest commit.
 
 ---
 
@@ -214,6 +219,14 @@ Personality and community.
 ```
 /goal Follow docs/release-plan.md: read it fully, plus CLAUDE.md, docs/ezel-vision.md, docs/browser-basics.md and docs/security-review.md. Build every feature in the "v0.8.0" section in order, following "Rules for every release goal". Never ask me anything. The goal is done when every v0.8.0 feature is merged or skipped (with the reason written down), the "Release step" is complete with an annotated local tag, and docs/releases/v0.8.0-report.md exists with STATUS, CHECKS, MANUAL TESTS, NEEDS YOUR DECISION and PERFORMANCE.
 ```
+
+---
+
+## Polish backlog
+
+Small things that don't need a release slot. Add new ones anywhere; put the most important at the top. Each release goal does up to 3 from the top.
+
+- [ ] **Site loading indicator:** a subtle loading cue on the active tab row (and in the peek bar) while a page loads, so it's clear something is happening. No spinner noise for background tabs.
 
 ---
 
