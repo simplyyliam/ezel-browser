@@ -21,6 +21,8 @@ import {
   NEW_SPACE_ICONS,
   openCommandPalette,
   reopenClosedTab,
+  reportError,
+  showToast,
   unwrap,
   useContentCutout,
   useHotkey,
@@ -47,7 +49,18 @@ const activateTab = (id: Id) => unwrap("activate tab", commands.activateTab(id))
 const closeTab = (id: Id) => unwrap("close tab", commands.closeTab(id))
 const setTabMuted = (id: Id, muted: boolean) => unwrap(muted ? "mute tab" : "unmute tab", commands.setTabMuted(id, muted))
 const clearTempTabs = (spaceId: Id) => unwrap("clear temp tabs", commands.clearTempTabs(spaceId))
-const navigate = (input: string) => unwrap("navigate", commands.navigate(input))
+/** The tab name's address field. A local or code address (file:, javascript:…) is refused by Rust; say so. */
+async function navigate(input: string) {
+  try {
+    const result = await commands.navigate(input)
+    if (result.status === "error") {
+      if (result.error.code === "invalid_input") showToast({ title: "Only web addresses can be opened", tone: "info" })
+      else reportError("navigate", result.error)
+    }
+  } catch (error) {
+    reportError("navigate", error)
+  }
+}
 const setFolderCollapsed = (id: Id, collapsed: boolean) =>
   unwrap("set folder collapsed", commands.setFolderCollapsed(id, collapsed))
 
