@@ -51,7 +51,7 @@ One plain sentence: what this release is about.
 
 - Today's date. Leave out Added, Changed or Fixed when there's nothing for them.
 - Plain language for people who use Ezel, not for developers: what they'll notice, in Ezel's voice. No file names, function names, commit hashes or jargon. Bold the lead of the big items, as in earlier sections.
-- **Known issues** (at most 8): start from the previous release's list. Drop the ones this release fixes, update the ones that changed, add new ones and the user's notes. Over 8: merge related ones or keep the ones that matter most.
+- **Known issues** (at most 8): start from the previous release's list. Drop the ones this release fixes, update the ones that changed, add new ones and the user's notes. Over 8: merge related ones or keep the ones that matter most. While the installer isn't code-signed, always keep the SmartScreen item ("More info", then "Run anyway"): the release notes only explain it there.
 - **Privacy**: what Ezel sends to whom (Google, Microsoft, …). Carry over what's still true and add anything new.
 - The GitHub release body is this section, so it must read well on its own.
 - Commit: `docs: add changelog for vX.Y.Z`. If the section already exists (prepared again after a fix), update it instead and commit `docs: update changelog for vX.Y.Z`.
