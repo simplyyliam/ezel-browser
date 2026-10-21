@@ -25,7 +25,7 @@ Quiet defaults (`docs/design/decisions.md`, "Quiet defaults"): no password savin
 Studied from Zen (workspaces, pinned tabs, folders, essentials, session store) and Arc (spaces, pinned/today tabs, favorites); see `docs/design/decisions.md`, "Tabs, folders and spaces".
 - `model.rs`: pure data + rules, no Tauri. Operations return `Effect`s (show / destroy / navigate) that `mod.rs` applies to webviews. Unit-tested (`cargo test`).
 - Spaces each hold `pinned` items (tabs and one-level folders) and `temp` tabs (newest first), and remember their own shown tab. Swatches: 8 global slots shared by every space.
-- Memory: a webview exists only for loaded tabs. Restored tabs stay unloaded until selected; at most `MAX_LOADED_TABS` (8) stay loaded, least recently used unloaded first; background tabs idle 30 min are unloaded; tabs playing audio and dev tabs (`is_dev_url`: `localhost`, `127.0.0.1`, `[::1]`, `*.localhost`, any port) are never auto-unloaded (only by hand); hidden webviews get WebView2's low memory target.
+- Memory (see Performance): a webview exists only for loaded tabs. Restored tabs stay unloaded until selected; at most `MAX_LOADED_TABS` (5) stay loaded, least recently used unloaded first; background tabs idle `IDLE_UNLOAD_MS` (5 min) are unloaded (checked every 15s); background tabs hidden `SUSPEND_AFTER_MS` (30s) are frozen with WebView2 `TrySuspend` and resumed when shown; tabs playing audio and dev tabs (`is_dev_url`: `localhost`, `127.0.0.1`, `[::1]`, `*.localhost`, any port) are never auto-unloaded or frozen (only by hand); hidden webviews get WebView2's low memory target.
 - Persistence (`store.rs`): `<app data>/ezel/session.json`, debounced 1s, atomic write with a `.bak` fallback, flushed on exit. Unreadable files are moved aside, never overwritten.
 - Threading: commands that may load a tab are `async` (creating a webview from the main thread's sync command/event handlers deadlocks on Windows). Never hold the model lock while calling a webview API.
 
@@ -36,6 +36,18 @@ The one way Ezel changes how a website looks: a **named CSS layer** injected int
 - State: `Live.layers` (model). Re-applied on every page event that starts or finishes a load (`on_page_event`: Tauri's "started" is WebView2's `ContentLoading`, when the new document exists), so a layer stays on across navigations in its tab. Same-document navigations keep the element.
 - Per tab: activating another tab (or a space with none) turns the previous tab's layers off (`drop_layers_except`); coming back, they're off until toggled again. An unloaded tab's layers go with its webview.
 - Lenses stack: each sets a custom property (`--ezel-lens-<name>`) and one shared rule composes them into `html { filter }`.
+
+## Performance
+Ezel's promise is "light": measured, not guessed. Study and numbers: `docs/perf/baseline.md` (method, findings) and `docs/perf/results.md` (before/after, what helped, what was reverted).
+- **Measure**: release builds only. `npx tauri build --no-bundle --features perf` (`npm run tauri` is `tauri dev`), then `powershell -ExecutionPolicy Bypass -File scripts/measure-memory.ps1` (scenarios `launched`, `ui-only`, `1tab`, `5tabs`, `10tabs`, `idle5min`; `-Exe` to compare saved binaries, `-SettleSeconds`, `-Runs`). It sums the whole process tree (app + every WebView2 process) as private working set (Task Manager's number) and private bytes, median of samples. Sites vary day to day: compare builds in the same session, alternating runs.
+- **The `perf` cargo feature** (measurement only, never in normal builds): `EZEL_PERF_URLS` opens tabs at startup (`""` first-run tab, `none` no tabs, or comma-separated http(s) URLs) in a throwaway session (`<app data>/ezel-perf`), so measurements never touch the real session (`browser/perf.rs`).
+- **Numbers** (2026-10-21, `docs/perf/results.md`), private working set, before → after this work: just launched 202 → 200 MB, UI only 109 → 112 MB, 1 tab 148 → 151 MB, 5 tabs 217 MB both, 10 tabs 734 → 665 MB (−9%; private bytes −11%), after 5 min idle 602 → 480 MB (−20%; private bytes −34%, 15 → 8 processes).
+- **Rules for every feature**:
+  - No polling and no timers while idle. Anything periodic runs only while its UI is visible (the load meter polls only while the sidebar shows) and stops when hidden. Animations run only during an interaction; nothing loops forever (`requestAnimationFrame` loops end when the motion ends).
+  - Tabs unload by default: never keep a webview alive for a feature's convenience. A new "keep this tab alive" exemption (like audio or dev tabs) needs a measured reason.
+  - One WebView2 environment: every webview shares the data directory and `BROWSER_ARGS`. Never give a webview its own data folder or arguments (that starts a second browser process, ~60 MB).
+  - Background work in tabs (injected scripts, layers) stays out of hidden tabs, which are frozen after 30s anyway.
+  - A change that claims to save memory shows it with `scripts/measure-memory.ps1`, before and after, in the same session.
 
 ## Bindings
 `src/shared/bindings.ts` is generated by tauri-specta from the Rust commands, events and types (same setup as Foundry; see `docs/design/decisions.md`, "Typed bindings"). Never edit it by hand.

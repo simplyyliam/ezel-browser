@@ -14,6 +14,8 @@ pub mod commands;
 pub mod layers;
 pub mod memory;
 mod model;
+#[cfg(feature = "perf")]
+mod perf;
 mod store;
 mod view;
 
@@ -39,8 +41,9 @@ pub use view::{TabView, TabsState};
 const HOME_URL: &str = "https://google.com";
 const SEARCH_URL: &str = "https://google.com/";
 
-/// How often idle tabs are checked for unloading.
-const IDLE_CHECK: Duration = Duration::from_secs(60);
+/// How often idle tabs are checked for unloading: a tab rests within 15s of reaching
+/// `IDLE_UNLOAD_MS`. The check is a lock and a scan of the loaded tabs, so it costs nothing.
+const IDLE_CHECK: Duration = Duration::from_secs(15);
 
 const TAB_LABEL_PREFIX: &str = "tab-";
 
@@ -153,7 +156,14 @@ pub fn init(app: &AppHandle) -> tauri::Result<()> {
   // A folder of our own: the app data dir is named after the bundle identifier, which is still
   // Tauri's default (`com.tauri.dev`) and shared with other apps built from the template.
   let dir = app.path().app_data_dir()?.join("ezel");
+  #[cfg(feature = "perf")]
+  let perf_tabs = std::env::var(perf::ENV).ok().map(|v| perf::parse(&v));
+  #[cfg(feature = "perf")]
+  let dir = if perf_tabs.is_some() { app.path().app_data_dir()?.join("ezel-perf") } else { dir };
   let session = store::load(&dir).map(|s| s.repaired(HOME_URL, now())).unwrap_or_else(|| Session::new(HOME_URL, now()));
+  // A perf run always starts from the first-run session (its folder is only ever written, never read back).
+  #[cfg(feature = "perf")]
+  let session = if perf_tabs.is_some() { Session::new(HOME_URL, now()) } else { session };
   app.manage(Browser {
     model: Mutex::new(Model::new(session)),
     ops: Mutex::new(()),
@@ -164,10 +174,42 @@ pub fn init(app: &AppHandle) -> tauri::Result<()> {
     log::error!("failed to restore tabs: {e}");
   }
 
+  #[cfg(feature = "perf")]
+  if let Some(tabs) = perf_tabs {
+    open_perf_tabs(app, tabs)?;
+  }
+
   let app = app.clone();
   thread::Builder::new().name("tab-unloader".into()).spawn(move || loop {
     thread::sleep(IDLE_CHECK);
-    let _ = update(&app, |m, now| Ok(((), m.unload_idle(now))));
+    let _ = update(&app, |m, now| {
+      let mut effects = m.unload_idle(now);
+      effects.extend(m.suspend_idle(now));
+      Ok(((), effects))
+    });
+  })?;
+  Ok(())
+}
+
+/// Measurement only: replaces the first-run tab with the requested ones, one a second (like a person
+/// opening tabs), off the main thread (creating webviews from it deadlocks on Windows).
+#[cfg(feature = "perf")]
+fn open_perf_tabs(app: &AppHandle, tabs: perf::PerfTabs) -> tauri::Result<()> {
+  let urls = match tabs {
+    perf::PerfTabs::FirstRun => return Ok(()),
+    perf::PerfTabs::Nothing => vec![],
+    perf::PerfTabs::Urls(urls) => urls,
+  };
+  let app = app.clone();
+  thread::Builder::new().name("perf-tabs".into()).spawn(move || {
+    let first = browser(&app).model.lock().unwrap().active_tab();
+    if let Some(first) = first {
+      let _ = update(&app, |m, now| Ok(((), m.remove_tab(first, now)?)));
+    }
+    for url in urls {
+      thread::sleep(Duration::from_secs(1));
+      let _ = update(&app, |m, now| Ok(m.open_tab(url, now)));
+    }
   })?;
   Ok(())
 }
@@ -223,6 +265,14 @@ fn apply(app: &AppHandle, effect: Effect) {
         let _ = webview.eval(if on { layer.apply_script() } else { layer.remove_script() });
       }
     }
+    Effect::Suspend(id) => {
+      #[cfg(windows)]
+      if let Some(webview) = tab_webview(app, id) {
+        let _ = webview.with_webview(|pw| crate::webview2::try_suspend(&pw));
+      }
+      #[cfg(not(windows))]
+      let _ = id;
+    }
     Effect::SetMuted(id, muted) => {
       if let Some(webview) = tab_webview(app, id) {
         set_muted(&webview, muted);
@@ -248,6 +298,8 @@ fn show(app: &AppHandle, next: Option<Id>) {
       Ok(webview) => {
         content::present(&webview);
         set_low_memory(&webview, false);
+        #[cfg(windows)]
+        let _ = webview.with_webview(|pw| crate::webview2::resume(&pw));
         publish_page(&webview, id);
       }
       Err(e) => {

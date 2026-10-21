@@ -29,11 +29,16 @@ pub struct TsId(#[specta(type = u32)] pub Id);
 pub const SWATCH_SLOTS: usize = 8;
 
 /// Most loaded webviews kept at once, the active one included. Beyond this the least recently used
-/// background tabs are unloaded (they keep their place and reload when selected).
-pub const MAX_LOADED_TABS: usize = 8;
+/// background tabs are unloaded (they keep their place and reload when selected). 5, down from 8:
+/// each loaded tab costs a renderer (docs/perf/results.md).
+pub const MAX_LOADED_TABS: usize = 5;
 
-/// Background tabs unused for this long are unloaded.
-pub const IDLE_UNLOAD_MS: u64 = 30 * 60 * 1000;
+/// Background tabs unused for this long are unloaded. 5 minutes, down from 30 (docs/perf/results.md).
+pub const IDLE_UNLOAD_MS: u64 = 5 * 60 * 1000;
+
+/// Background tabs hidden for this long are frozen (WebView2 `TrySuspend`): their scripts and
+/// timers stop and WebView2 trims their memory, until they're shown again.
+pub const SUSPEND_AFTER_MS: u64 = 30 * 1000;
 
 /// Ctrl+Tab presses this close together continue one walk through a frozen most-recently-used list,
 /// as if Ctrl were still held (the website's key-ups never reach us); a longer pause starts over.
@@ -162,6 +167,8 @@ pub enum Effect {
   SetMuted(Id, bool),
   /// Add (`true`) or remove a page layer in the tab's page (see `layers.rs`).
   Layer(Id, PageLayer, bool),
+  /// Freeze a hidden background tab (WebView2 `TrySuspend`); showing it resumes it.
+  Suspend(Id),
 }
 
 /// Per-tab runtime state of a loaded tab (has a webview). Never persisted.
@@ -174,6 +181,8 @@ pub struct Live {
   /// Page layers on (lenses), in a fixed order. Only the shown tab has any: switching tabs turns
   /// them off, and a new webview starts without.
   pub layers: Vec<PageLayer>,
+  /// Frozen by [`Model::suspend_idle`]; cleared when the tab is selected again.
+  pub suspended: bool,
 }
 
 pub type Result<T> = std::result::Result<T, AppError>;
@@ -810,6 +819,21 @@ impl Model {
     self.unload_tabs(&idle, false, now).unwrap_or_default()
   }
 
+  /// Freezes background tabs hidden for longer than [`SUSPEND_AFTER_MS`] (the same tabs
+  /// [`Model::unload_idle`] may unload: never the shown tab, dev tabs or tabs playing audio).
+  pub fn suspend_idle(&mut self, now: u64) -> Vec<Effect> {
+    let mut idle: Vec<Id> = self
+      .unloadable()
+      .into_iter()
+      .filter(|id| !self.live[id].suspended && now.saturating_sub(self.session.tabs[id].last_accessed) >= SUSPEND_AFTER_MS)
+      .collect();
+    idle.sort();
+    for id in &idle {
+      self.live.get_mut(id).expect("loaded").suspended = true;
+    }
+    idle.into_iter().map(Effect::Suspend).collect()
+  }
+
   /// Keeps at most [`MAX_LOADED_TABS`] loaded, unloading the least recently used first.
   fn enforce_limit(&mut self) -> Vec<Effect> {
     let mut candidates = self.unloadable();
@@ -845,7 +869,8 @@ impl Model {
     if let Some(tab) = self.session.tabs.get_mut(&id) {
       tab.last_accessed = now;
     }
-    self.live.entry(id).or_default();
+    // Selected again: it's shown, so it isn't frozen any more (the runtime resumes it).
+    self.live.entry(id).or_default().suspended = false;
   }
 
   /// Clears `ids` from every space that shows one of them. If the active space did, selects the
@@ -1406,6 +1431,23 @@ mod tests {
     let work = m.create_space("Work".into(), "hammer".into());
     m.switch_space(work, 1).unwrap();
     assert_eq!(m.toggle_layer(PageLayer::Squint).unwrap_err().code, ErrorCode::NoTabShown);
+  }
+
+  #[test]
+  fn background_tabs_freeze_after_a_while_but_not_the_shown_audible_or_dev_ones() {
+    let mut m = model();
+    let quiet = m.active_tab().unwrap();
+    let (music, _) = m.open_tab("https://music.test/".into(), 0);
+    let (dev, _) = m.open_tab("http://localhost:5173/".into(), 0);
+    let (shown, _) = m.open_tab("https://a.test/".into(), 0);
+    m.live.get_mut(&music).unwrap().playing_audio = true;
+    assert_eq!(m.suspend_idle(SUSPEND_AFTER_MS - 1), vec![], "not yet");
+    assert_eq!(m.suspend_idle(SUSPEND_AFTER_MS), vec![Effect::Suspend(quiet)]);
+    assert_eq!(m.suspend_idle(SUSPEND_AFTER_MS * 2), vec![], "only once");
+    assert!(!m.live[&dev].suspended && !m.live[&shown].suspended);
+
+    m.activate(quiet, SUSPEND_AFTER_MS * 3).unwrap();
+    assert!(!m.live[&quiet].suspended, "selecting it wakes it");
   }
 
   #[test]
