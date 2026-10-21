@@ -331,10 +331,17 @@ fn show(app: &AppHandle, next: Option<Id>) {
 }
 
 fn create_webview(app: &AppHandle, id: Id) -> tauri::Result<Webview> {
-  let url = browser(app).model.lock().unwrap().tab(id).map(|t| t.url.clone()).unwrap_or_default();
+  let (url, opened_by_page) = {
+    let browser = browser(app);
+    let model = browser.model.lock().unwrap();
+    let url = model.tab(id).map(|t| t.url.clone()).unwrap_or_default();
+    (url, model.live.get(&id).is_some_and(|l| l.opened_by_page))
+  };
   // A saved address that isn't allowed (an older session, a hand edit) opens a blank page instead.
+  // A tab a page just opened may also start at that page's own blob: URL.
+  let allowed = |u: &str| if opened_by_page { url_policy::is_allowed_from_page(u) } else { url_policy::is_allowed(u) };
   let url = Some(url)
-    .filter(|u| url_policy::is_allowed(u))
+    .filter(|u| allowed(u))
     .and_then(|u| Url::parse(&u).ok())
     .unwrap_or_else(|| Url::parse(url_policy::FALLBACK).unwrap());
   let window = app.get_window(crate::WINDOW_LABEL).ok_or(tauri::Error::WindowNotFound)?;
@@ -351,16 +358,17 @@ fn create_webview(app: &AppHandle, id: Id) -> tauri::Result<Webview> {
     // F12 / Ctrl+Shift+I open the page's DevTools, release builds included (a designers' browser).
     .devtools(true)
     // Every navigation the page starts (links, redirects, `location = …`, forms) must go to an
-    // allowed address: file:, javascript:, data: and the rest are cancelled (url_policy).
-    .on_navigation(|url| url_policy::is_allowed(url.as_str()))
+    // allowed address, or a blob: of a web page: file:, javascript:, data: and the rest are
+    // cancelled (url_policy).
+    .on_navigation(|url| url_policy::is_allowed_from_page(url.as_str()))
     .on_page_load(move |webview, payload| {
       let started = matches!(payload.event(), PageLoadEvent::Started);
       on_page_event(&webview, id, Some(payload.url().to_string()), started.then_some(None), Some(started));
     })
     .on_document_title_changed(move |webview, title| on_page_event(&webview, id, None, Some(Some(title)), None))
     .on_new_window(move |url, features| {
-      // New windows obey the same rule: nothing but web pages and about:blank.
-      if !url_policy::is_allowed(url.as_str()) {
+      // New windows obey the same rule: web pages, about:blank, or the page's own web blob:.
+      if !url_policy::is_allowed_from_page(url.as_str()) {
         return NewWindowResponse::Deny;
       }
       // Sized requests are popups (OAuth, payment): let WebView2 open its own window so
@@ -371,7 +379,7 @@ fn create_webview(app: &AppHandle, id: Id) -> tauri::Result<Webview> {
       let app = opener.clone();
       // Off the main thread: creating a webview from this handler deadlocks on Windows.
       tauri::async_runtime::spawn(async move {
-        let _ = update(&app, |m, now| Ok(m.open_tab(url.to_string(), now)));
+        let _ = update(&app, |m, now| Ok(m.open_tab_from_page(url.to_string(), now)));
       });
       NewWindowResponse::Deny
     });

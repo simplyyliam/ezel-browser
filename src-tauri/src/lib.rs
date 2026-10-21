@@ -105,12 +105,17 @@ fn emit_to_ui<R: Runtime, H: Emitter<R> + Manager<R>, E: tauri_specta::Event + S
 const SCROLL_BAR_STYLE: ScrollBarStyle = ScrollBarStyle::FluentOverlay;
 
 /// Chromium arguments of the one WebView2 environment every webview shares: the UI and every tab
-/// must pass exactly these, or creating a webview fails. wry's defaults (no mini menu, PDF UI or
-/// SmartScreen), plus a quiet default: media may play sound on its own only after the page got a
-/// click or key press (Chromium's `document-user-activation-required`); muted autoplay still runs.
-/// WebView2 has no API setting for autoplay, so this is the one place it can be set (Windows only).
+/// must pass exactly these, or creating a webview fails. Two of wry's defaults (no Edge text-selection
+/// mini menu, no Edge PDF UI: interface, not security), plus a quiet default: media may play sound
+/// on its own only after the page got a click or key press (Chromium's
+/// `document-user-activation-required`); muted autoplay still runs. WebView2 has no API setting for
+/// autoplay, so this is the one place it can be set (Windows only).
+///
+/// wry also disables `msSmartScreenProtection` by default; Ezel doesn't: Microsoft Defender
+/// SmartScreen checks the sites and downloads people open (docs/security-review.md). Never add it
+/// back, and never turn off other security features here.
 const BROWSER_ARGS: &str =
-  "--disable-features=msWebOOUI,msPdfOOUI,msSmartScreenProtection --autoplay-policy=document-user-activation-required";
+  "--disable-features=msWebOOUI,msPdfOOUI --autoplay-policy=document-user-activation-required";
 
 /// Cached Windhawk settings (re-read only when the registry changes) and the last reported radius.
 #[derive(Default)]
@@ -296,9 +301,13 @@ mod tests {
   }
 
   #[test]
-  fn browser_args_keep_wrys_defaults_and_block_autoplay_with_sound() {
-    // Overriding the arguments drops wry's own; they must stay.
-    assert!(BROWSER_ARGS.contains("--disable-features=msWebOOUI,msPdfOOUI,msSmartScreenProtection"));
+  fn browser_args_keep_smartscreen_on_and_block_autoplay_with_sound() {
+    // Overriding the arguments drops wry's own: keep its interface ones, never its SmartScreen one.
+    assert!(BROWSER_ARGS.contains("--disable-features=msWebOOUI,msPdfOOUI"));
+    assert!(!BROWSER_ARGS.to_ascii_lowercase().contains("smartscreen"), "SmartScreen must stay on");
+    for security_feature in ["site-per-process", "disable-web-security", "IsolateOrigins", "no-sandbox"] {
+      assert!(!BROWSER_ARGS.contains(security_feature), "{security_feature}");
+    }
     assert!(BROWSER_ARGS.contains("--autoplay-policy=document-user-activation-required"));
   }
 

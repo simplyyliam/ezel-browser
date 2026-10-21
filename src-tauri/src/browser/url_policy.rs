@@ -4,11 +4,28 @@
 //! wherever an address can reach a tab: typed input (`resolve_input`), every navigation the page
 //! starts (`on_navigation`), links and popups opening new windows, restored sessions and pinned
 //! URLs. Pure, so it's tested on its own.
+//!
+//! One exception, for pages only: a page may open a `blob:` URL it made itself (a generated PDF or
+//! image, a download preview), as long as the blob belongs to a web origin (`blob:https://…`).
+//! Typed input and restored sessions still refuse `blob:` (a typed or saved blob points at memory
+//! of a page that may be gone).
 
 /// True for the addresses a content tab may load.
 pub fn is_allowed(url: &str) -> bool {
   let lower = url.trim().to_ascii_lowercase();
   lower.starts_with("http://") || lower.starts_with("https://") || lower == "about:blank"
+}
+
+/// [`is_allowed`], plus `blob:` URLs of web origins: for navigations and new windows a page starts
+/// itself (`on_navigation`, `on_new_window`), never for typed or saved addresses.
+pub fn is_allowed_from_page(url: &str) -> bool {
+  is_allowed(url) || is_web_blob(url)
+}
+
+/// `blob:https://…` or `blob:http://…`: a blob a web page created. Not `blob:null`, `blob:file:…`.
+fn is_web_blob(url: &str) -> bool {
+  let lower = url.trim().to_ascii_lowercase();
+  lower.strip_prefix("blob:").is_some_and(|rest| rest.starts_with("https://") || rest.starts_with("http://"))
 }
 
 /// Schemes refused outright when typed (rather than searched for): they name a local file or
@@ -47,6 +64,22 @@ mod tests {
       "",
     ] {
       assert!(!is_allowed(url), "{url}");
+    }
+  }
+
+  #[test]
+  fn pages_may_open_their_own_web_blobs() {
+    for url in ["blob:https://example.com/0b6e-41c2", "BLOB:https://a.test/x", "blob:http://localhost:5173/uuid"] {
+      assert!(is_allowed_from_page(url), "{url}");
+      assert!(!is_allowed(url), "typed or saved: still refused ({url})");
+      assert!(is_blocked_scheme(url), "typed: refused ({url})");
+    }
+    for url in ["blob:null/uuid", "blob:file:///C:/x", "blob:", "blob:about:blank", "blob:data:text/html,x", "file:///C:/x", "javascript:alert(1)", "data:text/html,x"] {
+      assert!(!is_allowed_from_page(url), "{url}");
+    }
+    // Everything a tab may load anyway, a page may open too.
+    for url in ["https://a.test/", "http://b.test", "about:blank"] {
+      assert!(is_allowed_from_page(url), "{url}");
     }
   }
 
