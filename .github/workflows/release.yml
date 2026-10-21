@@ -64,10 +64,6 @@ jobs:
             echo "version=$version"
             echo "body<<EZEL_RELEASE_NOTES"
             cat "$notes"
-            echo
-            echo "---"
-            echo
-            echo "**Windows may warn you about the installer.** It isn't code-signed yet, so SmartScreen says it protected your PC: choose **More info → Run anyway**."
             echo "EZEL_RELEASE_NOTES"
           } >> "$GITHUB_OUTPUT"
 
