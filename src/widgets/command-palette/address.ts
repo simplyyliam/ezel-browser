@@ -3,7 +3,10 @@ import type { Tab } from "@/shared"
 // What the palette's input means, mirroring Rust's `resolve_input` (src-tauri/src/browser/commands.rs)
 // so the first row says what Enter will do. Rust still decides; this only labels.
 
-const SCHEMES = ["http://", "https://", "about:", "file://"]
+/** Web addresses, the only ones a tab loads (Rust's `url_policy`). */
+const SCHEMES = ["http://", "https://"]
+/** Refused by Rust when typed (a local file or code): the palette offers only a search for them. */
+const BLOCKED = /^\s*(file|javascript|data|vbscript|blob):/i
 
 export type Resolved = { kind: "url"; url: string; host: string } | { kind: "search"; query: string }
 
@@ -11,7 +14,10 @@ export type Resolved = { kind: "url"; url: string; host: string } | { kind: "sea
 export function resolveInput(raw: string): Resolved {
   const input = raw.trim()
   const lower = input.toLowerCase()
-  if (SCHEMES.some((scheme) => lower.startsWith(scheme))) {
+  if (BLOCKED.test(input) || (lower.startsWith("about:") && lower !== "about:blank")) {
+    return { kind: "search", query: input }
+  }
+  if (lower === "about:blank" || SCHEMES.some((scheme) => lower.startsWith(scheme))) {
     return { kind: "url", url: input, host: hostOf(input) }
   }
   const host = input.split(/[/?#]/)[0]
