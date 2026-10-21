@@ -2,6 +2,38 @@
 
 All notable changes to Ezel. Versions follow [Semantic Versioning](https://semver.org/); while Ezel is 0.x, a minor version brings new features and a patch version only fixes.
 
+## [0.2.0] - 2026-10-21
+
+Lighter with many tabs, and safer to use on the open web.
+
+### Added
+- When you type an address Ezel can't open (such as a local file), the tab tells you "Only web addresses can be opened" instead of doing nothing, and the command palette offers to search for it.
+
+### Changed
+- **Lighter on memory.** At most 5 tabs stay loaded (was 8). A background tab you haven't looked at for 5 minutes rests (was 30 minutes) and reloads when you open it. Background tabs pause after 30 seconds and pick up again when you open them. Tabs playing sound and local development tabs are never paused or put to rest. With 10 tabs open Ezel uses about 9% less memory, and after 5 idle minutes about 20% less (a third less committed memory).
+- **SmartScreen is on.** Microsoft Defender SmartScreen now warns you about sites reported for phishing or malware and checks your downloads, as in Edge.
+- **Ezel keeps its data in its own folder** (`com.ezel.dev`) instead of a generic one shared with other apps built from the same template.
+- Pages can still open files they generate themselves, such as a PDF or image preview in a new tab.
+
+### Fixed
+- Local files (`file:`), scripts (`javascript:`) and raw data (`data:`) can no longer be opened in a tab, whether you type them or a page tries to open them.
+- Websites open in your tabs can't reach Ezel's own controls. This was already the case, and now an automatic test keeps it that way.
+- Ezel's own interface now has a strict content security policy, so a string from a website can't run as code inside Ezel.
+
+### Known issues
+- **There's no address bar or lock icon yet**, so check which site you're on before signing in anywhere (Ctrl+L shows the address).
+- **The installer isn't code-signed**, so Windows SmartScreen shows a warning when you run it: choose "More info", then "Run anyway".
+- **Tabs and sign-ins from 0.1.0 don't carry over**, because Ezel's data moved to its own folder. The old data stays in `%APPDATA%\com.tauri.dev` and `%LOCALAPPDATA%\com.tauri.dev`, and you can delete it.
+- **Windows only for now.** On macOS and Linux, mute, developer tools, copying the page link, the memory readout and rounded page corners don't work yet.
+- **Everyday basics still to come**: the downloads button doesn't open a list yet, and there's no find in page, zoom, history, print, private window, bookmark import, website right-click menu, creating new folders, or a screen to review the camera, microphone and location permissions you've allowed.
+- **Background tabs pause after 30 seconds**, so a chat or timer in a tab you're not looking at won't update until you open it.
+- **Passwords and autofill are off on purpose** until Ezel has its own passwords screen (passwords saved earlier still fill in), and websites' notification requests are always declined.
+- **Rough edges**: sign-in popups (such as "Sign in with Google") open in a plain separate window without Ezel's shortcuts; video fullscreen may not fill the window and failed pages show the plain default error screen; on keyboards with AltGr (for example Polish or German), the lens shortcuts Ctrl+Alt+S and Ctrl+Alt+G can stop you typing the character on those keys.
+
+### Privacy
+- SmartScreen checks the sites you visit and the files you download with Microsoft, as in Edge.
+- The command palette's suggestions and site icons come from Google: searches go to Google, and Google's icon service sees the sites you type.
+
 ## [0.1.0] - 2026-10-20
 
 The first release: a calm, lightweight browser for designers, on Windows.
