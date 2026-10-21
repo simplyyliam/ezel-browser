@@ -116,4 +116,5 @@ Ezel's "Calm" principle (docs/Ezel-Product-Vision.md, 3.8): no prompts begging f
 | Autoplay with sound | blocked until the page gets a click or key press; muted autoplay still runs | WebView2 has no API setting for it, so Chromium's `--autoplay-policy=document-user-activation-required` browser argument. All webviews share one environment, so the UI and every tab pass the same `BROWSER_ARGS` (wry's defaults included: overriding the arguments drops them). Checked in a dev run: the WebView2 browser process carries the flag. | `lib.rs` `BROWSER_ARGS` |
 
 - Passwords and autofill come back with a passwords UI (TODOs in `browser/mod.rs` and `webview2.rs`). Passwords saved before this change still fill (WebView2 keeps them).
+- SmartScreen stays **on** (since 2026-10-21): `BROWSER_ARGS` no longer carries wry's default `msSmartScreenProtection` in `--disable-features`, so Microsoft Defender SmartScreen checks sites and downloads. Its warnings are Edge's own pages and download prompts (docs/security-review.md).
 - Not used: WebView2's `AUTOPLAY` permission kind. It blocks muted autoplay too (hover previews, background videos), which is more than "no sound".
