@@ -6,7 +6,7 @@
 use tauri::{AppHandle, Url};
 
 use super::{
-  browser, edit, layers::PageLayer, page_of, shown_webview, update,
+  browser, edit, layers::PageLayer, page_of, shown_webview, update, url_policy,
   model::{TabLocation, TsId},
   view::TabsState,
   PageChanged, SEARCH_URL,
@@ -15,13 +15,15 @@ use crate::error::{AppError, ErrorCode};
 
 type Result<T> = std::result::Result<T, AppError>;
 
-/// Turns address-bar input into a URL: a URL as-is (https:// added if missing), anything else a search.
+/// Turns address-bar input into a URL: a web address as-is (https:// added if missing), anything
+/// else a search. Local and code schemes (`file:`, `javascript:`, `data:`, other `about:` pages)
+/// are refused (`invalid_input`), never loaded (see `url_policy`).
 fn resolve_input(input: &str) -> Result<Url> {
   let input = input.trim();
-  let has_scheme = ["http://", "https://", "about:", "file://"]
-    .iter()
-    .any(|s| input.to_ascii_lowercase().starts_with(s));
-  if has_scheme {
+  if url_policy::is_blocked_scheme(input) {
+    return Err(AppError::invalid_input("only web addresses (http, https) can be opened"));
+  }
+  if url_policy::is_allowed(input) {
     return Url::parse(input).map_err(|e| AppError::invalid_input(e.to_string()));
   }
 
@@ -344,5 +346,17 @@ mod tests {
     assert_eq!(resolve_input("example.com/a").unwrap().as_str(), "https://example.com/a");
     assert_eq!(resolve_input("localhost:5173").unwrap().as_str(), "https://localhost:5173/");
     assert!(resolve_input("rust borrow checker").unwrap().as_str().contains("q=rust+borrow+checker"));
+    assert_eq!(resolve_input("about:blank").unwrap().as_str(), "about:blank");
+  }
+
+  #[test]
+  fn typed_local_and_code_addresses_are_refused() {
+    for input in ["file:///C:/Windows/win.ini", "javascript:alert(1)", "data:text/html,<b>x</b>", "about:settings", "  FILE://x"] {
+      assert_eq!(resolve_input(input).unwrap_err().code, crate::error::ErrorCode::InvalidInput, "{input}");
+    }
+    // Whatever it resolves to is something a tab may load.
+    for input in ["example.com", "localhost:3000/a", "mailto:a@b.c", "a b c", "http://x.test"] {
+      assert!(super::url_policy::is_allowed(resolve_input(input).unwrap().as_str()), "{input}");
+    }
   }
 }

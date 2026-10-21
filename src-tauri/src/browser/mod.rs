@@ -16,6 +16,7 @@ pub mod memory;
 mod model;
 #[cfg(feature = "perf")]
 mod perf;
+mod url_policy;
 mod store;
 mod view;
 
@@ -78,6 +79,12 @@ fn browser(app: &AppHandle) -> State<'_, Browser> {
 
 fn label(id: Id) -> String {
   format!("{TAB_LABEL_PREFIX}{id}")
+}
+
+/// A tab webview's label (for the IPC isolation test).
+#[cfg(test)]
+pub fn tab_label(id: Id) -> String {
+  label(id)
 }
 
 fn tab_webview(app: &AppHandle, id: Id) -> Option<Webview> {
@@ -256,6 +263,10 @@ fn apply(app: &AppHandle, effect: Effect) {
       }
     }
     Effect::Navigate(id, url) => {
+      // A pinned URL saved by an older build could be anything: only allowed addresses load.
+      if !url_policy::is_allowed(&url) {
+        return;
+      }
       if let (Some(webview), Ok(url)) = (tab_webview(app, id), Url::parse(&url)) {
         let _ = webview.navigate(url);
       }
@@ -321,7 +332,11 @@ fn show(app: &AppHandle, next: Option<Id>) {
 
 fn create_webview(app: &AppHandle, id: Id) -> tauri::Result<Webview> {
   let url = browser(app).model.lock().unwrap().tab(id).map(|t| t.url.clone()).unwrap_or_default();
-  let url = Url::parse(&url).unwrap_or_else(|_| Url::parse("about:blank").unwrap());
+  // A saved address that isn't allowed (an older session, a hand edit) opens a blank page instead.
+  let url = Some(url)
+    .filter(|u| url_policy::is_allowed(u))
+    .and_then(|u| Url::parse(&u).ok())
+    .unwrap_or_else(|| Url::parse(url_policy::FALLBACK).unwrap());
   let window = app.get_window(crate::WINDOW_LABEL).ok_or(tauri::Error::WindowNotFound)?;
 
   let opener = app.clone();
@@ -335,12 +350,19 @@ fn create_webview(app: &AppHandle, id: Id) -> tauri::Result<Webview> {
     .general_autofill_enabled(false)
     // F12 / Ctrl+Shift+I open the page's DevTools, release builds included (a designers' browser).
     .devtools(true)
+    // Every navigation the page starts (links, redirects, `location = …`, forms) must go to an
+    // allowed address: file:, javascript:, data: and the rest are cancelled (url_policy).
+    .on_navigation(|url| url_policy::is_allowed(url.as_str()))
     .on_page_load(move |webview, payload| {
       let started = matches!(payload.event(), PageLoadEvent::Started);
       on_page_event(&webview, id, Some(payload.url().to_string()), started.then_some(None), Some(started));
     })
     .on_document_title_changed(move |webview, title| on_page_event(&webview, id, None, Some(Some(title)), None))
     .on_new_window(move |url, features| {
+      // New windows obey the same rule: nothing but web pages and about:blank.
+      if !url_policy::is_allowed(url.as_str()) {
+        return NewWindowResponse::Deny;
+      }
       // Sized requests are popups (OAuth, payment): let WebView2 open its own window so
       // `window.opener` keeps working. Links (target=_blank, middle-click) open as new tabs.
       if features.size().is_some() {

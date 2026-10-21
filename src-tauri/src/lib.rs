@@ -263,6 +263,38 @@ pub fn run() {
 mod tests {
   use super::*;
 
+  /// Websites run in the tab webviews and must never reach a command or event. Tauri's IPC lets a
+  /// call through only when a capability matches BOTH the calling webview's label and its origin
+  /// (`ipc/authority.rs`, `resolve_access`). These checks keep both gates shut for tabs:
+  /// - the only capability is scoped to the `ui` webview by label, never to a window (the window
+  ///   `main` also holds every tab) and never to remote origins (`remote` URLs);
+  /// - tab webviews are labelled `tab-<id>`, so they can't be `ui`;
+  /// - every command is in the app manifest (`build.rs`), so the ACL above applies to it at all.
+  #[test]
+  fn websites_in_tabs_cannot_reach_ipc() {
+    let dir = Path::new(env!("CARGO_MANIFEST_DIR")).join("capabilities");
+    let files: Vec<_> = std::fs::read_dir(&dir).unwrap().map(|e| e.unwrap().file_name().into_string().unwrap()).collect();
+    assert_eq!(files, vec!["default.json"], "a new capability file needs this review too");
+    let cap: serde_json::Value = serde_json::from_str(&std::fs::read_to_string(dir.join("default.json")).unwrap()).unwrap();
+    assert_eq!(cap["webviews"], serde_json::json!([UI_LABEL]), "only the ui webview");
+    assert!(cap.get("windows").is_none(), "a window-scoped capability would include every tab in it");
+    assert!(cap.get("remote").is_none(), "no remote origins: website pages must not match");
+
+    let conf: serde_json::Value = serde_json::from_str(include_str!("../tauri.conf.json")).unwrap();
+    assert!(conf["app"]["security"].get("capabilities").is_none(), "capabilities come from the reviewed folder only");
+
+    assert!(browser::tab_label(1).starts_with("tab-") && browser::tab_label(1) != UI_LABEL);
+
+    // Every command the UI can call (from the generated bindings) is declared in the app manifest.
+    let manifest = include_str!("../build.rs");
+    let bindings = std::fs::read_to_string(BINDINGS_PATH).unwrap();
+    let invoked: Vec<&str> = bindings.split("__TAURI_INVOKE(\"").skip(1).map(|s| s.split('"').next().unwrap()).collect();
+    assert!(!invoked.is_empty());
+    for command in invoked {
+      assert!(manifest.contains(&format!("\"{command}\"")), "{command} isn't in build.rs's app manifest");
+    }
+  }
+
   #[test]
   fn browser_args_keep_wrys_defaults_and_block_autoplay_with_sound() {
     // Overriding the arguments drops wry's own; they must stay.
