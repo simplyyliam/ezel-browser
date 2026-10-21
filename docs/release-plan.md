@@ -79,8 +79,9 @@ The agent follows these in every release. They're the lessons from earlier goals
 
 **Polish (after the release's features, before the release step)**
 
-- Do up to 3 unticked items from the top of the "Polish backlog" section, each on its own `polish/…` branch with the same checks.
-- Tick each finished item (`- [x]`) and add the version, e.g. `(v0.3.0)`. Skip an item that turns out to be big, and say why in the report.
+- Read `.private/polish.md` (local only, ignored by git). If it doesn't exist or has no unticked items, skip this step.
+- Do up to 3 unticked items from the top, each on its own `polish/…` branch with the same checks.
+- Tick each finished item in `.private/polish.md` (`- [x]`) and add the version, e.g. `(v0.3.0)`. Never commit that file. Skip an item that turns out to be big, and say why in the report.
 
 **Release step (after all features)**
 
@@ -219,14 +220,6 @@ Personality and community.
 ```
 /goal Follow docs/release-plan.md: read it fully, plus CLAUDE.md, docs/ezel-vision.md, docs/browser-basics.md and docs/security-review.md. Build every feature in the "v0.8.0" section in order, following "Rules for every release goal". Never ask me anything. The goal is done when every v0.8.0 feature is merged or skipped (with the reason written down), the "Release step" is complete with an annotated local tag, and docs/releases/v0.8.0-report.md exists with STATUS, CHECKS, MANUAL TESTS, NEEDS YOUR DECISION and PERFORMANCE.
 ```
-
----
-
-## Polish backlog
-
-Small things that don't need a release slot. Add new ones anywhere; put the most important at the top. Each release goal does up to 3 from the top.
-
-- [ ] **Site loading indicator:** a subtle loading cue on the active tab row (and in the peek bar) while a page loads, so it's clear something is happening. No spinner noise for background tabs.
 
 ---
 
