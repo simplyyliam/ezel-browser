@@ -183,6 +183,10 @@ pub struct Live {
   pub layers: Vec<PageLayer>,
   /// Frozen by [`Model::suspend_idle`]; cleared when the tab is selected again.
   pub suspended: bool,
+  /// Opened by a page (a link or `window.open`), so its first address may be the page's own
+  /// `blob:` URL (`url_policy::is_allowed_from_page`). Never persisted: a restored tab, or one
+  /// reloaded after unloading, gets the strict rule.
+  pub opened_by_page: bool,
 }
 
 pub type Result<T> = std::result::Result<T, AppError>;
@@ -394,6 +398,16 @@ impl Model {
     let space = self.session.active_space;
     self.space_mut(space).expect("active space exists").temp.insert(0, id);
     (id, self.activate(id, now).expect("tab was just created"))
+  }
+
+  /// [`Model::open_tab`] for a tab a page opens (`target=_blank`, `window.open`): marked so its
+  /// webview may start at the page's own `blob:` URL.
+  pub fn open_tab_from_page(&mut self, url: String, now: u64) -> (Id, Vec<Effect>) {
+    let (id, effects) = self.open_tab(url, now);
+    if let Some(live) = self.live.get_mut(&id) {
+      live.opened_by_page = true;
+    }
+    (id, effects)
   }
 
   /// Selects a tab: it becomes its space's active tab, and that space becomes active.
@@ -1448,6 +1462,20 @@ mod tests {
 
     m.activate(quiet, SUSPEND_AFTER_MS * 3).unwrap();
     assert!(!m.live[&quiet].suspended, "selecting it wakes it");
+  }
+
+  #[test]
+  fn only_tabs_a_page_opens_are_marked_and_the_mark_isnt_saved() {
+    let mut m = model();
+    let (typed, _) = m.open_tab("https://a.test/".into(), 1);
+    let (from_page, _) = m.open_tab_from_page("blob:https://a.test/uuid".into(), 2);
+    assert!(!m.live[&typed].opened_by_page);
+    assert!(m.live[&from_page].opened_by_page);
+    m.unload_tab(from_page, 3).unwrap();
+    m.activate(from_page, 4).unwrap();
+    assert!(!m.live[&from_page].opened_by_page, "reloaded later: the strict rule");
+    let restored = Model::new(m.session.clone());
+    assert!(restored.live.is_empty(), "nothing loaded, nothing marked after a restart");
   }
 
   #[test]
