@@ -1,0 +1,88 @@
+# Builds the Windows installers for a pushed v* tag and drafts its GitHub Release.
+# Push the tag with `npm run release` (after /release prepared it); then test the
+# draft's installers and publish it by hand.
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    name: Windows installers
+    runs-on: windows-latest
+    steps:
+      - name: Check out the tag
+        uses: actions/checkout@v7
+
+      - name: Set up Node
+        uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          cache: npm
+
+      - name: Set up Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache cargo
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri -> target
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Read the release notes from CHANGELOG.md
+        id: notes
+        shell: bash
+        run: |
+          version="${GITHUB_REF_NAME#v}"
+          app_version=$(node -p "require('./src-tauri/tauri.conf.json').version")
+          if [ "$version" != "$app_version" ]; then
+            echo "::error::Tag $GITHUB_REF_NAME doesn't match tauri.conf.json ($app_version)"
+            exit 1
+          fi
+
+          # The lines under "## [X.Y.Z]" up to the next "## [", without leading or trailing blank lines.
+          notes="$RUNNER_TEMP/notes.md"
+          awk -v heading="## [$version]" '
+            index($0, heading) == 1 { found = 1; next }
+            found && /^## \[/ { exit }
+            found && NF == 0 { blanks = blanks "\n"; next }
+            found { if (started) printf "%s", blanks; blanks = ""; started = 1; print }
+          ' CHANGELOG.md > "$notes"
+          if [ ! -s "$notes" ]; then
+            echo "::error::CHANGELOG.md has no section for [$version]"
+            exit 1
+          fi
+
+          {
+            echo "version=$version"
+            echo "body<<EZEL_RELEASE_NOTES"
+            cat "$notes"
+            echo
+            echo "---"
+            echo
+            echo "**Windows may warn you about the installer.** It isn't code-signed yet, so SmartScreen says it protected your PC: choose **More info → Run anyway**."
+            echo "EZEL_RELEASE_NOTES"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Build the installers and draft the release
+        uses: tauri-apps/tauri-action@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # TODO(v0.6.0): auto-update. Add TAURI_SIGNING_PRIVATE_KEY and
+          # TAURI_SIGNING_PRIVATE_KEY_PASSWORD from repository secrets here, and set
+          # uploadUpdaterJson to true so the release carries latest.json.
+        with:
+          tagName: ${{ github.ref_name }}
+          releaseName: Ezel ${{ steps.notes.outputs.version }}
+          releaseBody: ${{ steps.notes.outputs.body }}
+          releaseDraft: true
+          prerelease: true
+          args: --bundles nsis,msi
+          uploadUpdaterJson: false

@@ -11,6 +11,12 @@ A lightweight browser for designers.
 ## Run
 `npm run tauri dev`
 
+## Releasing
+1. `/release` (`.claude/commands/release.md`, optional notes: `/release "known issue: …"`): on a clean `main`, runs every check, picks the version, bumps it in `tauri.conf.json`, `Cargo.toml`, `package.json` and `package-lock.json`, adds the `CHANGELOG.md` section and an annotated `vX.Y.Z` tag. Never pushes.
+2. Test the app.
+3. `npm run release` (`scripts/release.sh`, Git Bash): checks main, the tag and the versions again, shows what goes out, asks, then pushes `main` and that one tag. Never forces, never pushes other tags.
+4. The tag runs `.github/workflows/release.yml`: NSIS and MSI installers in a draft pre-release "Ezel X.Y.Z", its notes from the changelog. Publish the draft on GitHub. The installers aren't code-signed (SmartScreen warns; the notes say how to get past it); auto-update signing comes in v0.6.0 (TODO in the workflow).
+
 ## Architecture
 The frontend owns content geometry; Rust follows the reported bounds. The UI only sends commands and listens to events.
 
