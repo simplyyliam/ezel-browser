@@ -23,3 +23,6 @@ dist-ssr
 *.sln
 *.sw?
 .private/
+docs/design/*.png
+docs/design/*.jpg
+docs/design/*.gif
