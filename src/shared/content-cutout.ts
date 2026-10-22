@@ -17,11 +17,34 @@ const isMoving = (el: Element) =>
     return target instanceof Element && target.contains(el)
   })
 
+/** True when `el` and every ancestor are fully opaque (not mid fade-in or fade-out). */
+function isOpaque(el: Element) {
+  for (let node: Element | null = el; node; node = node.parentElement) {
+    if (parseFloat(getComputedStyle(node).opacity) < 1) return false
+  }
+  return true
+}
+
+type Box = { left: number; top: number; right: number; bottom: number }
+
+/** Where `now` overlaps `next`; empty boxes come out with right <= left or bottom <= top. */
+const intersect = (now: Box, next: Box): Box => ({
+  left: Math.max(now.left, next.left),
+  top: Math.max(now.top, next.top),
+  right: Math.min(now.right, next.right),
+  bottom: Math.min(now.bottom, next.bottom),
+})
+
 /**
  * Keeps a hole the shape of `el` cut out of the website webview, so UI drawn there shows above the
  * page (the native webview is otherwise drawn over all UI). Follows the element every frame while
  * it, or an ancestor, is transitioning or animating; resize observers alone miss position changes.
  * Returns a function that stops tracking and clears the hole.
+ *
+ * Under the page lies Ezel's own background (near-black in dark mode), so the hole must never show
+ * more than the element covers: no hole while it fades in or out (the page stays until it's
+ * opaque), and while it moves only the part it covers now and next frame (the hole lands a frame
+ * or two late, so a hole at its current rect trails behind it).
  *
  * @param id      one hole per id ("titlebar", "sidebar", ...)
  * @param inflate grow the hole by this many px, e.g. to include a 1px ring drawn outside the element
@@ -29,22 +52,33 @@ const isMoving = (el: Element) =>
 export function trackContentCutout(id: string, el: HTMLElement, inflate = 0): () => void {
   let frame = 0
   let last = ""
+  // The rect one frame ago while moving, to guess where the element is going.
+  let previous: Box | null = null
   const report = () => {
     frame = 0
+    const moving = isMoving(el)
     const r = el.getBoundingClientRect()
+    const now = { left: r.left, top: r.top, right: r.right, bottom: r.bottom }
+    const box = moving && previous
+      ? intersect(now, {
+          left: 2 * now.left - previous.left,
+          top: 2 * now.top - previous.top,
+          right: 2 * now.right - previous.right,
+          bottom: 2 * now.bottom - previous.bottom,
+        })
+      : now
+    previous = moving ? now : null
     const radius = (parseFloat(getComputedStyle(el).borderTopLeftRadius) || 0) + inflate
-    const rect: [number, number, number, number] = [
-      r.left - inflate,
-      r.top - inflate,
-      r.width + inflate * 2,
-      r.height + inflate * 2,
-    ]
+    const rect: [number, number, number, number] | null =
+      isOpaque(el) && box.right > box.left && box.bottom > box.top
+        ? [box.left - inflate, box.top - inflate, box.right - box.left + inflate * 2, box.bottom - box.top + inflate * 2]
+        : null
     const key = JSON.stringify([rect, radius])
     if (key !== last) {
       last = key
       sendCutout(id, rect, radius)
     }
-    if (isMoving(el)) frame = requestAnimationFrame(report)
+    if (moving) frame = requestAnimationFrame(report)
   }
   const schedule = () => {
     if (!frame) frame = requestAnimationFrame(report)
