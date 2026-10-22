@@ -2,20 +2,64 @@ import { useEffect, useRef } from "react"
 import { OPEN_POPUP_SELECTOR } from "./outside-press"
 import { commands } from "./bindings"
 
-// Calls per hole id, chained: each goes out after the previous one settles, so a later call (the
-// final clear) can never overtake an earlier one, even when a popup id is reused right away.
-const queues = new Map<string, Promise<unknown>>()
+type Hole = { rect: [number, number, number, number] | null; radius: number; at: number }
+
+const FRAME_MS = 1000 / 60
+/**
+ * How long a hole takes to land after it's measured (the call's round trip plus a frame for the
+ * compositor), in ms. Jumps up to slow calls (an app still starting), then eases back down.
+ */
+let lagMs = 3 * FRAME_MS
+
+// One call per hole id at a time: a later call (the final clear) can never overtake an earlier
+// one, even when a popup id is reused right away. Only the newest hole waits behind the call in
+// flight, so slow calls never build a backlog that leaves the hole further and further behind.
+const waiting = new Map<string, Hole>()
+const sending = new Set<string>()
 function sendCutout(id: string, rect: [number, number, number, number] | null, radius = 0) {
-  const next = (queues.get(id) ?? Promise.resolve()).then(() => commands.setContentCutout(id, rect, radius)).catch(() => {})
-  queues.set(id, next)
+  waiting.set(id, { rect, radius, at: performance.now() })
+  if (!sending.has(id)) void send(id)
+}
+async function send(id: string) {
+  sending.add(id)
+  for (let hole = waiting.get(id); hole; hole = waiting.get(id)) {
+    waiting.delete(id)
+    await commands.setContentCutout(id, hole.rect, hole.radius).catch(() => {})
+    const took = performance.now() - hole.at + FRAME_MS
+    lagMs = Math.min(Math.max(took, lagMs * 0.9, FRAME_MS), 250)
+  }
+  sending.delete(id)
 }
 
-/** True while a CSS transition/animation runs on `el` or an ancestor (which would move or resize it). */
-const isMoving = (el: Element) =>
-  document.getAnimations().some((a) => {
+/** The CSS transitions/animations running on `el` or an ancestor (which would move or resize it). */
+const motionOf = (el: Element) =>
+  document.getAnimations().filter((a) => {
     const target = (a.effect as KeyframeEffect | null)?.target
     return target instanceof Element && target.contains(el)
   })
+
+const boxOf = (el: Element): Box => {
+  const r = el.getBoundingClientRect()
+  return { left: r.left, top: r.top, right: r.right, bottom: r.bottom }
+}
+
+/**
+ * Where `el` will be `ms` from now: seeks its running animations ahead, measures, and seeks them
+ * back, all in this task, so nothing is ever painted at the sampled time.
+ */
+function boxAhead(el: Element, motion: Animation[], ms: number): Box {
+  const seeked: [Animation, number][] = []
+  for (const a of motion) {
+    const end = a.effect?.getComputedTiming().endTime
+    if (a.playState !== "running" || typeof a.currentTime !== "number" || typeof end !== "number") continue
+    seeked.push([a, a.currentTime])
+    // Just short of the end: an animation seeked to its end counts as finished.
+    a.currentTime = Math.min(a.currentTime + ms * a.playbackRate, end - 0.01)
+  }
+  const box = boxOf(el)
+  for (const [a, time] of seeked) a.currentTime = time
+  return box
+}
 
 /** True when `el` and every ancestor are fully opaque (not mid fade-in or fade-out). */
 function isOpaque(el: Element) {
@@ -43,8 +87,8 @@ const intersect = (now: Box, next: Box): Box => ({
  *
  * Under the page lies Ezel's own background (near-black in dark mode), so the hole must never show
  * more than the element covers: no hole while it fades in or out (the page stays until it's
- * opaque), and while it moves only the part it covers now and next frame (the hole lands a frame
- * or two late, so a hole at its current rect trails behind it).
+ * opaque), and while it moves only the part it covers from now until the hole lands (a call's
+ * round trip later; a hole at its current rect would trail behind it like a ghost).
  *
  * @param id      one hole per id ("titlebar", "sidebar", ...)
  * @param inflate grow the hole by this many px, e.g. to include a 1px ring drawn outside the element
@@ -52,22 +96,14 @@ const intersect = (now: Box, next: Box): Box => ({
 export function trackContentCutout(id: string, el: HTMLElement, inflate = 0): () => void {
   let frame = 0
   let last = ""
-  // The rect one frame ago while moving, to guess where the element is going.
-  let previous: Box | null = null
   const report = () => {
     frame = 0
-    const moving = isMoving(el)
-    const r = el.getBoundingClientRect()
-    const now = { left: r.left, top: r.top, right: r.right, bottom: r.bottom }
-    const box = moving && previous
-      ? intersect(now, {
-          left: 2 * now.left - previous.left,
-          top: 2 * now.top - previous.top,
-          right: 2 * now.right - previous.right,
-          bottom: 2 * now.bottom - previous.bottom,
-        })
-      : now
-    previous = moving ? now : null
+    const motion = motionOf(el)
+    const moving = motion.length > 0
+    // Halfway too, for motion that turns back (a spring's overshoot).
+    const box = moving
+      ? intersect(intersect(boxOf(el), boxAhead(el, motion, lagMs / 2)), boxAhead(el, motion, lagMs))
+      : boxOf(el)
     const radius = (parseFloat(getComputedStyle(el).borderTopLeftRadius) || 0) + inflate
     const rect: [number, number, number, number] | null =
       isOpaque(el) && box.right > box.left && box.bottom > box.top
