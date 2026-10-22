@@ -19,7 +19,7 @@ const nextFrame = () => new Promise((resolve) => requestAnimationFrame(resolve))
  * While `enabled` (the sidebar is collapsed), hovering the window's left edge peeks the sidebar out
  * over the page. What keeps it out:
  * - hover, with a short grace period after the pointer leaves (and while the pointer is just outside
- *   the window's left edge);
+ *   the window's left edge, or on the card where the page still covers it while it slides in);
  * - a popup opened from inside it (context menu, dropdown), regardless of hover or focus, until the
  *   popup closes. Like Zen's `has-popup-menu`;
  * - typing in one of its fields (the URL bar), while the window has focus.
@@ -63,22 +63,51 @@ export function useSidebarPeek(enabled: boolean) {
 
     const held = () => popupHeld || edge.matches(":hover") || sidebar.matches(":hover") || typingInside()
 
-    const scheduleClose = (delay: number) => {
+    /**
+     * The real cursor is on the card. While the card slides in, its hole in the page trails it (so
+     * the dark UI background never shows ahead of it), and a pointer that moves onto the card early
+     * sits over the page, where the UI hears nothing, not even once the hole reaches it.
+     */
+    const cursorOnCard = async () => {
+      const [cursor, win] = await Promise.all([getCursorPosition(), getWindowClientRect()])
+      const card = sidebar.querySelector('[data-slot="sidebar-inner"]') ?? sidebar
+      const r = card.getBoundingClientRect()
+      const x = (cursor.x - win.x) / win.scale
+      const y = (cursor.y - win.y) / win.scale
+      return x >= r.left && x <= r.right && y >= r.top && y <= r.bottom
+    }
+
+    // Bumped by every open and every new close timer, so a check still waiting on the cursor
+    // position can't close a peek that was reopened (or rescheduled) meanwhile.
+    let closeId = 0
+    const cancelClose = () => {
+      closeId++
       clearTimeout(closeTimer)
-      closeTimer = setTimeout(() => {
-        if (!tracking && !held()) setPeeking(false)
+    }
+
+    const scheduleClose = (delay: number) => {
+      cancelClose()
+      const id = closeId
+      closeTimer = setTimeout(async () => {
+        if (tracking || held()) return
+        if (await cursorOnCard().catch(() => false)) {
+          // Still on the card: look again, until the UI hears the pointer or it leaves.
+          if (id === closeId) scheduleClose(KEEP_HOVER)
+          return
+        }
+        if (id === closeId && !tracking && !held()) setPeeking(false)
       }, delay)
     }
 
     const open = () => {
-      clearTimeout(closeTimer)
+      cancelClose()
       stopTracking()
       setPeeking(true)
     }
 
     // Left through the window's left edge: stay open while the pointer is just outside, like Zen's mouse tracker.
     const keepOpenOutside = async () => {
-      clearTimeout(closeTimer)
+      cancelClose()
       if (tracking) return
       tracking = true
       try {
@@ -127,7 +156,7 @@ export function useSidebarPeek(enabled: boolean) {
       const open = isPopupOpen()
       if (open && !popupHeld && pressedInside) {
         popupHeld = true
-        clearTimeout(closeTimer)
+        cancelClose()
       } else if (!open && popupHeld) {
         // Closed by a click inside the sidebar: still hovered, stays. Closed by a click on the
         // page (or Escape with the pointer away): nothing holds it any more, so it slides away.
@@ -146,7 +175,7 @@ export function useSidebarPeek(enabled: boolean) {
     sidebar.addEventListener("focusout", onFocusOut)
     window.addEventListener("blur", onFocusOut)
     return () => {
-      clearTimeout(closeTimer)
+      cancelClose()
       stopTracking()
       popups.disconnect()
       document.removeEventListener("pointerdown", onPress, true)
