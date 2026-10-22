@@ -98,15 +98,29 @@ const intersect = (now: Box, next: Box): Box => ({
  *
  * @param id      one hole per id ("titlebar", "sidebar", ...)
  * @param inflate grow the hole by this many px, e.g. to include a 1px ring drawn outside the element
+ * @param instant asked once, on the first frame: true skips the element's own animations (its fade
+ *                in and out), so a popup that reaches over the page shows and hides in one piece
+ *                instead of fading inside the UI while its part over the page waits to be opaque
  */
-export function trackContentCutout(id: string, el: HTMLElement, inflate = 0): () => void {
+export function trackContentCutout(
+  id: string,
+  el: HTMLElement,
+  inflate = 0,
+  instant?: () => boolean,
+): () => void {
   let frame = 0
   let last = ""
+  let skipOwnMotion: boolean | null = instant ? null : false
+  const finishOwnMotion = () => {
+    for (const a of el.getAnimations()) a.finish()
+  }
   // The last two frame times while moving: slow frames mean the screen is further behind.
   let frameAt: number | null = null
   let gaps = [FRAME_MS, FRAME_MS]
   const report = (time = performance.now()) => {
     frame = 0
+    skipOwnMotion ??= instant?.() ?? false
+    if (skipOwnMotion) finishOwnMotion()
     const motion = motionOf(el)
     const moving = motion.length > 0
     if (frameAt !== null) gaps = [gaps[1], time - frameAt]
@@ -139,7 +153,10 @@ export function trackContentCutout(id: string, el: HTMLElement, inflate = 0): ()
     if (!frame) frame = requestAnimationFrame(report)
   }
   const onMotion = (event: Event) => {
-    if (event.target instanceof Node && event.target.contains(el)) schedule()
+    if (!(event.target instanceof Node && event.target.contains(el))) return
+    // Closing starts a fade-out too: skip it the same way (the popup unmounts right away).
+    if (skipOwnMotion && event.target === el) finishOwnMotion()
+    schedule()
   }
 
   schedule()
@@ -195,6 +212,20 @@ export function useContentCutout(id: string, getEl: () => HTMLElement | null, in
   }, [id, inflate])
 }
 
+/**
+ * True when part of `el` lies over the page and outside the sidebar card (which, peeking, covers
+ * the page with its own hole). That part shows only through a hole, which can't fade.
+ */
+function reachesOverPage(el: Element) {
+  const page = document.querySelector('[data-slot="content-slot"]')?.getBoundingClientRect()
+  if (!page) return false
+  const r = el.getBoundingClientRect()
+  const overPage = r.left < page.right && r.right > page.left && r.top < page.bottom && r.bottom > page.top
+  const card = document.querySelector('[data-slot="sidebar-inner"]')?.getBoundingClientRect()
+  const inCard = card && r.left >= card.left && r.right <= card.right && r.top >= card.top && r.bottom <= card.bottom
+  return overPage && !inCard
+}
+
 /** Popup holes reuse these ids (lowest free first), so a fresh UI can clear them all. */
 const POPUP_IDS = Array.from({ length: 8 }, (_, i) => `popup-${i}`)
 
@@ -225,7 +256,7 @@ export function usePopupCutouts() {
         // More than 8 popups at once: the extra ones just stay under the page.
         if (!id) continue
         // 1px for the popup's ring, drawn just outside it.
-        tracked.set(el, { id, stop: trackContentCutout(id, el, 1) })
+        tracked.set(el, { id, stop: trackContentCutout(id, el, 1, () => reachesOverPage(el)) })
       }
     }
 
