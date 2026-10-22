@@ -181,19 +181,31 @@ fn build_window(app: &AppHandle) -> tauri::Result<()> {
     .inner_size(1280.0, 800.0)
     .min_inner_size(400.0, 300.0)
     .decorations(false)
+    // Shown once it has the theme's background and the UI webview (below): no white first frame.
+    .visible(false)
     .build()?;
 
   let ui = ui_bounds(&window)?;
+  // Until the UI paints, WebView2 fills it with its default white: a white window at launch in
+  // dark mode. Start from the theme's background instead (index.css --background: oklch(0.145 0 0)
+  // dark, white light), like index.html does for the page itself.
+  let background = match window.theme() {
+    Ok(tauri::Theme::Dark) => tauri::window::Color(10, 10, 10, 255),
+    _ => tauri::window::Color(255, 255, 255, 255),
+  };
+  let _ = window.set_background_color(Some(background));
   window.add_child(
     // The UI and every tab share a data directory, so they must use the same scrollbar style and
     // browser arguments. Autofill is profile-wide in WebView2: off here too (see browser::create_webview).
     WebviewBuilder::new(UI_LABEL, WebviewUrl::App("index.html".into()))
       .scroll_bar_style(SCROLL_BAR_STYLE)
       .additional_browser_args(BROWSER_ARGS)
-      .general_autofill_enabled(false),
+      .general_autofill_enabled(false)
+      .background_color(background),
     ui.position,
     ui.size,
   )?;
+  window.show()?;
 
   let w = window.clone();
   window.on_window_event(move |event| {

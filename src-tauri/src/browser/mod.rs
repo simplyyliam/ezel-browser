@@ -21,6 +21,7 @@ mod store;
 mod view;
 
 use std::{
+  collections::HashSet,
   sync::Mutex,
   thread,
   time::{Duration, SystemTime, UNIX_EPOCH},
@@ -48,12 +49,20 @@ const IDLE_CHECK: Duration = Duration::from_secs(15);
 
 const TAB_LABEL_PREFIX: &str = "tab-";
 
+/// A new tab's webview stays hidden until its page starts rendering (or this long at most, so a
+/// slow site still shows its loading page). Shown at once, it flashed WebView2's white default
+/// background, part-drawn, before the page painted (most visible at launch).
+const REVEAL_FALLBACK: Duration = Duration::from_millis(1500);
+
 pub struct Browser {
   model: Mutex<Model>,
   /// Serialises operations, so the effects of one never interleave with another's.
   ops: Mutex<()>,
   /// The tab whose webview is on screen. Lags the model only while an operation's effects apply.
   shown: Mutex<Option<Id>>,
+  /// Tabs whose webview was just created and has no page on screen yet: kept hidden (see
+  /// `REVEAL_FALLBACK`).
+  unpainted: Mutex<HashSet<Id>>,
   store: store::Store,
 }
 
@@ -95,6 +104,24 @@ fn tab_webview(app: &AppHandle, id: Id) -> Option<Webview> {
 pub fn shown_webview(app: &AppHandle) -> Option<Webview> {
   let id = (*browser(app).shown.lock().unwrap())?;
   tab_webview(app, id)
+}
+
+/// False while the shown tab's new webview has no page on screen yet (it stays hidden until then).
+pub fn shown_painted(app: &AppHandle) -> bool {
+  let shown = *browser(app).shown.lock().unwrap();
+  !shown.is_some_and(|id| browser(app).unpainted.lock().unwrap().contains(&id))
+}
+
+/// The tab's page started rendering (or the fallback ran out): show its webview if it's the shown tab.
+fn reveal(app: &AppHandle, id: Id) {
+  if !browser(app).unpainted.lock().unwrap().remove(&id) {
+    return;
+  }
+  if *browser(app).shown.lock().unwrap() == Some(id) {
+    if let Some(webview) = tab_webview(app, id) {
+      content::present(&webview, true);
+    }
+  }
 }
 
 /// The load meter's numbers (`get_memory`): every WebView2 process and Ezel's own, split over the
@@ -175,6 +202,7 @@ pub fn init(app: &AppHandle) -> tauri::Result<()> {
     model: Mutex::new(Model::new(session)),
     ops: Mutex::new(()),
     shown: Mutex::new(None),
+    unpainted: Mutex::new(HashSet::new()),
     store: store::Store::new(dir),
   });
   if let Err(e) = update(app, |m, now| Ok(((), m.restore(now)))) {
@@ -307,7 +335,8 @@ fn show(app: &AppHandle, next: Option<Id>) {
   match next {
     Some(id) => match tab_webview(app, id).map(Ok).unwrap_or_else(|| create_webview(app, id)) {
       Ok(webview) => {
-        content::present(&webview);
+        let painted = !browser(app).unpainted.lock().unwrap().contains(&id);
+        content::present(&webview, painted);
         set_low_memory(&webview, false);
         #[cfg(windows)]
         let _ = webview.with_webview(|pw| crate::webview2::resume(&pw));
@@ -383,7 +412,14 @@ fn create_webview(app: &AppHandle, id: Id) -> tauri::Result<Webview> {
       });
       NewWindowResponse::Deny
     });
+  browser(app).unpainted.lock().unwrap().insert(id);
   let webview = window.add_child(builder, LogicalPosition::new(0.0, 0.0), LogicalSize::new(0.0, 0.0))?;
+  let fallback = app.clone();
+  thread::spawn(move || {
+    thread::sleep(REVEAL_FALLBACK);
+    let app = fallback.clone();
+    let _ = fallback.run_on_main_thread(move || reveal(&app, id));
+  });
   watch_platform_events(&webview, id);
   // A new webview starts unmuted; a muted tab stays muted when it (re)loads.
   if browser(app).model.lock().unwrap().tab(id).is_ok_and(|t| t.muted) {
@@ -407,6 +443,10 @@ fn on_page_event(webview: &Webview, id: Id, url: Option<String>, title: Option<O
     emit_tab(app, &model, id);
     model.live.get(&id).map(|l| l.layers.clone()).unwrap_or_default()
   };
+  // A new tab's first document exists: show its webview (it was hidden until now).
+  if loading == Some(true) {
+    reveal(app, id);
+  }
   // A new document (load started) or a finished one: its lenses go back on. The scripts are
   // idempotent; "started" is WebView2's ContentLoading, when the new document exists.
   if loading.is_some() {
