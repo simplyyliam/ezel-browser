@@ -2,6 +2,34 @@
 
 All notable changes to Ezel. Versions follow [Semantic Versioning](https://semver.org/); while Ezel is 0.x, a minor version brings new features and a patch version only fixes.
 
+## [0.2.1] - 2026-10-22
+
+Smoother overlays and a cleaner start: no more dark flashes over the page, and a sidebar that stays when you reach for it.
+
+### Changed
+- Ezel has a new app icon in the taskbar and Start menu (a placeholder until the final one).
+
+### Fixed
+- **No more dark boxes over the page.** Opening or closing the command palette, a menu or the peeking sidebar could flash a dark rectangle over the website. Menus and the command palette that open over the page now appear and disappear in one piece, without a delay.
+- **The peeking sidebar slides cleanly.** It no longer leaves a dark trail behind it or runs ahead of itself as it slides in and out, most noticeable right after starting Ezel or bringing it back from the taskbar.
+- **The sidebar stays when you reach for it.** Moving onto the card while it was still sliding out, or after minimizing and restoring the window, could make it slide away under your pointer. After a restore it could also peek out behind the page instead of over it.
+- **A menu opened near the sidebar's edge shows all at once**, instead of its outer half appearing a moment after the rest.
+- **No white flash at launch.** Ezel opens in your theme's colour, and your tab appears once its page is ready, instead of flashing white (or half white, half black) first. The page fills the window to the bottom.
+
+### Known issues
+- **There's no address bar or lock icon yet**, so check which site you're on before signing in anywhere (Ctrl+L shows the address).
+- **The installer isn't code-signed**, so Windows SmartScreen shows a warning when you run it: choose "More info", then "Run anyway".
+- **Tabs and sign-ins from 0.1.0 don't carry over**, because Ezel's data moved to its own folder. The old data stays in `%APPDATA%\com.tauri.dev` and `%LOCALAPPDATA%\com.tauri.dev`, and you can delete it.
+- **Windows only for now.** On macOS and Linux, mute, developer tools, copying the page link, the memory readout and rounded page corners don't work yet.
+- **Everyday basics still to come**: the downloads button doesn't open a list yet, and there's no find in page, zoom, history, print, private window, bookmark import, website right-click menu, creating new folders, or a screen to review the camera, microphone and location permissions you've allowed.
+- **Background tabs pause after 30 seconds**, so a chat or timer in a tab you're not looking at won't update until you open it.
+- **Passwords and autofill are off on purpose** until Ezel has its own passwords screen (passwords saved earlier still fill in), and websites' notification requests are always declined.
+- **Rough edges**: sign-in popups (such as "Sign in with Google") open in a plain separate window without Ezel's shortcuts; video fullscreen may not fill the window and failed pages show the plain default error screen; on keyboards with AltGr (for example Polish or German), the lens shortcuts Ctrl+Alt+S and Ctrl+Alt+G can stop you typing the character on those keys.
+
+### Privacy
+- SmartScreen checks the sites you visit and the files you download with Microsoft, as in Edge.
+- The command palette's suggestions and site icons come from Google: searches go to Google, and Google's icon service sees the sites you type.
+
 ## [0.2.0] - 2026-10-21
 
 Lighter with many tabs, and safer to use on the open web.
