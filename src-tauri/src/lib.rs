@@ -159,6 +159,9 @@ fn update_window_radius(window: &Window) {
   }
 }
 
+/// The window frame's padding around the page, logical px (WindowFrame's `p-1.5`).
+const FRAME_PADDING: f64 = 6.0;
+
 /// The UI webview covers the whole window (logical px). Tab webviews are placed by the frontend.
 fn ui_bounds(window: &Window) -> tauri::Result<Rect> {
   let size = window.inner_size()?.to_logical::<f64>(window.scale_factor()?);
@@ -205,7 +208,6 @@ fn build_window(app: &AppHandle) -> tauri::Result<()> {
     ui.position,
     ui.size,
   )?;
-  window.show()?;
 
   let w = window.clone();
   window.on_window_event(move |event| {
@@ -221,6 +223,20 @@ fn build_window(app: &AppHandle) -> tauri::Result<()> {
       content::reapply_shape(w.app_handle());
     }
   });
+  // Shown only now: showing grows the client area (by about a title bar) with a resize that the
+  // handler above must hear, or the UI stays short of the window's bottom. Laid out again anyway.
+  window.show()?;
+  apply_layout(&window);
+  // Where the page will go, before the UI reports it, so the restored tab's webview is created at
+  // its real size: the frame's padding all round (WindowFrame's p-1.5), the sidebar collapsed.
+  let size = window.inner_size()?.to_logical::<f64>(window.scale_factor()?);
+  content::assume_bounds(
+    window.app_handle(),
+    FRAME_PADDING,
+    FRAME_PADDING,
+    size.width - 2.0 * FRAME_PADDING,
+    size.height - 2.0 * FRAME_PADDING,
+  );
 
   {
     let state: State<Mutex<RadiusState>> = window.state();

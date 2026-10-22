@@ -31,7 +31,7 @@ use serde::Serialize;
 use specta::Type;
 use tauri::{
   webview::{NewWindowResponse, PageLoadEvent, WebviewBuilder},
-  AppHandle, LogicalPosition, LogicalSize, Manager, State, Url, Webview, WebviewUrl,
+  AppHandle, Manager, State, Url, Webview, WebviewUrl,
 };
 use tauri_specta::Event;
 
@@ -413,7 +413,9 @@ fn create_webview(app: &AppHandle, id: Id) -> tauri::Result<Webview> {
       NewWindowResponse::Deny
     });
   browser(app).unpainted.lock().unwrap().insert(id);
-  let webview = window.add_child(builder, LogicalPosition::new(0.0, 0.0), LogicalSize::new(0.0, 0.0))?;
+  // At the page's bounds, so its first frame is drawn at the size it's shown at.
+  let at = content::current_bounds(app);
+  let webview = window.add_child(builder, at.position, at.size)?;
   let fallback = app.clone();
   thread::spawn(move || {
     thread::sleep(REVEAL_FALLBACK);
