@@ -106,9 +106,11 @@ export function trackContentCutout(id: string, el: HTMLElement, inflate = 0): ()
 }
 
 /**
- * `trackContentCutout` for an element owned by a component.
+ * `trackContentCutout` for an element owned by a component. Follows the element when it's replaced:
+ * shadcn's Sidebar swaps its card for a mobile sheet below 768px (a minimized window) and mounts
+ * a new card on restore, which the old tracker never saw.
  *
- * @param getEl returns the element to cut out (read after mount)
+ * @param getEl returns the element to cut out (read after mount and after DOM changes)
  */
 export function useContentCutout(id: string, getEl: () => HTMLElement | null, inflate = 0) {
   const getElRef = useRef(getEl)
@@ -117,9 +119,24 @@ export function useContentCutout(id: string, getEl: () => HTMLElement | null, in
   })
 
   useEffect(() => {
-    const el = getElRef.current()
-    if (!el) return
-    return trackContentCutout(id, el, inflate)
+    let el: HTMLElement | null = null
+    let stop: (() => void) | undefined
+    const sync = () => {
+      const next = getElRef.current()
+      if (next === el) return
+      stop?.()
+      stop = undefined
+      el = next
+      if (el) stop = trackContentCutout(id, el, inflate)
+    }
+
+    sync()
+    const observer = new MutationObserver(sync)
+    observer.observe(document.body, { childList: true, subtree: true })
+    return () => {
+      observer.disconnect()
+      stop?.()
+    }
   }, [id, inflate])
 }
 
