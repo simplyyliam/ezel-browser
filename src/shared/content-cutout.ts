@@ -10,6 +10,12 @@ const FRAME_MS = 1000 / 60
  * compositor), in ms. Jumps up to slow calls (an app still starting), then eases back down.
  */
 let lagMs = 3 * FRAME_MS
+/**
+ * How far behind a measurement the UI's own frame reaches the screen, at least, in ms. Grows with
+ * slow frames: after a launch or a restore the UI redraws the card from scratch, frames come
+ * ~65ms apart, and the screen shows the card well behind where the animation clock has it.
+ */
+const SHOWN_LAG_MS = 3 * FRAME_MS
 
 // One call per hole id at a time: a later call (the final clear) can never overtake an earlier
 // one, even when a popup id is reused right away. Only the newest hole waits behind the call in
@@ -44,17 +50,17 @@ const boxOf = (el: Element): Box => {
 }
 
 /**
- * Where `el` will be `ms` from now: seeks its running animations ahead, measures, and seeks them
- * back, all in this task, so nothing is ever painted at the sampled time.
+ * Where `el` is `ms` from now (negative: ago): seeks its running animations, measures, and seeks
+ * them back, all in this task, so nothing is ever painted at the sampled time.
  */
-function boxAhead(el: Element, motion: Animation[], ms: number): Box {
+function boxAt(el: Element, motion: Animation[], ms: number): Box {
   const seeked: [Animation, number][] = []
   for (const a of motion) {
     const end = a.effect?.getComputedTiming().endTime
     if (a.playState !== "running" || typeof a.currentTime !== "number" || typeof end !== "number") continue
     seeked.push([a, a.currentTime])
-    // Just short of the end: an animation seeked to its end counts as finished.
-    a.currentTime = Math.min(a.currentTime + ms * a.playbackRate, end - 0.01)
+    // Within the animation; just short of the end, as one seeked to its end counts as finished.
+    a.currentTime = Math.min(Math.max(a.currentTime + ms * a.playbackRate, 0), end - 0.01)
   }
   const box = boxOf(el)
   for (const [a, time] of seeked) a.currentTime = time
@@ -96,13 +102,26 @@ const intersect = (now: Box, next: Box): Box => ({
 export function trackContentCutout(id: string, el: HTMLElement, inflate = 0): () => void {
   let frame = 0
   let last = ""
-  const report = () => {
+  // The last two frame times while moving: slow frames mean the screen is further behind.
+  let frameAt: number | null = null
+  let gaps = [FRAME_MS, FRAME_MS]
+  const report = (time = performance.now()) => {
     frame = 0
     const motion = motionOf(el)
     const moving = motion.length > 0
-    // Halfway too, for motion that turns back (a spring's overshoot).
+    if (frameAt !== null) gaps = [gaps[1], time - frameAt]
+    // First frame of a motion: nothing of it is on screen yet, so hold the hole where it started.
+    const shownLag = frameAt === null ? Infinity : Math.max(SHOWN_LAG_MS, 2 * Math.max(...gaps))
+    frameAt = moving ? time : null
+    if (!moving) gaps = [FRAME_MS, FRAME_MS]
+    // The screen shows the UI a few frames behind this measurement, and the hole lands `lagMs`
+    // after it: cut only what the element covers over that whole span (halfway points too, for
+    // motion that turns back, like a spring's overshoot).
     const box = moving
-      ? intersect(intersect(boxOf(el), boxAhead(el, motion, lagMs / 2)), boxAhead(el, motion, lagMs))
+      ? [-shownLag, -Math.min(shownLag, SHOWN_LAG_MS) / 2, lagMs / 2, lagMs].reduce(
+          (hole, ms) => intersect(hole, boxAt(el, motion, ms)),
+          boxOf(el),
+        )
       : boxOf(el)
     const radius = (parseFloat(getComputedStyle(el).borderTopLeftRadius) || 0) + inflate
     const rect: [number, number, number, number] | null =

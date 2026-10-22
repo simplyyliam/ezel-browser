@@ -182,6 +182,10 @@ export function AppSidebar() {
           // Peeking slides the collapsed card back in, over the page. Zen: in 0.25s on its spring curve, out 0.15s ease.
           peeking && "data-[side=left]:group-data-[collapsible=offcanvas]:left-0",
           !open && (peeking ? "duration-250 ease-zen-peek" : "duration-150 ease-[ease]"),
+          // Collapsed, the card is its own GPU layer: drawn once, then only moved while it slides.
+          // Repainted every frame instead, it fell behind its hole after a launch or a restore,
+          // and the hole showed Ezel's dark background ahead of it (a ghost).
+          !open && "will-change-transform",
         )}
       >
       {/* The address lives in the tab's name (double-click it); loading shows on the tab's icon. */}
