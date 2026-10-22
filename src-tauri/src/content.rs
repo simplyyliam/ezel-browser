@@ -45,6 +45,23 @@ fn bounds(shape: &ContentShape) -> Rect {
   }
 }
 
+/// Where the website goes now (logical px): new tab webviews are created there, so their first
+/// frame is drawn at the right size (one created at 0x0 and resized on show drew part white, part black).
+pub fn current_bounds(app: &AppHandle) -> Rect {
+  let shape: State<Mutex<ContentShape>> = app.state();
+  let shape = shape.lock().unwrap();
+  bounds(&shape)
+}
+
+/// Sets the bounds the frontend is about to report, if it hasn't reported any yet (at launch).
+pub fn assume_bounds(app: &AppHandle, x: f64, y: f64, width: f64, height: f64) {
+  let shape: State<Mutex<ContentShape>> = app.state();
+  let mut shape = shape.lock().unwrap();
+  if shape.width == 0.0 && shape.height == 0.0 {
+    (shape.x, shape.y, shape.width, shape.height) = (x, y, width.max(0.0), height.max(0.0));
+  }
+}
+
 /// Places a tab's webview where the website goes and shows it (if the website is visible and,
 /// for a new webview, its page has started rendering: `painted`). Called when a tab becomes the
 /// shown one, and when a new one's page starts.
