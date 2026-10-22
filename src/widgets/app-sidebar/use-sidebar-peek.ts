@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react"
+import { useCallback, useEffect, useRef, useState } from "react"
 import { getCursorPosition, getWindowClientRect, isPopupOpen } from "@/shared"
 
 // Port of Zen's compact-mode sidebar (src/zen/compact-mode/ZenCompactMode.mjs, prefs/zen/compact-mode.yaml)
@@ -28,11 +28,19 @@ const nextFrame = () => new Promise((resolve) => requestAnimationFrame(resolve))
 export function useSidebarPeek(enabled: boolean) {
   const [peeking, setPeeking] = useState(false)
   const edgeRef = useRef<HTMLDivElement>(null)
-  const sidebarRef = useRef<HTMLDivElement>(null)
+  const sidebarRef = useRef<HTMLDivElement | null>(null)
+  // The element itself too, so the listeners move to a new one: minimizing drops the window below
+  // shadcn's 768px breakpoint, where Sidebar swaps its card for a mobile sheet, and restoring mounts
+  // a new card. Listeners left on the old one never heard the pointer, and the peek closed under it.
+  const [sidebarElement, setSidebarElement] = useState<HTMLDivElement | null>(null)
+  const attachSidebar = useCallback((el: HTMLDivElement | null) => {
+    sidebarRef.current = el
+    setSidebarElement(el)
+  }, [])
 
   useEffect(() => {
     const edge = edgeRef.current
-    const sidebar = sidebarRef.current
+    const sidebar = sidebarElement
     if (!enabled || !edge || !sidebar) {
       setPeeking(false)
       return
@@ -187,7 +195,8 @@ export function useSidebarPeek(enabled: boolean) {
       sidebar.removeEventListener("focusout", onFocusOut)
       window.removeEventListener("blur", onFocusOut)
     }
-  }, [enabled])
+  }, [enabled, sidebarElement])
 
-  return { peeking: enabled && peeking, edgeRef, sidebarRef }
+  /** `attachSidebar` goes on the Sidebar as its ref; `sidebarRef` reads the element it attached. */
+  return { peeking: enabled && peeking, edgeRef, sidebarRef, attachSidebar }
 }

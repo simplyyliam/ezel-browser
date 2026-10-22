@@ -133,7 +133,7 @@ export function AppSidebar() {
   const { open, toggleSidebar } = useSidebar()
   // shadcn's Ctrl+B only hears keys while the UI has focus; this covers the website having it.
   useHotkey("toggleSidebar", toggleSidebar)
-  const { peeking, edgeRef, sidebarRef } = useSidebarPeek(!open)
+  const { peeking, edgeRef, sidebarRef, attachSidebar } = useSidebarPeek(!open)
   // Read only while the sidebar can be seen: docked, or peeking over the page.
   const load = useLoadMeter(open || peeking, tabs)
   // The sidebar shows above the page wherever they overlap; floating, that includes its 1px ring
@@ -165,7 +165,7 @@ export function AppSidebar() {
       {/* The window's left edge (the frame's padding, the only UI the website doesn't cover there) opens the peek. */}
       <div ref={edgeRef} aria-hidden className="fixed inset-y-0 left-0 z-20 w-1" />
       <Sidebar
-        ref={sidebarRef}
+        ref={attachSidebar}
         // Docked (open): a flat panel flush in the frame, whose p-1 is the only gap. No padding,
         // radius, ring or shadow. Collapsed/peeking: Zen's floating card.
         variant={open ? "sidebar" : "floating"}
