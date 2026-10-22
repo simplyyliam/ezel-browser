@@ -96,5 +96,6 @@ export function ContentSlot({ className }: ContentSlotProps) {
 
   useEffect(() => scheduleRef.current?.(), [radius])
 
-  return <div ref={ref} className={cn("w-full flex-1", className)} />
+  // The slot marks where the page is (usePopupCutouts asks whether a popup reaches over it).
+  return <div ref={ref} data-slot="content-slot" className={cn("w-full flex-1", className)} />
 }
