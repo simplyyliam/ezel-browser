@@ -45,9 +45,10 @@ fn bounds(shape: &ContentShape) -> Rect {
   }
 }
 
-/// Places a tab's webview where the website goes and shows it (if the website is visible).
-/// Called when a tab becomes the shown one.
-pub fn present(webview: &Webview) {
+/// Places a tab's webview where the website goes and shows it (if the website is visible and,
+/// for a new webview, its page has started rendering: `painted`). Called when a tab becomes the
+/// shown one, and when a new one's page starts.
+pub fn present(webview: &Webview, painted: bool) {
   let (rect, visible) = {
     let shape: State<Mutex<ContentShape>> = webview.state();
     let s = shape.lock().unwrap();
@@ -55,7 +56,7 @@ pub fn present(webview: &Webview) {
   };
   let _ = webview.set_bounds(rect);
   apply_shape(webview);
-  let _ = if visible { webview.show() } else { webview.hide() };
+  let _ = if visible && painted { webview.show() } else { webview.hide() };
 }
 
 /// Places the content webview. Logical px, relative to the window's top-left. Reported by the frontend.
@@ -130,7 +131,8 @@ pub fn set_content_visible(app: AppHandle, visible: bool) -> Result<(), AppError
     shape.lock().unwrap().visible = visible;
   }
   let Some(webview) = browser::shown_webview(&app) else { return Ok(()) };
-  Ok(if visible { webview.show() } else { webview.hide() }?)
+  // A new tab's webview waits for its page (browser::reveal shows it then).
+  Ok(if visible && browser::shown_painted(&app) { webview.show() } else { webview.hide() }?)
 }
 
 /// Rebuilds the shown webview's clip, e.g. after a DPI change (logical bounds stay the same, so the
