@@ -118,3 +118,14 @@ Ezel's "Calm" principle (docs/Ezel-Product-Vision.md, 3.8): no prompts begging f
 - Passwords and autofill come back with a passwords UI (TODOs in `browser/mod.rs` and `webview2.rs`). Passwords saved before this change still fill (WebView2 keeps them).
 - SmartScreen stays **on** (since 2026-10-21): `BROWSER_ARGS` no longer carries wry's default `msSmartScreenProtection` in `--disable-features`, so Microsoft Defender SmartScreen checks sites and downloads. Its warnings are Edge's own pages and download prompts (docs/security-review.md).
 - Not used: WebView2's `AUTOPLAY` permission kind. It blocks muted autoplay too (hover previews, background videos), which is more than "no sound".
+
+## The site speaks from the peek (v0.3.0, HIG review)
+
+Reviewed with the apple-design skill (HIG: `privacy.md`, `feedback.md`, `progress-indicators.md`, `context-menus.md`, `writing.md`, `branding.md`). Zen and Arc put a site's identity in a URL bar, Chrome in an omnibox chip. Ezel has no bar, so it gives the site one quiet place to speak: the **titlebar peek**, like the label beside a canvas on an easel. That's the signature; everything around it stays plain.
+
+- **Identity**: the host, only the registrable domain strong, with the lock. Clicking it opens the site panel *inside* the peek (it grows), never a floating popover.
+- **Permissions** (HIG `privacy.md`: ask in context, say who asks and why, no pre-alert): a request drops the peek open by itself with one card under the domain: "**maps.example.com** wants to use your location", Allow / Don't Allow (Don't Allow first, neither default). The page can't draw over it, and the asking domain is the one the peek already shows. Remembered choices live in the same site panel.
+- **Errors and crashes** (HIG `writing.md`: what happened, what to do, no blame): Ezel's own calm page, an empty canvas with one plain sentence and one action (Try Again / Reload). Same layout for offline, not found, certificate and crash; only the words change.
+- **Link status**: the address of a hovered link, quiet, in a pill at the page's bottom-left, only the domain strong (the same rule as the peek).
+- **Progress** (HIG `progress-indicators.md`): determinate when the size is known, a spinner otherwise, never a bar standing still. Feedback for what matters only (`feedback.md`): finished and failed downloads get a toast, a start just a still dot on the button.
+- **Menus** hide what can't run now instead of dimming it (`context-menus.md`), the page menu included.

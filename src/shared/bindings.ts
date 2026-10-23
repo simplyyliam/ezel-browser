@@ -293,7 +293,7 @@ export type PageMenuAction = "back" | "forward" | "reload" | "openLinkInNewTab" 
 /**  An entry as the UI shows it. */
 export type PageMenuEntry = {
 	action: PageMenuAction,
-	/**  Dimmed when false (Paste with an empty clipboard, Back without history). */
+	/**  Always true in a built menu (what can't run is left out); kept for the contract. */
 	enabled: boolean,
 };
 

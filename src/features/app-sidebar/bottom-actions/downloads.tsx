@@ -1,4 +1,4 @@
-import { File, FolderOpen, X } from "lucide-react"
+import { File, FolderOpen, LoaderCircle, X } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { formatBytes, type Download } from "@/shared"
 import { ScrollArea } from "@/shared/components"
@@ -60,7 +60,13 @@ function DownloadRow({ download, actions }: { download: Download; actions: Downl
   const progress = download.totalBytes ? Math.min(download.receivedBytes / download.totalBytes, 1) : null
   return (
     <li className="group/download flex items-center gap-2 rounded-lg px-1 py-1 hover:bg-accent/60">
-      <File aria-hidden className={cn("size-4 shrink-0", done ? "text-foreground" : "text-muted-foreground")} />
+      {running && progress === null ? (
+        // Size unknown: a spinner, not a bar standing still (HIG: a still indicator reads as stalled).
+        // It spins only while the download runs.
+        <LoaderCircle aria-hidden className="size-4 shrink-0 animate-spin text-muted-foreground motion-reduce:animate-none" />
+      ) : (
+        <File aria-hidden className={cn("size-4 shrink-0", done ? "text-foreground" : "text-muted-foreground")} />
+      )}
       <div className="flex min-w-0 flex-1 flex-col gap-0.5">
         {done ? (
           <button
@@ -76,10 +82,14 @@ function DownloadRow({ download, actions }: { download: Download; actions: Downl
             {download.fileName}
           </span>
         )}
-        {running && (
-          // Indeterminate while the size is unknown: a short bar, no motion (calm, and nothing loops).
+        {running && progress !== null && (
+          // Determinate when the size is known (HIG progress-indicators.md: prefer it); it eases
+          // between readings rather than jumping.
           <span aria-hidden className="h-1 overflow-hidden rounded-full bg-muted">
-            <span className="block h-full rounded-full bg-foreground/60" style={{ width: `${Math.round((progress ?? 0.15) * 100)}%` }} />
+            <span
+              className="block h-full rounded-full bg-foreground/60 transition-[width] duration-200 ease-out motion-reduce:transition-none"
+              style={{ width: `${Math.round(progress * 100)}%` }}
+            />
           </span>
         )}
         <span className={cn("text-[11px] tabular-nums text-muted-foreground", download.state === "failed" && "text-destructive")}>{status(download)}</span>

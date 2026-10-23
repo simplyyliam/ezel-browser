@@ -72,7 +72,7 @@ pub struct MenuTarget {
 #[serde(rename_all = "camelCase")]
 pub struct PageMenuEntry {
   pub action: PageMenuAction,
-  /// Dimmed when false (Paste with an empty clipboard, Back without history).
+  /// Always true in a built menu (what can't run is left out); kept for the contract.
   pub enabled: bool,
 }
 
@@ -141,6 +141,11 @@ pub fn groups(target: &MenuTarget, native: &[(String, bool)]) -> Vec<Vec<PageMen
     ]);
   }
   groups.push(pick(&[Inspect]));
+  // HIG context-menus.md: hide what can't run now (Paste with nothing to paste, Back without
+  // history) instead of dimming it.
+  for group in &mut groups {
+    group.retain(|e| e.enabled);
+  }
   groups.retain(|g| !g.is_empty());
   groups
 }
@@ -167,8 +172,7 @@ mod tests {
   fn the_page_background_gets_navigation_and_inspect() {
     let target = MenuTarget { can_go_back: true, ..Default::default() };
     let groups = groups(&target, &native(&["back", "forward", "reload", "saveAs", "print", "inspectElement"]));
-    assert_eq!(actions(&groups), vec![vec![Back, Forward, Reload], vec![Inspect]]);
-    assert!(groups[0][0].enabled && !groups[0][1].enabled, "forward without history is dimmed");
+    assert_eq!(actions(&groups), vec![vec![Back, Reload], vec![Inspect]], "forward without history is left out");
   }
 
   #[test]
@@ -193,8 +197,8 @@ mod tests {
     let mut items = native(&["undo", "redo", "cut", "copy", "paste", "selectAll"]);
     items[4].1 = false; // empty clipboard
     let groups = groups(&field, &items);
-    assert_eq!(actions(&groups), vec![vec![Undo, Redo], vec![Cut, Copy, Paste, SelectAll]], "no pasteAndMatchStyle offered");
-    assert!(!offered(&groups, Paste), "a dimmed entry can't be chosen");
+    assert_eq!(actions(&groups), vec![vec![Undo, Redo], vec![Cut, Copy, SelectAll]], "no pasteAndMatchStyle offered, Paste hidden");
+    assert!(!offered(&groups, Paste), "a hidden entry can't be chosen");
     assert!(offered(&groups, Cut));
     assert!(!offered(&groups, SearchSelection), "never offered here");
   }
