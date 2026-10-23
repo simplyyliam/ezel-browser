@@ -5,7 +5,8 @@ import { showToast } from "./toast"
 
 /**
  * This session's downloads, newest first (Rust: `browser/downloads.rs`): `get_downloads` on
- * mount, then every `downloads-changed`. A started and a finished download each get a quiet toast.
+ * mount, then every `downloads-changed`. A finished or failed download gets a quiet toast (a start
+ * shows as the dot on the downloads button: HIG feedback.md, confirm what matters).
  */
 export function useDownloads() {
   const [downloads, setDownloads] = useState<Download[]>([])
@@ -17,9 +18,7 @@ export function useDownloads() {
       if (announce) {
         for (const download of list) {
           const before = known.current.get(download.id)
-          if (before === undefined && download.state === "inProgress") {
-            showToast({ title: "Downloading", detail: download.fileName, tone: "info" })
-          } else if (before === "inProgress" && download.state === "completed") {
+          if (before === "inProgress" && download.state === "completed") {
             showToast({ title: "Downloaded", detail: download.fileName, tone: "done" })
           } else if (before === "inProgress" && download.state === "failed") {
             showToast({ title: "Download failed", detail: download.fileName, tone: "info" })
