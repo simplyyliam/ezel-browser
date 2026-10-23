@@ -29,6 +29,11 @@ export const commands = {
 	 *  shortcut leaves focus in the website, where the UI's clipboard API can't write.
 	 */
 	copyPageUrl: () => typedError<string, AppError>(__TAURI_INVOKE("copy_page_url")),
+	/**
+	 *  "Clear This Site's Data" (the site info panel): everything the shown page's site stored in
+	 *  Ezel (cookies, storage, caches), then the page reloads. Returns the site's host.
+	 */
+	clearSiteData: () => typedError<string, AppError>(__TAURI_INVOKE("clear_site_data")),
 	/**  The load meter: Ezel's memory in all and per loaded tab (approximate; see `browser::memory`). */
 	getMemory: () => typedError<MemoryReport, AppError>(__TAURI_INVOKE("get_memory")),
 	/**
@@ -204,6 +209,8 @@ export type PageChanged = {
 	canGoBack: boolean,
 	canGoForward: boolean,
 	isLoading: boolean,
+	/**  The lock in the titlebar peek. */
+	security: PageSecurity,
 };
 
 /**  A named CSS layer. Serialized as its name ("squint"). */
@@ -212,6 +219,17 @@ export type PageLayer =
 "squint" | 
 /**  Removes colour: does the design still work without it? */
 "greyscale";
+
+/**  The shown page's connection, as the titlebar's lock shows it. */
+export type PageSecurity = 
+/**  No web page (nothing shown, `about:blank`). */
+"none" | 
+/**  HTTPS with a certificate WebView2 accepted. */
+"secure" | 
+/**  Plain HTTP: anyone on the network can read or change it. Dev tabs (localhost) included. */
+"notSecure" | 
+/**  HTTPS whose certificate couldn't be verified (WebView2 shows its warning page). */
+"certificateError";
 
 /**  Logical px. */
 export type Px = number;

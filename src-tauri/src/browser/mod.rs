@@ -16,6 +16,8 @@ pub mod memory;
 mod model;
 #[cfg(feature = "perf")]
 mod perf;
+mod popup;
+pub mod site;
 mod url_policy;
 mod store;
 mod view;
@@ -76,6 +78,8 @@ pub struct PageChanged {
   can_go_back: bool,
   can_go_forward: bool,
   is_loading: bool,
+  /// The lock in the titlebar peek.
+  security: site::PageSecurity,
 }
 
 fn now() -> u64 {
@@ -94,6 +98,12 @@ fn label(id: Id) -> String {
 #[cfg(test)]
 pub fn tab_label(id: Id) -> String {
   label(id)
+}
+
+/// A popup window's label (for the IPC isolation test).
+#[cfg(test)]
+pub fn popup_label(n: u32) -> String {
+  popup::label(n)
 }
 
 fn tab_webview(app: &AppHandle, id: Id) -> Option<Webview> {
@@ -376,6 +386,7 @@ fn create_webview(app: &AppHandle, id: Id) -> tauri::Result<Webview> {
   let window = app.get_window(crate::WINDOW_LABEL).ok_or(tauri::Error::WindowNotFound)?;
 
   let opener = app.clone();
+  let navigator = app.clone();
   let builder = WebviewBuilder::new(label(id), WebviewUrl::External(url))
     // Every tab shares the ui webview's data directory, so they must use the same scrollbar style
     // and browser arguments (which also block autoplay with sound until the page is used).
@@ -389,7 +400,13 @@ fn create_webview(app: &AppHandle, id: Id) -> tauri::Result<Webview> {
     // Every navigation the page starts (links, redirects, `location = …`, forms) must go to an
     // allowed address, or a blob: of a web page: file:, javascript:, data: and the rest are
     // cancelled (url_policy).
-    .on_navigation(|url| url_policy::is_allowed_from_page(url.as_str()))
+    .on_navigation(move |url| {
+      let allowed = url_policy::is_allowed_from_page(url.as_str());
+      if allowed {
+        navigation_started(&navigator, id, url.as_str());
+      }
+      allowed
+    })
     .on_page_load(move |webview, payload| {
       let started = matches!(payload.event(), PageLoadEvent::Started);
       on_page_event(&webview, id, Some(payload.url().to_string()), started.then_some(None), Some(started));
@@ -400,10 +417,11 @@ fn create_webview(app: &AppHandle, id: Id) -> tauri::Result<Webview> {
       if !url_policy::is_allowed_from_page(url.as_str()) {
         return NewWindowResponse::Deny;
       }
-      // Sized requests are popups (OAuth, payment): let WebView2 open its own window so
-      // `window.opener` keeps working. Links (target=_blank, middle-click) open as new tabs.
+      // Sized requests are popups (OAuth, payment): a small window of Ezel's own, titled with
+      // its domain, in the same environment so `window.opener` keeps working. Links
+      // (target=_blank, middle-click) open as new tabs.
       if features.size().is_some() {
-        return NewWindowResponse::Allow;
+        return popup::open(&opener, &url, features);
       }
       let app = opener.clone();
       // Off the main thread: creating a webview from this handler deadlocks on Windows.
@@ -428,6 +446,38 @@ fn create_webview(app: &AppHandle, id: Id) -> tauri::Result<Webview> {
     set_muted(&webview, true);
   }
   Ok(webview)
+}
+
+/// A navigation the tab's page starts (or its first load): its address is what a certificate
+/// error must match, and the last page's certificate problem is over.
+fn navigation_started(app: &AppHandle, id: Id, url: &str) {
+  let browser = browser(app);
+  let mut model = browser.model.lock().unwrap();
+  if let Some(live) = model.live.get_mut(&id) {
+    live.cert_error = false;
+    live.navigating_to = Some(url.to_string());
+  }
+}
+
+/// WebView2 couldn't verify a certificate. It counts for the page only when it's for the page's
+/// own address (not a broken image or script on another host).
+#[cfg(windows)]
+fn certificate_error(app: &AppHandle, id: Id, request: &str) {
+  let page = {
+    let browser = browser(app);
+    let mut model = browser.model.lock().unwrap();
+    let tab_url = model.tab(id).map(|t| t.url.clone()).unwrap_or_default();
+    let Some(live) = model.live.get_mut(&id) else { return };
+    let target = live.navigating_to.clone().unwrap_or(tab_url);
+    if site::host_of(request).is_none() || site::host_of(request) != site::host_of(&target) {
+      return;
+    }
+    live.cert_error = true;
+    page_of(&model, id)
+  };
+  if *browser(app).shown.lock().unwrap() == Some(id) {
+    emit_page(app, page);
+  }
 }
 
 /// A tab's page changed: record it, tell the UI about the tab, and about the page if it's shown.
@@ -498,6 +548,7 @@ fn page_of(model: &Model, id: Id) -> PageChanged {
     can_go_back: live.can_go_back,
     can_go_forward: live.can_go_forward,
     is_loading: live.is_loading,
+    security: site::security_of(&tab.url, live.cert_error),
   }
 }
 
@@ -536,6 +587,8 @@ fn watch_platform_events(webview: &Webview, id: Id) {
         }
         emit_tab(&a, &model, id);
       });
+      let a = app.clone();
+      webview2::on_certificate_error(&pw, move |request| certificate_error(&a, id, &request));
       webview2::quiet_defaults(&pw);
       webview2::forward_shortcuts(&pw, move |key| crate::hotkeys::handle(&app, key));
     });

@@ -27,6 +27,7 @@ fn main() {
       "stop_loading",
       "open_devtools",
       "copy_page_url",
+      "clear_site_data",
       "get_memory",
       "toggle_page_layer",
       "set_content_bounds",

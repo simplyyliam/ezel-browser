@@ -6,10 +6,11 @@ use tauri::webview::PlatformWebview;
 use crate::hotkeys::KeyPress;
 use webview2_com::{
   take_pwstr, AcceleratorKeyPressedEventHandler, CallDevToolsProtocolMethodCompletedHandler, FaviconChangedEventHandler, IsDocumentPlayingAudioChangedEventHandler,
-  GetProcessExtendedInfosCompletedHandler, PermissionRequestedEventHandler, TrySuspendCompletedHandler,
+  GetProcessExtendedInfosCompletedHandler, PermissionRequestedEventHandler, ServerCertificateErrorDetectedEventHandler, TrySuspendCompletedHandler,
+  WindowCloseRequestedEventHandler,
   Microsoft::Web::WebView2::Win32::{
     ICoreWebView2, ICoreWebView2Environment13, ICoreWebView2FrameInfo2, ICoreWebView2PermissionRequestedEventArgs3,
-    ICoreWebView2ProcessExtendedInfoCollection, ICoreWebView2Settings4, ICoreWebView2_15, ICoreWebView2_19, ICoreWebView2_2,
+    ICoreWebView2ProcessExtendedInfoCollection, ICoreWebView2Settings4, ICoreWebView2_14, ICoreWebView2_15, ICoreWebView2_19, ICoreWebView2_2,
     ICoreWebView2_20, ICoreWebView2_3, ICoreWebView2_8,
     COREWEBVIEW2_KEY_EVENT_KIND, COREWEBVIEW2_PERMISSION_KIND, COREWEBVIEW2_PERMISSION_KIND_NOTIFICATIONS, COREWEBVIEW2_PERMISSION_STATE,
     COREWEBVIEW2_PERMISSION_STATE_DENY,
@@ -56,6 +57,61 @@ pub fn hard_reload(pw: &PlatformWebview) {
   // SAFETY: main thread, live webview; the strings outlive the call.
   unsafe {
     let _ = core.CallDevToolsProtocolMethod(&HSTRING::from("Page.reload"), &HSTRING::from(r#"{"ignoreCache":true}"#), &handler);
+  }
+}
+
+/// Clears everything a site stored (cookies, storage, caches, service workers) for one origin,
+/// through the DevTools protocol (WebView2 has no per-site API). `origin` is built by Rust from
+/// the tab's own URL (`scheme://host[:port]`), never from page or UI text. Then reloads the page,
+/// so it starts fresh.
+pub fn clear_site_data(pw: &PlatformWebview, origin: &str) {
+  let Some(core) = core(pw) else { return };
+  let params = serde_json::json!({ "origin": origin, "storageTypes": "all" }).to_string();
+  let reload = core.clone();
+  let handler = CallDevToolsProtocolMethodCompletedHandler::create(Box::new(move |_, _| {
+    // SAFETY: WebView2 calls this on the main thread; `reload` is a live reference to the webview.
+    unsafe {
+      let _ = reload.Reload();
+    }
+    Ok(())
+  }));
+  // SAFETY: main thread, live webview; the strings outlive the call.
+  unsafe {
+    let _ = core.CallDevToolsProtocolMethod(&HSTRING::from("Storage.clearDataForOrigin"), &HSTRING::from(params), &handler);
+  }
+}
+
+/// Calls `f` with the request's address whenever a server certificate can't be verified
+/// (WebView2 1.0.1245+). WebView2's own action stays (its warning page, or cancelling a
+/// subresource); `f` only records it.
+pub fn on_certificate_error(pw: &PlatformWebview, f: impl Fn(String) + 'static) {
+  let Some(core) = core(pw).and_then(|c| c.cast::<ICoreWebView2_14>().ok()) else { return };
+  let handler = ServerCertificateErrorDetectedEventHandler::create(Box::new(move |_, args| {
+    let Some(args) = args else { return Ok(()) };
+    let mut uri = PWSTR::null();
+    // SAFETY: WebView2 calls this on the main thread with live event args; take_pwstr frees the string.
+    unsafe { args.RequestUri(&mut uri)? };
+    f(take_pwstr(uri));
+    Ok(())
+  }));
+  let mut token = 0i64;
+  // SAFETY: main thread, live webview.
+  unsafe {
+    let _ = core.add_ServerCertificateErrorDetected(&handler, &mut token);
+  }
+}
+
+/// Calls `f` when the page asks to close its window (`window.close()` in a popup).
+pub fn on_close_requested(pw: &PlatformWebview, f: impl Fn() + 'static) {
+  let Some(core) = core(pw) else { return };
+  let handler = WindowCloseRequestedEventHandler::create(Box::new(move |_, _| {
+    f();
+    Ok(())
+  }));
+  let mut token = 0i64;
+  // SAFETY: main thread, live webview.
+  unsafe {
+    let _ = core.add_WindowCloseRequested(&handler, &mut token);
   }
 }
 

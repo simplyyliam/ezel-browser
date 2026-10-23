@@ -76,6 +76,20 @@ async function copyUrl() {
   }
 }
 
+/**
+ * Ctrl+D: Ezel's bookmark is a pinned tab (Arc, Zen). A temp tab is pinned at the end of its
+ * space's pinned list; a tab that's already kept says so.
+ */
+async function pinShownTab(tabs: TabsState | null) {
+  if (!tabs || tabs.activeTabId === null) return showToast({ title: "No page to pin", tone: "info" })
+  const id = tabs.activeTabId
+  if (tabs.swatches.some((tab) => tab?.id === id)) return showToast({ title: "Already in Swatches", tone: "info" })
+  const space = tabs.spaces.find((s) => s.tempTabs.some((tab) => tab.id === id))
+  if (!space) return showToast({ title: "Already pinned", tone: "info" })
+  const done = await unwrap("pin tab", commands.moveTab(id, { kind: "pinned", spaceId: space.id, folderId: null, index: null }))
+  if (done !== null) showToast({ title: "Pinned", detail: space.name, tone: "done" })
+}
+
 /** Wires the standard browser shortcuts. Mount once (AppLayout). */
 export function useBrowserHotkeys() {
   const tabs = useTabs()
@@ -111,4 +125,5 @@ export function useBrowserHotkeys() {
   useHotkey("squint", () => toggleLens("squint"))
   useHotkey("greyscale", () => toggleLens("greyscale"))
   useHotkey("copyUrl", copyUrl)
+  useHotkey("pinTab", () => pinShownTab(tabs))
 }

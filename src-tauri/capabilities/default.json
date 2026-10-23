@@ -14,6 +14,7 @@
     "allow-stop-loading",
     "allow-open-devtools",
     "allow-copy-page-url",
+    "allow-clear-site-data",
     "allow-get-memory",
     "allow-toggle-page-layer",
     "allow-get-page",
