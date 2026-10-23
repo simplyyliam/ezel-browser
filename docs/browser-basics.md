@@ -4,7 +4,7 @@ A study of Zen, Arc and Dia: the features Ezel needs to be a browser common user
 
 The study is based on how those three browsers behave, checked against Ezel's code: its command list, `src/shared/menus/catalog.ts`, and the many menu items marked `needs-backend` there.
 
-Progress is marked inline: ✅ done, ◐ partly done (what's left is said). Goal 1 (2026-10-20, report: `docs/goal-report-1.md`) did the first step of the build order; v0.3.0 (2026-10-23, report: `docs/releases/v0.3.0-report.md`) did most of steps 2 to 5.
+Progress is marked inline: ✅ done, ◐ partly done (what's left is said). Goal 1 (2026-10-20, report: `docs/goal-report-1.md`) did the first step of the build order; v0.3.0 (2026-10-23, report: `.private/releases/v0.3.0-report.md`) did most of steps 2 to 5.
 
 Ezel already has the hard architectural parts: spaces, pinned tabs, folders, Swatches, tab unloading, session restore, the command palette and the peek sidebar. What's missing is mostly the everyday basics that Chrome, Zen, Arc and Dia all share. Most items map to an existing WebView2 API, so the hook is named where one exists.
 

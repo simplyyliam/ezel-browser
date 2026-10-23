@@ -15,7 +15,7 @@ Releases are numbered from the last tag. v0.2.0 is out, so the next one is v0.3.
 1. On `main`, clean (`git status`), every Ezel window and dev server closed.
 2. Fresh Claude Code session from the repo root.
 3. Type `/goal` and a space yourself, then paste the release's goal text (at the bottom of each release section, without its leading `/goal`).
-4. When it finishes: read `docs/releases/vX.Y.Z-report.md`, then test with its MANUAL TESTS in one fresh `npm run tauri dev`.
+4. When it finishes: read `.private/releases/vX.Y.Z-report.md`, then test with its MANUAL TESTS in one fresh `npm run tauri dev`.
 5. Something broken? Fix it on a branch and merge. Then move the tag onto the latest commit (it isn't pushed yet, so this is safe): check the message with `git tag -l -n1 vX.Y.Z`, then `git tag -f -a vX.Y.Z -m "<same message>"`.
 6. All good: run `npm run release` (it pushes main and the tag), wait for the GitHub Action to build the installers, then open the draft on GitHub's Releases page, check it, and publish it.
 
@@ -90,7 +90,7 @@ The agent follows these in every release. They're the lessons from earlier goals
 3. Add a section to the top of `CHANGELOG.md`: Added, Changed, Fixed, Known issues (max 8, plain language), Privacy. Drop known issues that are now fixed. Commit `docs: add changelog for vX.Y.Z`.
 4. Update `docs/browser-basics.md` (tick what's done) and `docs/security-review.md` (mark what's fixed).
 5. Create an annotated tag on the latest commit: `git tag -a vX.Y.Z -m "<one-line summary>"`. Don't push.
-6. Write `docs/releases/vX.Y.Z-report.md`: STATUS (per feature and polish item: merged, skipped or left on a branch, one line each), CHECKS, MANUAL TESTS (exact steps per merged feature), NEEDS YOUR DECISION (every choice made for me, every skipped item, every new dependency, every new file path the app writes to), PERFORMANCE (the memory numbers). Commit it before tagging, so the tag stays on the latest commit.
+6. Write `.private/releases/vX.Y.Z-report.md`: STATUS (per feature and polish item: merged, skipped or left on a branch, one line each), CHECKS, MANUAL TESTS (exact steps per merged feature), NEEDS YOUR DECISION (every choice made for me, every skipped item, every new dependency, every new file path the app writes to), PERFORMANCE (the memory numbers). `.private/` is git-ignored: never commit the report (read and update it there; it may be written after tagging).
 
 ---
 
@@ -114,7 +114,7 @@ Folders, the right-click menus and the everyday basics, plus knowing which site 
 | 11 | Basics | **Import from Zen** | A palette action "Import from Zen" finds Zen's profile folder, shows what it found (spaces, Essentials, pinned tabs, folders, open tabs) and lets me choose which spaces to import. Zen spaces become Ezel spaces (name and icon where possible), Essentials become Swatches (first 8, the rest become pinned tabs), pinned tabs and folders keep their order and nesting, open tabs become temp tabs. Read-only: it copies Zen's files to a temporary folder and never writes to Zen's profile; if Zen is running and its files are locked, it asks me to close Zen. Research Zen's storage format first (its open-source repo) and save the findings in `docs/research/`. Logins and cookies aren't imported; the report says so. Rust tests use small sample files. |
 
 ```
-/goal Follow docs/release-plan.md: read it fully, plus CLAUDE.md, docs/ezel-vision.md, docs/browser-basics.md and docs/security-review.md. Build every feature in the "v0.3.0" section in order, following "Rules for every release goal". Never ask me anything. The goal is done when every v0.3.0 feature is merged or skipped (with the reason written down), the "Release step" is complete with an annotated local tag, and docs/releases/v0.3.0-report.md exists with STATUS, CHECKS, MANUAL TESTS, NEEDS YOUR DECISION and PERFORMANCE.
+/goal Follow docs/release-plan.md: read it fully, plus CLAUDE.md, docs/ezel-vision.md, docs/browser-basics.md and docs/security-review.md. Build every feature in the "v0.3.0" section in order, following "Rules for every release goal". Never ask me anything. The goal is done when every v0.3.0 feature is merged or skipped (with the reason written down), the "Release step" is complete with an annotated local tag, and .private/releases/v0.3.0-report.md exists with STATUS, CHECKS, MANUAL TESTS, NEEDS YOUR DECISION and PERFORMANCE.
 ```
 
 ---
@@ -136,7 +136,7 @@ Ezel's signature tools. This is the release to post about.
 | 9 | Shine | **Sleepy tabs** | Unloaded and frozen tabs dim slightly in the sidebar, with a soft breathing dot. Static under reduced motion. |
 
 ```
-/goal Follow docs/release-plan.md: read it fully, plus CLAUDE.md, docs/ezel-vision.md, docs/browser-basics.md and docs/security-review.md. Build every feature in the "v0.4.0" section in order, following "Rules for every release goal". Never ask me anything. The goal is done when every v0.4.0 feature is merged or skipped (with the reason written down), the "Release step" is complete with an annotated local tag, and docs/releases/v0.4.0-report.md exists with STATUS, CHECKS, MANUAL TESTS, NEEDS YOUR DECISION and PERFORMANCE.
+/goal Follow docs/release-plan.md: read it fully, plus CLAUDE.md, docs/ezel-vision.md, docs/browser-basics.md and docs/security-review.md. Build every feature in the "v0.4.0" section in order, following "Rules for every release goal". Never ask me anything. The goal is done when every v0.4.0 feature is merged or skipped (with the reason written down), the "Release step" is complete with an annotated local tag, and .private/releases/v0.4.0-report.md exists with STATUS, CHECKS, MANUAL TESTS, NEEDS YOUR DECISION and PERFORMANCE.
 ```
 
 ---
@@ -157,7 +157,7 @@ Pinterest inside the browser, history, and the mini player.
 | 8 | Safety | **Private favicons** | Site icons come from the site itself (cached locally), not from Google. |
 
 ```
-/goal Follow docs/release-plan.md: read it fully, plus CLAUDE.md, docs/ezel-vision.md, docs/browser-basics.md and docs/security-review.md. Build every feature in the "v0.5.0" section in order, following "Rules for every release goal". Never ask me anything. The goal is done when every v0.5.0 feature is merged or skipped (with the reason written down), the "Release step" is complete with an annotated local tag, and docs/releases/v0.5.0-report.md exists with STATUS, CHECKS, MANUAL TESTS, NEEDS YOUR DECISION and PERFORMANCE.
+/goal Follow docs/release-plan.md: read it fully, plus CLAUDE.md, docs/ezel-vision.md, docs/browser-basics.md and docs/security-review.md. Build every feature in the "v0.5.0" section in order, following "Rules for every release goal". Never ask me anything. The goal is done when every v0.5.0 feature is merged or skipped (with the reason written down), the "Release step" is complete with an annotated local tag, and .private/releases/v0.5.0-report.md exists with STATUS, CHECKS, MANUAL TESTS, NEEDS YOUR DECISION and PERFORMANCE.
 ```
 
 ---
@@ -177,7 +177,7 @@ Everything that makes Ezel easy to switch to and live in.
 | 7 | Basics | **Default browser** | Ezel can register as a Windows browser; links from other apps open in the running Ezel (single instance). |
 | 8 | Safety | **Data cleanup** | Old data in the shared `com.tauri.dev` folder is never read; settings can clear everything Ezel stores. The session file is written with restricted permissions. |
 ```
-/goal Follow docs/release-plan.md: read it fully, plus CLAUDE.md, docs/ezel-vision.md, docs/browser-basics.md and docs/security-review.md. Build every feature in the "v0.6.0" section in order, following "Rules for every release goal". Never ask me anything. The goal is done when every v0.6.0 feature is merged or skipped (with the reason written down), the "Release step" is complete with an annotated local tag, and docs/releases/v0.6.0-report.md exists with STATUS, CHECKS, MANUAL TESTS, NEEDS YOUR DECISION and PERFORMANCE.
+/goal Follow docs/release-plan.md: read it fully, plus CLAUDE.md, docs/ezel-vision.md, docs/browser-basics.md and docs/security-review.md. Build every feature in the "v0.6.0" section in order, following "Rules for every release goal". Never ask me anything. The goal is done when every v0.6.0 feature is merged or skipped (with the reason written down), the "Release step" is complete with an annotated local tag, and .private/releases/v0.6.0-report.md exists with STATUS, CHECKS, MANUAL TESTS, NEEDS YOUR DECISION and PERFORMANCE.
 ```
 
 ---
@@ -196,7 +196,7 @@ For design engineers checking their work.
 | 6 | Basics | **Print and save as PDF** | Ctrl+P. |
 
 ```
-/goal Follow docs/release-plan.md: read it fully, plus CLAUDE.md, docs/ezel-vision.md, docs/browser-basics.md and docs/security-review.md. Build every feature in the "v0.7.0" section in order, following "Rules for every release goal". Never ask me anything. The goal is done when every v0.7.0 feature is merged or skipped (with the reason written down), the "Release step" is complete with an annotated local tag, and docs/releases/v0.7.0-report.md exists with STATUS, CHECKS, MANUAL TESTS, NEEDS YOUR DECISION and PERFORMANCE.
+/goal Follow docs/release-plan.md: read it fully, plus CLAUDE.md, docs/ezel-vision.md, docs/browser-basics.md and docs/security-review.md. Build every feature in the "v0.7.0" section in order, following "Rules for every release goal". Never ask me anything. The goal is done when every v0.7.0 feature is merged or skipped (with the reason written down), the "Release step" is complete with an annotated local tag, and .private/releases/v0.7.0-report.md exists with STATUS, CHECKS, MANUAL TESTS, NEEDS YOUR DECISION and PERFORMANCE.
 ```
 
 ---
@@ -217,7 +217,7 @@ Personality and community.
 | 8 | Safety | **Stricter CSP** | Inline styles in Ezel's UI use a nonce instead of `unsafe-inline`. |
 
 ```
-/goal Follow docs/release-plan.md: read it fully, plus CLAUDE.md, docs/ezel-vision.md, docs/browser-basics.md and docs/security-review.md. Build every feature in the "v0.8.0" section in order, following "Rules for every release goal". Never ask me anything. The goal is done when every v0.8.0 feature is merged or skipped (with the reason written down), the "Release step" is complete with an annotated local tag, and docs/releases/v0.8.0-report.md exists with STATUS, CHECKS, MANUAL TESTS, NEEDS YOUR DECISION and PERFORMANCE.
+/goal Follow docs/release-plan.md: read it fully, plus CLAUDE.md, docs/ezel-vision.md, docs/browser-basics.md and docs/security-review.md. Build every feature in the "v0.8.0" section in order, following "Rules for every release goal". Never ask me anything. The goal is done when every v0.8.0 feature is merged or skipped (with the reason written down), the "Release step" is complete with an annotated local tag, and .private/releases/v0.8.0-report.md exists with STATUS, CHECKS, MANUAL TESTS, NEEDS YOUR DECISION and PERFORMANCE.
 ```
 
 ---
