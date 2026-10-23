@@ -189,6 +189,8 @@ pub struct Live {
   pub opened_by_page: bool,
   /// WebView2 couldn't verify the certificate of the page's address (cleared by each navigation).
   pub cert_error: bool,
+  /// The page shows an element in HTML fullscreen (a video). The window follows while it's shown.
+  pub fullscreen: bool,
   /// Where the page's latest navigation goes (its first load included): a certificate error
   /// counts for the page only when it's for this host.
   pub navigating_to: Option<String>,

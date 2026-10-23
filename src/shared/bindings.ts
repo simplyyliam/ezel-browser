@@ -267,6 +267,8 @@ export type PageChanged = {
 	isLoading: boolean,
 	/**  The lock in the titlebar peek. */
 	security: PageSecurity,
+	/**  The page is in HTML fullscreen: the UI steps aside and the page fills the window. */
+	fullscreen: boolean,
 };
 
 /**  A named CSS layer. Serialized as its name ("squint"). */

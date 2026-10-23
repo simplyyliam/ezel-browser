@@ -97,6 +97,13 @@ pub fn set_forwarded_hotkeys(state: State<ForwardedHotkeys>, hotkeys: Vec<Forwar
 /// Called for each key press in a tab webview. Returns true when it's a forwarded shortcut, so the
 /// page mustn't see it; a fresh press (not a repeat) also emits "hotkey-pressed".
 pub fn handle(app: &AppHandle, key: KeyPress) -> bool {
+  // Esc leaves a page's HTML fullscreen before anything else hears it (Chrome's behaviour).
+  if key.vk == 0x1B && !key.ctrl && !key.shift && !key.alt && crate::browser::shown_is_fullscreen(app) {
+    if !key.repeat {
+      crate::browser::exit_page_fullscreen(app);
+    }
+    return true;
+  }
   let found = {
     let state: State<ForwardedHotkeys> = app.state();
     let list = state.0.lock().unwrap();
