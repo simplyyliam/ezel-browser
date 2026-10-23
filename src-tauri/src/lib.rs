@@ -50,6 +50,8 @@ pub fn specta_builder() -> tauri_specta::Builder<tauri::Wry> {
       stop_loading,
       open_devtools,
       copy_page_url,
+      find_zen_import,
+      import_from_zen,
       answer_permission,
       get_site_permissions,
       revoke_site_permission,

@@ -37,6 +37,17 @@ export const commands = {
 	 */
 	copyPageUrl: () => typedError<string, AppError>(__TAURI_INVOKE("copy_page_url")),
 	/**
+	 *  "Import from Zen": what Zen's default profile holds (spaces with their counts, Essentials).
+	 *  Reads a copy of Zen's session; never writes to Zen. `not_found` without Zen, `unavailable`
+	 *  while Zen holds its files.
+	 */
+	findZenImport: () => typedError<ZenImportPreview, AppError>(__TAURI_INVOKE("find_zen_import")),
+	/**
+	 *  Imports the chosen Zen spaces (by id from `find_zen_import`) and, if `essentials`, the
+	 *  Essentials as Swatches. Everything comes in unloaded.
+	 */
+	importFromZen: (spaceIds: string[], essentials: boolean) => typedError<ImportSummary, AppError>(__TAURI_INVOKE("import_from_zen", { spaceIds, essentials })),
+	/**
 	 *  Ezel's permission prompt was answered: `allow` true/false is remembered for the site, `null`
 	 *  (dismissed) declines once.
 	 */
@@ -266,6 +277,12 @@ export type HotkeyPressed = {
 /**  A tab, folder or space id: a number from one shared counter, never reused. */
 export type Id = number;
 
+/**  What an import added. */
+export type ImportSummary = {
+	spaces: number,
+	tabs: number,
+};
+
 /**
  *  Payload of "link-status": the shown page's status text (a hovered link's address), or "" for
  *  none. Shown as text only, at most [`MAX_STATUS`] characters.
@@ -462,6 +479,22 @@ export type WindowRadius = {
 	radius: number | null,
 	/**  True when the Windhawk mod sets the radius. */
 	customized: boolean,
+};
+
+/**  What `find_zen_import` found. */
+export type ZenImportPreview = {
+	spaces: ZenSpacePreview[],
+	essentials: number,
+};
+
+/**  One Zen space in the import dialog. */
+export type ZenSpacePreview = {
+	id: string,
+	name: string,
+	icon: string,
+	pinned: number,
+	folders: number,
+	open: number,
 };
 
 /* Tauri Specta runtime */

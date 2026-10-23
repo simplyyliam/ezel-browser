@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-find-zen-import"
+description = "Enables the find_zen_import command without any pre-configured scope."
+commands.allow = ["find_zen_import"]
+
+[[permission]]
+identifier = "deny-find-zen-import"
+description = "Denies the find_zen_import command without any pre-configured scope."
+commands.deny = ["find_zen_import"]

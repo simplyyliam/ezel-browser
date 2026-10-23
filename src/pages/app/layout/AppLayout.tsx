@@ -8,6 +8,7 @@ import { AppSidebar, SIDEBAR_WIDTH } from "@/widgets/app-sidebar"
 import { AppTitlebar } from "@/widgets/app-titlebar/AppTitlebar"
 import { CommandPalette } from "@/widgets/command-palette"
 import { SitePermissions } from "@/widgets/site-permissions"
+import { ZenImport } from "@/widgets/zen-import"
 
 export default function AppLayout() {
   // Menus may open over the page (the website is drawn above all UI): cut them out so they show.
@@ -45,6 +46,8 @@ export default function AppLayout() {
       <CommandPalette />
       {/* Every site's remembered camera, microphone, location and clipboard answers. */}
       <SitePermissions />
+      {/* Import from Zen (the palette's action). */}
+      <ZenImport />
       {/* "Link copied" and other passive confirmations, bottom-left inside the sidebar's width. */}
       <Toaster />
     </SidebarProvider>

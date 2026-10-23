@@ -30,6 +30,8 @@ tauri = { version = "2.11.0", features = ["unstable", "specta"] }
 tauri-plugin-log = "2"
 # Auto-updates (src/updater.rs): signed with Ezel's updater key, checked against GitHub releases.
 tauri-plugin-updater = "2"
+# Import from Zen: its session files are Mozilla-LZ4 (pure Rust, no unsafe decoding).
+lz4_flex = { version = "0.11", default-features = false, features = ["safe-decode", "safe-encode", "std"] }
 # Typed bindings (same setup as Foundry). specta crates are pinned exactly while tauri-specta v2 is in RC.
 specta = { version = "=2.0.0-rc.25", features = ["derive"] }
 specta-typescript = "=0.0.12"
