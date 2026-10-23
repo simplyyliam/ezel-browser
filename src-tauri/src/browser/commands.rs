@@ -134,6 +134,31 @@ pub async fn choose_page_menu_item(app: AppHandle, id: u32, action: Option<PageM
   Ok(())
 }
 
+// ---- Import ----
+
+/// "Import from Zen": what Zen's default profile holds (spaces with their counts, Essentials).
+/// Reads a copy of Zen's session; never writes to Zen. `not_found` without Zen, `unavailable`
+/// while Zen holds its files.
+#[tauri::command]
+#[specta::specta]
+pub async fn find_zen_import(app: AppHandle) -> Result<super::zen_import::ZenImportPreview> {
+  tauri::async_runtime::spawn_blocking(move || super::find_zen_import(&app)).await.map_err(|e| AppError::internal(e.to_string()))?
+}
+
+/// Imports the chosen Zen spaces (by id from `find_zen_import`) and, if `essentials`, the
+/// Essentials as Swatches. Everything comes in unloaded.
+#[tauri::command]
+#[specta::specta]
+pub async fn import_from_zen(app: AppHandle, space_ids: Vec<String>, essentials: bool) -> Result<super::zen_import::ImportSummary> {
+  if space_ids.len() > 200 || space_ids.iter().any(|id| id.len() > 200) {
+    return Err(AppError::invalid_input("that's not a list of Zen spaces"));
+  }
+  if space_ids.is_empty() && !essentials {
+    return Err(AppError::invalid_input("choose something to import"));
+  }
+  super::import_from_zen(&app, space_ids, essentials)
+}
+
 // ---- Site permissions ----
 
 /// Ezel's permission prompt was answered: `allow` true/false is remembered for the site, `null`

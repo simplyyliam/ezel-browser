@@ -24,6 +24,7 @@ pub mod site;
 mod url_policy;
 mod store;
 mod view;
+pub mod zen_import;
 
 use std::{
   collections::HashSet,
@@ -78,6 +79,8 @@ pub struct Browser {
   asking: Mutex<std::collections::HashMap<u32, (Id, String, permissions::SitePermission)>>,
   /// Ezel's own folder in app data (the session's, the permissions').
   data_dir: std::path::PathBuf,
+  /// What "Import from Zen" found, until it's imported or looked for again.
+  zen: Mutex<Option<zen_import::ZenData>>,
   store: store::Store,
 }
 
@@ -267,6 +270,7 @@ pub fn init(app: &AppHandle) -> tauri::Result<()> {
     permissions: Mutex::new(permissions::load(&dir)),
     asking: Mutex::new(Default::default()),
     data_dir: dir.clone(),
+    zen: Mutex::new(None),
     store: store::Store::new(dir),
   });
   if let Err(e) = update(app, |m, now| Ok(((), m.restore(now)))) {
@@ -616,6 +620,31 @@ pub fn revoke_site_permission(app: &AppHandle, origin: &str, permission: permiss
     permissions::save(&browser.data_dir, &saved).map_err(|e| AppError::internal(format!("permissions: {}", e.kind())))?;
   }
   Ok(())
+}
+
+/// "Import from Zen", step 1: finds Zen's default profile, copies its session into Ezel's
+/// `import` folder and reads it (`not_found`: no Zen; `unavailable`: close Zen first).
+pub fn find_zen_import(app: &AppHandle) -> Result<zen_import::ZenImportPreview, AppError> {
+  let zen_dir = app.path().data_dir().map_err(|e| AppError::internal(e.to_string()))?.join("zen");
+  let profile = zen_import::find_profile(&zen_dir)?;
+  let browser = browser(app);
+  let data = zen_import::read_session(&profile, &browser.data_dir.join("import"))?;
+  let preview = data.preview();
+  *browser.zen.lock().unwrap() = Some(data);
+  Ok(preview)
+}
+
+/// Step 2: imports the chosen Zen spaces (and the Essentials, if asked) into new spaces.
+pub fn import_from_zen(app: &AppHandle, spaces: Vec<String>, essentials: bool) -> Result<zen_import::ImportSummary, AppError> {
+  let plan = {
+    let browser = browser(app);
+    let zen = browser.zen.lock().unwrap();
+    let data = zen.as_ref().ok_or_else(|| AppError::not_found("look for Zen's profile first"))?;
+    data.plan(&spaces, essentials)?
+  };
+  let summary = update(app, |m, now| Ok((zen_import::apply(&plan, m, now)?, vec![])))?;
+  *browser(app).zen.lock().unwrap() = None;
+  Ok(summary)
 }
 
 /// A download began in any tab: it joins Ezel's list.

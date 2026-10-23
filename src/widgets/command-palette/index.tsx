@@ -13,6 +13,7 @@ import {
   Trash2,
   type LucideIcon,
   ShieldCheck,
+  Import,
 } from "lucide-react"
 import { MotionConfig } from "motion/react"
 import { Command, CommandList } from "@/components/ui/command"
@@ -31,6 +32,7 @@ import {
   useHotkey,
   openCommandPalette,
   openSitePermissions,
+  openZenImport,
   spaceIcon,
   unwrap,
   useCommandPalette,
@@ -308,6 +310,14 @@ function PaletteBody({ target, tabs, page, inputRef, onToggleSidebar }: PaletteB
       keywords: "camera microphone location clipboard allow block privacy settings",
       hint: "Open",
       run: () => (closeCommandPalette(), openSitePermissions()),
+    },
+    {
+      id: "action-import-zen",
+      icon: { kind: "glyph", icon: Import },
+      title: "Import from Zen",
+      keywords: "import zen browser spaces essentials pinned tabs folders move switch",
+      hint: "Import",
+      run: () => (closeCommandPalette(), openZenImport()),
     },
     {
       id: "action-sidebar",

@@ -425,6 +425,26 @@ impl Model {
     (id, self.activate(id, now).expect("tab was just created"))
   }
 
+  /// Adds an unloaded tab (an import): its page, title and icon, placed at `to`. Pinned places
+  /// remember the URL as the pinned URL. Nothing loads until it's opened.
+  pub fn add_tab(&mut self, url: String, title: Option<String>, favicon: Option<String>, to: TabLocation, now: u64) -> Result<Id> {
+    self.validate(to)?;
+    if let TabLocation::Swatch { slot } = to {
+      if self.session.swatches[slot].is_some() {
+        return Err(AppError::invalid_input(format!("swatch slot {slot} is taken")));
+      }
+    }
+    let id = self.alloc_id();
+    self.session.tabs.insert(id, Tab { title, favicon, ..new_tab(id, &url, now) });
+    self.attach(id, to);
+    Ok(id)
+  }
+
+  /// The first free swatch slot, if any.
+  pub fn free_swatch(&self) -> Option<usize> {
+    self.session.swatches.iter().position(Option::is_none)
+  }
+
   /// A new temp tab on top of the active space that isn't selected or loaded ("Open Link in New
   /// Tab": the page stays; the tab loads when it's opened, so it costs nothing until then).
   pub fn open_background_tab(&mut self, url: String, now: u64) -> Id {
@@ -1110,6 +1130,19 @@ mod tests {
     assert_eq!(effects, vec![Effect::Show(Some(id))]);
     assert_eq!(m.active_space().temp[0], id);
     assert_eq!(m.active_tab(), Some(id));
+  }
+
+  #[test]
+  fn added_tabs_land_unloaded_where_asked() {
+    let mut m = model();
+    let s = space(&m);
+    let pinned = m.add_tab("https://p.test/".into(), Some("P".into()), None, TabLocation::Pinned { space_id: s, folder_id: None, index: None }, 1).unwrap();
+    assert!(!m.live.contains_key(&pinned));
+    assert_eq!(m.tab(pinned).unwrap().pinned_url.as_deref(), Some("https://p.test/"));
+    let slot = m.free_swatch().unwrap();
+    m.add_tab("https://s.test/".into(), None, None, TabLocation::Swatch { slot }, 1).unwrap();
+    assert_eq!(m.add_tab("https://x.test/".into(), None, None, TabLocation::Swatch { slot }, 1).unwrap_err().code, ErrorCode::InvalidInput, "taken");
+    assert_eq!(m.add_tab("https://x.test/".into(), None, None, TabLocation::Temp { space_id: 999, index: None }, 1).unwrap_err().code, ErrorCode::NotFound);
   }
 
   #[test]
