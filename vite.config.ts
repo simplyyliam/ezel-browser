@@ -15,6 +15,8 @@ export default defineConfig({
   resolve: {
     alias: {
       "@": path.resolve(__dirname, "./src"),
+      // Measurement builds (docs/perf/many-tabs.md): React's profiling build, so <Profiler> times commits.
+      ...(process.env.VITE_EZEL_PERF === "1" ? { "react-dom/client": "react-dom/profiling" } : {}),
     }
   }
 })

@@ -18,7 +18,7 @@ mod model;
 pub mod page_menu;
 pub mod permissions;
 #[cfg(feature = "perf")]
-mod perf;
+pub(crate) mod perf;
 mod popup;
 pub mod site;
 mod url_policy;
@@ -258,8 +258,13 @@ pub fn init(app: &AppHandle) -> tauri::Result<()> {
   let dir = if perf_tabs.is_some() { app.path().app_data_dir()?.join("ezel-perf") } else { dir };
   let session = store::load(&dir).map(|s| s.repaired(HOME_URL, now())).unwrap_or_else(|| Session::new(HOME_URL, now()));
   // A perf run always starts from the first-run session (its folder is only ever written, never read back).
+  // The seed is in place before the UI asks for it, like a big session read from disk.
   #[cfg(feature = "perf")]
-  let session = if perf_tabs.is_some() { Session::new(HOME_URL, now()) } else { session };
+  let (session, seed_load) = match &perf_tabs {
+    Some(perf::PerfTabs::Seed) => perf::seeded_session(HOME_URL, now()),
+    Some(_) => (Session::new(HOME_URL, now()), vec![]),
+    None => (session, vec![]),
+  };
   app.manage(Browser {
     model: Mutex::new(Model::new(session)),
     ops: Mutex::new(()),
@@ -279,17 +284,13 @@ pub fn init(app: &AppHandle) -> tauri::Result<()> {
 
   #[cfg(feature = "perf")]
   if let Some(tabs) = perf_tabs {
-    open_perf_tabs(app, tabs)?;
+    open_perf_tabs(app, tabs, seed_load)?;
   }
 
   let app = app.clone();
   thread::Builder::new().name("tab-unloader".into()).spawn(move || loop {
     thread::sleep(IDLE_CHECK);
-    let _ = update(&app, |m, now| {
-      let mut effects = m.unload_idle(now);
-      effects.extend(m.suspend_idle(now));
-      Ok(((), effects))
-    });
+    check_idle(&app);
   })?;
   Ok(())
 }
@@ -297,11 +298,12 @@ pub fn init(app: &AppHandle) -> tauri::Result<()> {
 /// Measurement only: replaces the first-run tab with the requested ones, one a second (like a person
 /// opening tabs), off the main thread (creating webviews from it deadlocks on Windows).
 #[cfg(feature = "perf")]
-fn open_perf_tabs(app: &AppHandle, tabs: perf::PerfTabs) -> tauri::Result<()> {
+fn open_perf_tabs(app: &AppHandle, tabs: perf::PerfTabs, seed_load: Vec<Id>) -> tauri::Result<()> {
   let urls = match tabs {
     perf::PerfTabs::FirstRun => return Ok(()),
     perf::PerfTabs::Nothing => vec![],
     perf::PerfTabs::Urls(urls) => urls,
+    perf::PerfTabs::Seed => return load_seed_tabs(app, seed_load),
   };
   let app = app.clone();
   thread::Builder::new().name("perf-tabs".into()).spawn(move || {
@@ -312,6 +314,19 @@ fn open_perf_tabs(app: &AppHandle, tabs: perf::PerfTabs) -> tauri::Result<()> {
     for url in urls {
       thread::sleep(Duration::from_secs(1));
       let _ = update(&app, |m, now| Ok(m.open_tab(url, now)));
+    }
+  })?;
+  Ok(())
+}
+
+/// Measurement only: loads the seed's tabs (perf::seeded_session) one a second, the last one shown.
+#[cfg(feature = "perf")]
+fn load_seed_tabs(app: &AppHandle, load: Vec<Id>) -> tauri::Result<()> {
+  let app = app.clone();
+  thread::Builder::new().name("perf-tabs".into()).spawn(move || {
+    for id in load {
+      thread::sleep(Duration::from_secs(1));
+      let _ = update(&app, |m, now| Ok(((), m.activate(id, now)?)));
     }
   })?;
   Ok(())
@@ -338,6 +353,29 @@ fn update<T>(app: &AppHandle, op: impl FnOnce(&mut Model, u64) -> model::Result<
   emit_to_ui(app, &TabsState::of(&model));
   browser.store.save(&model.session);
   Ok(value)
+}
+
+/// The idle check: unloads and freezes background tabs. Unlike [`update`] it tells the UI and saves
+/// only when a tab was unloaded: most checks change nothing, and freezing changes nothing the UI
+/// shows or the session keeps (with a big session, a needless `tabs-changed` and save every 15s
+/// cost hundreds of milliseconds each: docs/perf/many-tabs.md).
+fn check_idle(app: &AppHandle) {
+  let browser = browser(app);
+  let _op = browser.ops.lock().unwrap();
+  let (unloaded, frozen) = {
+    let mut model = browser.model.lock().unwrap();
+    let now = now();
+    (model.unload_idle(now), model.suspend_idle(now))
+  };
+  let changed = !unloaded.is_empty();
+  for effect in unloaded.into_iter().chain(frozen) {
+    apply(app, effect);
+  }
+  if changed {
+    let model = browser.model.lock().unwrap();
+    emit_to_ui(app, &TabsState::of(&model));
+    browser.store.save(&model.session);
+  }
 }
 
 /// [`update`] for operations with no webview effects.

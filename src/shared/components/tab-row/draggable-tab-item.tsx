@@ -1,3 +1,4 @@
+import { memo } from "react";
 import { SidebarMenuItem, SidebarMenuSubItem } from "@/components/ui/sidebar";
 import { cn } from "@/lib/utils";
 import { DROP_ROW, FOLDER_TAB_ROW, useTabDraggable, type TabDragSource } from "../../tab-dnd";
@@ -6,7 +7,11 @@ import { DropIndicator } from "../drop-indicator/drop-indicator";
 import { TabContextMenu, type MenuGroups } from "../tab-context-menu/tab-context-menu";
 import { TabRow } from "./tab-row";
 
-/** What every tab row in the sidebar's lists needs from the widget, passed through features as one prop. */
+/**
+ * What every tab row in the sidebar's lists needs from the widget, passed through features as one prop.
+ * The callbacks must keep their identity across renders (read the latest state when called): rows
+ * re-render only when their own tab or state changes (docs/perf/many-tabs.md).
+ */
 export interface TabRowActions {
   activeTabId: Id | null;
   onSelect: (tabId: Id) => void;
@@ -34,8 +39,11 @@ interface DraggableTabItemProps {
   sub?: boolean;
 }
 
-/** A TabRow in its menu item that can be dragged and right-clicked (docs/design/drag-and-drop.md). */
-export const DraggableTabItem = ({ tab, source, actions, indicator = null, sub = false }: DraggableTabItemProps) => {
+/**
+ * A TabRow in its menu item that can be dragged and right-clicked (docs/design/drag-and-drop.md).
+ * Memoised on what this row shows: with 130 tabs, one tab's change used to re-render every row.
+ */
+export const DraggableTabItem = memo(function DraggableTabItem({ tab, source, actions, indicator = null, sub = false }: DraggableTabItemProps) {
   const { setNodeRef, listeners } = useTabDraggable(tab, source);
   const Item = sub ? SidebarMenuSubItem : SidebarMenuItem;
   const editValue = actions.editing?.tabId === tab.id ? actions.editing.value : null;
@@ -65,4 +73,26 @@ export const DraggableTabItem = ({ tab, source, actions, indicator = null, sub =
       {indicator && <DropIndicator edge={indicator} />}
     </Item>
   );
-};
+}, sameRow);
+
+/** The same row on screen: its tab, place and drop line, its own slice of the shared state, the same callbacks. */
+function sameRow(a: DraggableTabItemProps, b: DraggableTabItemProps) {
+  const id = a.tab.id;
+  const x = a.actions;
+  const y = b.actions;
+  return (
+    a.tab === b.tab &&
+    a.source === b.source &&
+    (a.indicator ?? null) === (b.indicator ?? null) &&
+    a.sub === b.sub &&
+    (x.activeTabId === id) === (y.activeTabId === id) &&
+    (x.editing?.tabId === id ? x.editing.value : null) === (y.editing?.tabId === id ? y.editing.value : null) &&
+    (x.draggedTabId === id) === (y.draggedTabId === id) &&
+    x.onSelect === y.onSelect &&
+    x.onClose === y.onClose &&
+    x.onSetMuted === y.onSetMuted &&
+    x.menuFor === y.menuFor &&
+    x.onEdit === y.onEdit &&
+    x.onEditDone === y.onEditDone
+  );
+}

@@ -5,6 +5,7 @@ export { TabRow, tabLabel } from "./tab-row/tab-row";
 export { ScrollArea } from "./scroll-area/scroll-area";
 export { DropIndicator } from "./drop-indicator/drop-indicator";
 export { DraggableTabItem } from "./tab-row/draggable-tab-item";
+export { PerfProfiler } from "./perf-profiler/perf-profiler";
 export type { TabRowActions } from "./tab-row/draggable-tab-item";
 export { TabContextMenu, ContextMenuEntries } from "./tab-context-menu/tab-context-menu";
 export type { MenuGroups, MenuEntry } from "./tab-context-menu/tab-context-menu";

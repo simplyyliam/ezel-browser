@@ -43,8 +43,12 @@ impl Store {
 
   /// Queues a save. Serialised by the caller (a few KB) so the thread never touches the model.
   pub fn save(&self, session: &Session) {
+    #[cfg(feature = "perf")]
+    let started = std::time::Instant::now();
     match serde_json::to_string(session) {
       Ok(json) => {
+        #[cfg(feature = "perf")]
+        super::perf::note("save-serialize", json.len(), started);
         let _ = self.tx.send(Message::Save(json));
       }
       Err(e) => log::error!("session: failed to serialise: {e}"),
@@ -104,6 +108,10 @@ fn run(dir: &Path, rx: Receiver<Message>) {
 /// Temp file first, then the current file becomes the backup and the temp file replaces it, so a
 /// crash at any point leaves either the new file or the backup readable.
 fn write(dir: &Path, json: &str) {
+  #[cfg(feature = "perf")]
+  let started = std::time::Instant::now();
+  #[cfg(feature = "perf")]
+  let _note = Defer(|| super::perf::note("save-write", json.len(), started));
   let result = (|| -> std::io::Result<()> {
     fs::create_dir_all(dir)?;
     let (file, backup, temp) = (dir.join(FILE_NAME), dir.join(BACKUP_NAME), dir.join(TEMP_NAME));
@@ -115,6 +123,16 @@ fn write(dir: &Path, json: &str) {
   })();
   if let Err(e) = result {
     log::error!("session: failed to save to {}: {e}", dir.display());
+  }
+}
+
+/// Runs its closure when dropped (the write's note, whichever way it returns).
+#[cfg(feature = "perf")]
+struct Defer<F: FnMut()>(F);
+#[cfg(feature = "perf")]
+impl<F: FnMut()> Drop for Defer<F> {
+  fn drop(&mut self) {
+    (self.0)()
   }
 }
 

@@ -23,6 +23,7 @@ Everyday and safe: folders, full right-click menus, find, downloads and error pa
 - **Automatic updates.** Ezel checks for a new version when it starts and once a day, downloads it quietly and shows "Update ready" at the bottom of the sidebar. Nothing restarts until you click it.
 
 ### Changed
+- **Big sessions stay fast**: with 130 tabs (say, from a Zen import) switching tabs and spaces is instant again. Very large site icons (over 64 KB) are dropped and come back when the tab is next opened.
 - **Swatches hold up to 12 sites** (was 8), like Zen's Essentials: three rows of four. Ctrl+1–8 still reach the first eight.
 - **Every sidebar right-click menu is complete**, and menus always stay inside the sidebar. Reload works on any loaded tab, not just the one on screen.
 - **Deleting a space asks what to do with its tabs**: move them to another space, or close them (closed tabs can still be reopened with Ctrl+Shift+T). Empty spaces and folders go without a question.
