@@ -19,14 +19,19 @@ import { UpdateNote } from "@/features/app-sidebar/update-note"
 import { cn } from "@/lib/utils"
 import {
   activeSpace,
+  cancelDownload,
+  clearDownloads,
   installUpdate,
   NEW_SPACE_ICONS,
   openCommandPalette,
+  openDownload,
   reopenClosedTab,
   reportError,
+  showDownloadInFolder,
   showToast,
   unwrap,
   useContentCutout,
+  useDownloads,
   useHotkey,
   usePage,
   useReadyUpdate,
@@ -82,6 +87,7 @@ export function AppSidebar() {
   const page = usePage()
   // A new version downloaded in the background, waiting for a restart (release builds).
   const readyUpdate = useReadyUpdate()
+  const downloads = useDownloads()
   // Tab, folder and space data come only from the backend mirror; actions are commands whose
   // result returns through `tabs-changed`.
   const tabs = useTabs()
@@ -327,6 +333,8 @@ export function AppSidebar() {
           onAddSpace={newSpace}
           onAddTab={newTab}
           onAddFolder={newFolder}
+          downloads={downloads}
+          downloadActions={{ open: openDownload, showInFolder: showDownloadInFolder, cancel: cancelDownload, clear: clearDownloads }}
           load={load}
         />
       </SidebarFooter>

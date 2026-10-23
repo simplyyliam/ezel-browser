@@ -349,12 +349,13 @@ export const MENU_CATALOG = {
 
   download: {
     kind: "context",
-    trigger: "Right-click a download in the downloads list",
+    trigger: "Right-click a download in the downloads list (the list itself: the footer's downloads button)",
     scope: "That download",
     groups: [
       [
-        item({ id: "open", label: "Open", origin: "browser", status: "needs-feature" }),
-        item({ id: "showInFolder", label: "Show in Folder", origin: "browser", status: "needs-feature" }),
+        item({ id: "open", label: "Open", origin: "browser", status: "built", when: "completed", uses: "open_download", note: "In the list: click the file name (no right-click menu yet)" }),
+        item({ id: "showInFolder", label: "Show in Folder", origin: "browser", status: "built", when: "completed", uses: "show_download_in_folder", note: "In the list: the folder button" }),
+        item({ id: "cancel", label: "Cancel", origin: "browser", status: "built", when: "in progress", uses: "cancel_download", note: "In the list: the × button" }),
         item({ id: "copyLink", label: "Copy Download Link", origin: "browser", status: "needs-feature" }),
         item({ id: "retry", label: "Retry", origin: "browser", status: "needs-feature", when: "failed" }),
       ],

@@ -5,11 +5,14 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
 import { SidebarMenu, SidebarMenuButton, SidebarMenuItem } from "@/components/ui/sidebar"
-import { menuLabel } from "@/shared"
+import { menuLabel, type Download as DownloadData } from "@/shared"
+import { DownloadsList, type DownloadActions } from "./downloads"
 import { LoadMeter, type LoadMeterData } from "./load-meter"
 
 export type { LoadMeterData } from "./load-meter"
+export type { DownloadActions } from "./downloads"
 
 /** Small icon-only pills, as in the design. */
 const action = "h-6 w-7 justify-center bg-sidebar-foreground/5 p-0 hover:bg-sidebar-foreground/8 [&_svg]:size-3.5"
@@ -24,17 +27,30 @@ type BottomActionsProps = {
   onAddFolder: () => void
   /** The load meter's numbers; null hides it (not read yet, or unsupported here). */
   load: LoadMeterData | null
+  /** This session's downloads, newest first. */
+  downloads: DownloadData[]
+  downloadActions: DownloadActions
 }
 
 /** Pinned to the bottom of the sidebar (render inside SidebarFooter). */
-export function BottomActions({ hasTempTabs, onTrashAll, onAddSpace, onAddTab, onAddFolder, load }: BottomActionsProps) {
+export function BottomActions({ hasTempTabs, onTrashAll, onAddSpace, onAddTab, onAddFolder, load, downloads, downloadActions }: BottomActionsProps) {
+  const running = downloads.some((d) => d.state === "inProgress")
   return (
     <SidebarMenu className="flex-row items-center gap-1.5">
       <SidebarMenuItem>
-        {/* TODO: open the downloads list. */}
-        <SidebarMenuButton size="sm" aria-label="Downloads" className={action}>
-          <Download aria-hidden />
-        </SidebarMenuButton>
+        <Popover>
+          <PopoverTrigger
+            render={<SidebarMenuButton size="sm" aria-label={running ? "Downloads, one in progress" : "Downloads"} className={`relative ${action}`} />}
+          >
+            <Download aria-hidden />
+            {/* A still dot while something downloads (nothing pulses). */}
+            {running && <span aria-hidden className="absolute top-0.5 right-0.5 size-1.5 rounded-full bg-sidebar-foreground/70" />}
+          </PopoverTrigger>
+          {/* Above the footer and start-aligned, inside the sidebar's width: the page covers the rest. */}
+          <PopoverContent side="top" align="start" className="w-[228px] gap-0 rounded-2xl p-2">
+            <DownloadsList downloads={downloads} actions={downloadActions} />
+          </PopoverContent>
+        </Popover>
       </SidebarMenuItem>
       <SidebarMenuItem>
         <SidebarMenuButton

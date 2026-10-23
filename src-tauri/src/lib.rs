@@ -50,6 +50,11 @@ pub fn specta_builder() -> tauri_specta::Builder<tauri::Wry> {
       stop_loading,
       open_devtools,
       copy_page_url,
+      get_downloads,
+      open_download,
+      show_download_in_folder,
+      cancel_download,
+      clear_downloads,
       find_start,
       find_next,
       find_stop,
@@ -99,6 +104,7 @@ pub fn specta_builder() -> tauri_specta::Builder<tauri::Wry> {
       updater::UpdateStatus,
       browser::page_menu::PageMenu,
       browser::FindChanged,
+      browser::downloads::DownloadsState,
     ])
 }
 

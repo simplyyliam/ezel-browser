@@ -36,6 +36,16 @@ export const commands = {
 	 *  shortcut leaves focus in the website, where the UI's clipboard API can't write.
 	 */
 	copyPageUrl: () => typedError<string, AppError>(__TAURI_INVOKE("copy_page_url")),
+	/**  This session's downloads, newest first (also "downloads-changed"). */
+	getDownloads: () => typedError<DownloadsState, AppError>(__TAURI_INVOKE("get_downloads")),
+	/**  Opens a finished download with its default app (Windows asks first for files from the web). */
+	openDownload: (id: number) => typedError<null, AppError>(__TAURI_INVOKE("open_download", { id })),
+	/**  Shows a download's file selected in File Explorer (or its folder, if the file is gone). */
+	showDownloadInFolder: (id: number) => typedError<null, AppError>(__TAURI_INVOKE("show_download_in_folder", { id })),
+	/**  Cancels a running download; it stays in the list as cancelled. */
+	cancelDownload: (id: number) => typedError<null, AppError>(__TAURI_INVOKE("cancel_download", { id })),
+	/**  "Clear": forgets the finished downloads (their files stay where they are). */
+	clearDownloads: () => typedError<null, AppError>(__TAURI_INVOKE("clear_downloads")),
 	/**
 	 *  Find in page (Ctrl+F): highlights every match of `query` in the shown tab and makes the first
 	 *  one active; results come as "find-changed". An empty query ends the session.
@@ -128,6 +138,7 @@ export const commands = {
 
 /** Events */
 export const events = {
+	downloadsChanged: makeEvent<DownloadsState>("downloads-changed"),
 	findChanged: makeEvent<FindChanged>("find-changed"),
 	hotkeyPressed: makeEvent<HotkeyPressed>("hotkey-pressed"),
 	pageChanged: makeEvent<PageChanged>("page-changed"),
@@ -143,6 +154,27 @@ export const events = {
 export type AppError = {
 	code: ErrorCode,
 	message: string,
+};
+
+/**  A download as the UI shows it. */
+export type Download = {
+	id: number,
+	fileName: string,
+	state: DownloadState,
+	receivedBytes: number,
+	/**  `null` while the size isn't known. */
+	totalBytes: number | null,
+};
+
+export type DownloadState = "inProgress" | "completed" | 
+/**  Cancelled by the user (in Ezel, or the site's own Save dialog cancelled). */
+"cancelled" | 
+/**  Interrupted: network, disk, a blocked file (SmartScreen), Ezel closing. */
+"failed";
+
+/**  Payload of "downloads-changed" and `get_downloads`: newest first. */
+export type DownloadsState = {
+	downloads: Download[],
 };
 
 /**

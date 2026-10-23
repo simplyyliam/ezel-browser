@@ -134,6 +134,84 @@ pub async fn choose_page_menu_item(app: AppHandle, id: u32, action: Option<PageM
   Ok(())
 }
 
+// ---- Downloads ----
+
+/// This session's downloads, newest first (also "downloads-changed").
+#[tauri::command]
+#[specta::specta]
+pub fn get_downloads(app: AppHandle) -> Result<super::downloads::DownloadsState> {
+  Ok(browser(&app).downloads.lock().unwrap().view())
+}
+
+/// Opens a finished download with its default app (Windows asks first for files from the web).
+#[tauri::command]
+#[specta::specta]
+pub fn open_download(app: AppHandle, id: u32) -> Result<()> {
+  let path = browser(&app).downloads.lock().unwrap().completed_path(id).map(|p| p.to_path_buf());
+  let path = path.filter(|p| p.is_file()).ok_or_else(|| AppError::not_found("that download isn't on disk"))?;
+  #[cfg(windows)]
+  {
+    std::process::Command::new("explorer.exe").arg(&path).spawn().map_err(|e| AppError::internal(format!("open: {}", e.kind())))?;
+    Ok(())
+  }
+  #[cfg(not(windows))]
+  {
+    let _ = path;
+    Err(AppError::new(ErrorCode::Unsupported, "opening downloads works only on Windows for now"))
+  }
+}
+
+/// Shows a download's file selected in File Explorer (or its folder, if the file is gone).
+#[tauri::command]
+#[specta::specta]
+pub fn show_download_in_folder(app: AppHandle, id: u32) -> Result<()> {
+  let path = browser(&app).downloads.lock().unwrap().path(id).map(|p| p.to_path_buf()).ok_or_else(|| AppError::not_found("no such download"))?;
+  #[cfg(windows)]
+  {
+    use std::os::windows::process::CommandExt;
+    let mut explorer = std::process::Command::new("explorer.exe");
+    if path.is_file() {
+      // `/select,"<path>"` exactly as Explorer expects it (Windows paths can't contain quotes).
+      explorer.raw_arg(format!("/select,\"{}\"", path.display()));
+    } else if let Some(folder) = path.parent().filter(|f| f.is_dir()) {
+      explorer.arg(folder);
+    } else {
+      return Err(AppError::not_found("that download's folder is gone"));
+    }
+    explorer.spawn().map_err(|e| AppError::internal(format!("show in folder: {}", e.kind())))?;
+    Ok(())
+  }
+  #[cfg(not(windows))]
+  {
+    let _ = path;
+    Err(AppError::new(ErrorCode::Unsupported, "showing downloads works only on Windows for now"))
+  }
+}
+
+/// Cancels a running download; it stays in the list as cancelled.
+#[tauri::command]
+#[specta::specta]
+pub fn cancel_download(app: AppHandle, id: u32) -> Result<()> {
+  let state = browser(&app).downloads.lock().unwrap().state(id).ok_or_else(|| AppError::not_found("no such download"))?;
+  if state != super::downloads::DownloadState::InProgress {
+    return Ok(());
+  }
+  #[cfg(windows)]
+  app.run_on_main_thread(move || crate::webview2::cancel_download(id))?;
+  Ok(())
+}
+
+/// "Clear": forgets the finished downloads (their files stay where they are).
+#[tauri::command]
+#[specta::specta]
+pub fn clear_downloads(app: AppHandle) -> Result<()> {
+  let browser = browser(&app);
+  let mut list = browser.downloads.lock().unwrap();
+  list.clear_finished();
+  crate::emit_to_ui(&app, &list.view());
+  Ok(())
+}
+
 /// Longest find term (more is a paste, not a search).
 const MAX_FIND: usize = 1000;
 
