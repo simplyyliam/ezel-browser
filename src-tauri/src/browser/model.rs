@@ -191,6 +191,9 @@ pub struct Live {
   pub cert_error: bool,
   /// The page shows an element in HTML fullscreen (a video). The window follows while it's shown.
   pub fullscreen: bool,
+  /// The last navigation failed (or the renderer crashed): Ezel's own page shows instead, and the
+  /// webview stays hidden until the next navigation starts.
+  pub error: Option<super::site::PageError>,
   /// Where the page's latest navigation goes (its first load included): a certificate error
   /// counts for the page only when it's for this host.
   pub navigating_to: Option<String>,

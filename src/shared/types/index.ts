@@ -6,6 +6,7 @@ export type {
   Folder,
   Id,
   PageChanged,
+  PageError,
   PageSecurity,
   Space,
   SpaceItem,
