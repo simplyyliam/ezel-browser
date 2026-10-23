@@ -2,6 +2,47 @@
 
 All notable changes to Ezel. Versions follow [Semantic Versioning](https://semver.org/); while Ezel is 0.x, a minor version brings new features and a patch version only fixes.
 
+## [0.3.0] - 2026-10-23
+
+Everyday and safe: folders, full right-click menus, find, downloads and error pages, and you can always see which site you're on.
+
+### Added
+- **See which site you're on.** Move the pointer to the top edge: the titlebar shows the site's domain with a lock (an open lock for sites without HTTPS, a warning for certificate problems), with only the part that matters in bold. Click it for the connection, the site's permissions and "Clear This Site's Data…".
+- **Folders.** Make one from a tab's right-click menu ("New Folder with Tab"), the sidebar's empty space or the + button; drag tabs into a folder (drop on the middle of its row) and out again. Rename, collapse, unpack or delete it from its own menu.
+- **Ezel's own right-click menu on web pages**: open a link in a new tab, copy links and images, save images, copy and paste, search for the selected text, and Inspect.
+- **Find in page** with Ctrl+F: a small bar in the page's corner with the number of matches; Enter and Shift+Enter move between them, Esc closes it.
+- **Downloads**: the download button now opens a list with progress, and lets you open a file, show it in its folder, or cancel. It replaces the small Edge-style pop-up.
+- **Permission prompts from Ezel.** When a site wants your camera, microphone, location or clipboard, the titlebar asks you, naming the site. Your answer is remembered per site; review or forget them in the site's panel or in "Site Permissions" (command palette).
+- **Calm error pages** for being offline, an address that can't be found, a site that isn't answering, a certificate problem (with no way past it) and a page that crashed, each with one clear next step.
+- **Video fullscreen fills the whole window**; Esc or the video's own button brings Ezel back.
+- **Recently closed tabs** show as small chips at the bottom of the command palette (Ctrl+T); click one to bring it back where it was.
+- **Hover a link to see where it goes**, in a small pill at the page's bottom-left.
+- **Import from Zen** (command palette): choose which Zen spaces to bring over; Essentials become Swatches, and pinned tabs, folders and open tabs keep their order. Zen itself is never changed, and logins and cookies stay in Zen.
+- **Quick tabs in the titlebar**: the other tabs of the folder you're in (or your Swatches) as small icons, one click away.
+- **Ctrl+D pins the current tab**, Ezel's way of bookmarking.
+- **Automatic updates.** Ezel checks for a new version when it starts and once a day, downloads it quietly and shows "Update ready" at the bottom of the sidebar. Nothing restarts until you click it.
+
+### Changed
+- **Every sidebar right-click menu is complete**, and menus always stay inside the sidebar. Reload works on any loaded tab, not just the one on screen.
+- **Deleting a space asks what to do with its tabs**: move them to another space, or close them (closed tabs can still be reopened with Ctrl+Shift+T). Empty spaces and folders go without a question.
+- **Sign-in pop-ups** ("Sign in with Google") open in a small Ezel window whose title starts with the site's domain, so you can see who's asking.
+- Buttons and rows give a little when you press them. With reduced motion turned on in Windows, menus and dialogs simply fade instead of sliding or zooming.
+
+### Known issues
+- **The installer isn't code-signed**, so Windows SmartScreen shows a warning when you run it: choose "More info", then "Run anyway".
+- **Tabs and sign-ins from 0.1.0 don't carry over**, because Ezel's data moved to its own folder. The old data stays in `%APPDATA%\com.tauri.dev` and `%LOCALAPPDATA%\com.tauri.dev`, and you can delete it.
+- **Windows only for now.** On macOS and Linux, most of what's new (menus, find, downloads, permissions, error pages, updates) doesn't work yet.
+- **Still to come**: zoom, history, print, a private window, importing from Arc, Chrome or Edge, and a settings page.
+- **Background tabs pause after 30 seconds**, so a chat or timer in a tab you're not looking at won't update until you open it. A site can only ask for a permission while its tab is on screen.
+- **Passwords and autofill are off on purpose** until Ezel has its own passwords screen (passwords saved earlier still fill in), and websites' notification requests are always declined.
+- **Rough edges**: find in page needs a recent WebView2 (Windows keeps it up to date); the downloads list is cleared when Ezel closes; on keyboards with AltGr (for example Polish or German), the lens shortcuts Ctrl+Alt+S and Ctrl+Alt+G can stop you typing the character on those keys.
+
+### Privacy
+- Ezel now checks GitHub for updates when it starts and once a day, and downloads new versions from there. Nothing else about you is sent.
+- Site permissions you choose are kept on your computer, in Ezel's own folder.
+- SmartScreen checks the sites you visit and the files you download with Microsoft, as in Edge.
+- The command palette's suggestions and site icons come from Google: searches go to Google, and Google's icon service sees the sites you type.
+
 ## [0.2.1] - 2026-10-22
 
 Smoother overlays and a cleaner start: no more dark flashes over the page, and a sidebar that stays when you reach for it.
