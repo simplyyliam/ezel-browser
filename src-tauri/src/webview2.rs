@@ -5,10 +5,14 @@ use tauri::webview::PlatformWebview;
 
 use std::cell::RefCell;
 
-use crate::{browser::page_menu::MenuTarget, hotkeys::KeyPress};
+use crate::{
+  browser::{page_menu::MenuTarget, site::PageError},
+  hotkeys::KeyPress,
+};
 use webview2_com::{
   take_pwstr, AcceleratorKeyPressedEventHandler, BytesReceivedChangedEventHandler, CallDevToolsProtocolMethodCompletedHandler,
-  ContainsFullScreenElementChangedEventHandler, ContextMenuRequestedEventHandler, DownloadStartingEventHandler, StateChangedEventHandler,
+  ContainsFullScreenElementChangedEventHandler, ContextMenuRequestedEventHandler, DownloadStartingEventHandler, NavigationCompletedEventHandler,
+  ProcessFailedEventHandler, StateChangedEventHandler,
   FaviconChangedEventHandler, FindActiveMatchIndexChangedEventHandler, FindMatchCountChangedEventHandler, FindStartCompletedHandler,
   IsDocumentPlayingAudioChangedEventHandler,
   GetProcessExtendedInfosCompletedHandler, PermissionRequestedEventHandler, ServerCertificateErrorDetectedEventHandler, TrySuspendCompletedHandler,
@@ -17,6 +21,14 @@ use webview2_com::{
     ICoreWebView2, ICoreWebView2ContextMenuRequestedEventArgs, ICoreWebView2Deferral, ICoreWebView2DownloadOperation,
     ICoreWebView2Environment13, ICoreWebView2_4, COREWEBVIEW2_DOWNLOAD_INTERRUPT_REASON, COREWEBVIEW2_DOWNLOAD_INTERRUPT_REASON_USER_CANCELED,
     COREWEBVIEW2_DOWNLOAD_STATE, COREWEBVIEW2_DOWNLOAD_STATE_COMPLETED, COREWEBVIEW2_DOWNLOAD_STATE_IN_PROGRESS,
+    COREWEBVIEW2_PROCESS_FAILED_KIND, COREWEBVIEW2_PROCESS_FAILED_KIND_RENDER_PROCESS_EXITED,
+    COREWEBVIEW2_PROCESS_FAILED_KIND_RENDER_PROCESS_UNRESPONSIVE, COREWEBVIEW2_WEB_ERROR_STATUS,
+    COREWEBVIEW2_WEB_ERROR_STATUS_CANNOT_CONNECT, COREWEBVIEW2_WEB_ERROR_STATUS_CERTIFICATE_COMMON_NAME_IS_INCORRECT,
+    COREWEBVIEW2_WEB_ERROR_STATUS_CERTIFICATE_EXPIRED, COREWEBVIEW2_WEB_ERROR_STATUS_CERTIFICATE_IS_INVALID,
+    COREWEBVIEW2_WEB_ERROR_STATUS_CERTIFICATE_REVOKED, COREWEBVIEW2_WEB_ERROR_STATUS_CONNECTION_ABORTED,
+    COREWEBVIEW2_WEB_ERROR_STATUS_CONNECTION_RESET, COREWEBVIEW2_WEB_ERROR_STATUS_DISCONNECTED,
+    COREWEBVIEW2_WEB_ERROR_STATUS_HOST_NAME_NOT_RESOLVED, COREWEBVIEW2_WEB_ERROR_STATUS_SERVER_UNREACHABLE,
+    COREWEBVIEW2_WEB_ERROR_STATUS_TIMEOUT,
     ICoreWebView2Environment15, ICoreWebView2Find, ICoreWebView2FrameInfo2, ICoreWebView2PermissionRequestedEventArgs3,
     ICoreWebView2_11, ICoreWebView2_28,
     COREWEBVIEW2_CONTEXT_MENU_TARGET_KIND, COREWEBVIEW2_CONTEXT_MENU_TARGET_KIND_IMAGE,
@@ -611,6 +623,71 @@ pub fn on_fullscreen_changed(pw: &PlatformWebview, f: impl Fn(bool) + 'static) {
   }
 }
 
+/// The page Ezel draws for a failed navigation, or `None` to leave WebView2's (SmartScreen's
+/// warnings, a cancelled load, a sign-in prompt, anything unknown).
+fn page_error_for(status: COREWEBVIEW2_WEB_ERROR_STATUS) -> Option<PageError> {
+  Some(match status {
+    COREWEBVIEW2_WEB_ERROR_STATUS_DISCONNECTED => PageError::Offline,
+    COREWEBVIEW2_WEB_ERROR_STATUS_HOST_NAME_NOT_RESOLVED => PageError::NotFound,
+    COREWEBVIEW2_WEB_ERROR_STATUS_CANNOT_CONNECT
+    | COREWEBVIEW2_WEB_ERROR_STATUS_CONNECTION_ABORTED
+    | COREWEBVIEW2_WEB_ERROR_STATUS_CONNECTION_RESET
+    | COREWEBVIEW2_WEB_ERROR_STATUS_SERVER_UNREACHABLE => PageError::CantConnect,
+    COREWEBVIEW2_WEB_ERROR_STATUS_TIMEOUT => PageError::TimedOut,
+    COREWEBVIEW2_WEB_ERROR_STATUS_CERTIFICATE_COMMON_NAME_IS_INCORRECT
+    | COREWEBVIEW2_WEB_ERROR_STATUS_CERTIFICATE_EXPIRED
+    | COREWEBVIEW2_WEB_ERROR_STATUS_CERTIFICATE_IS_INVALID
+    | COREWEBVIEW2_WEB_ERROR_STATUS_CERTIFICATE_REVOKED => PageError::Certificate,
+    _ => return None,
+  })
+}
+
+/// Calls `f` when a top-level navigation fails in a way Ezel shows its own page for.
+pub fn on_navigation_failed(pw: &PlatformWebview, f: impl Fn(PageError) + 'static) {
+  let Some(core) = core(pw) else { return };
+  let handler = NavigationCompletedEventHandler::create(Box::new(move |_, args| {
+    let Some(args) = args else { return Ok(()) };
+    let mut success = windows::core::BOOL::default();
+    let mut status = COREWEBVIEW2_WEB_ERROR_STATUS::default();
+    // SAFETY: WebView2 calls this on the main thread with live args.
+    unsafe {
+      args.IsSuccess(&mut success)?;
+      args.WebErrorStatus(&mut status)?;
+    }
+    if !success.as_bool() {
+      if let Some(error) = page_error_for(status) {
+        f(error);
+      }
+    }
+    Ok(())
+  }));
+  let mut token = 0i64;
+  // SAFETY: main thread, live webview.
+  unsafe {
+    let _ = core.add_NavigationCompleted(&handler, &mut token);
+  }
+}
+
+/// Calls `f` when the page's own renderer quits or stops responding ("page crashed").
+pub fn on_page_crashed(pw: &PlatformWebview, f: impl Fn() + 'static) {
+  let Some(core) = core(pw) else { return };
+  let handler = ProcessFailedEventHandler::create(Box::new(move |_, args| {
+    let Some(args) = args else { return Ok(()) };
+    let mut kind = COREWEBVIEW2_PROCESS_FAILED_KIND::default();
+    // SAFETY: WebView2 calls this on the main thread with live args.
+    unsafe { args.ProcessFailedKind(&mut kind)? };
+    if kind == COREWEBVIEW2_PROCESS_FAILED_KIND_RENDER_PROCESS_EXITED || kind == COREWEBVIEW2_PROCESS_FAILED_KIND_RENDER_PROCESS_UNRESPONSIVE {
+      f();
+    }
+    Ok(())
+  }));
+  let mut token = 0i64;
+  // SAFETY: main thread, live webview.
+  unsafe {
+    let _ = core.add_ProcessFailed(&handler, &mut token);
+  }
+}
+
 /// Calls `f` with the page's favicon URL whenever it changes (`None` = the page has none).
 pub fn on_favicon_changed(pw: &PlatformWebview, f: impl Fn(Option<String>) + 'static) {
   let Some(core) = core(pw).and_then(|c| c.cast::<ICoreWebView2_15>().ok()) else { return };
@@ -701,6 +778,24 @@ mod tests {
   use webview2_com::Microsoft::Web::WebView2::Win32::{
     COREWEBVIEW2_PERMISSION_KIND_CAMERA, COREWEBVIEW2_PERMISSION_KIND_CLIPBOARD_READ, COREWEBVIEW2_PERMISSION_KIND_GEOLOCATION,
   };
+
+  #[test]
+  fn only_known_failures_get_ezels_page() {
+    use webview2_com::Microsoft::Web::WebView2::Win32::{
+      COREWEBVIEW2_WEB_ERROR_STATUS_OPERATION_CANCELED, COREWEBVIEW2_WEB_ERROR_STATUS_UNKNOWN,
+      COREWEBVIEW2_WEB_ERROR_STATUS_VALID_AUTHENTICATION_CREDENTIALS_REQUIRED,
+    };
+    assert_eq!(page_error_for(COREWEBVIEW2_WEB_ERROR_STATUS_DISCONNECTED), Some(PageError::Offline));
+    assert_eq!(page_error_for(COREWEBVIEW2_WEB_ERROR_STATUS_HOST_NAME_NOT_RESOLVED), Some(PageError::NotFound));
+    assert_eq!(page_error_for(COREWEBVIEW2_WEB_ERROR_STATUS_CONNECTION_RESET), Some(PageError::CantConnect));
+    assert_eq!(page_error_for(COREWEBVIEW2_WEB_ERROR_STATUS_TIMEOUT), Some(PageError::TimedOut));
+    assert_eq!(page_error_for(COREWEBVIEW2_WEB_ERROR_STATUS_CERTIFICATE_EXPIRED), Some(PageError::Certificate));
+    // A stopped load (Esc, Ezel's own URL policy), a sign-in prompt, anything unknown (SmartScreen
+    // among them): WebView2's own page, never Ezel's.
+    for status in [COREWEBVIEW2_WEB_ERROR_STATUS_OPERATION_CANCELED, COREWEBVIEW2_WEB_ERROR_STATUS_VALID_AUTHENTICATION_CREDENTIALS_REQUIRED, COREWEBVIEW2_WEB_ERROR_STATUS_UNKNOWN] {
+      assert_eq!(page_error_for(status), None);
+    }
+  }
 
   #[test]
   fn notifications_are_denied_and_everything_else_left_to_webview2() {

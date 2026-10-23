@@ -21,6 +21,24 @@ pub enum PageSecurity {
   CertificateError,
 }
 
+/// Why the shown page couldn't be shown, when Ezel draws its own page instead of WebView2's.
+/// Anything else (SmartScreen's warnings, a cancelled load, a sign-in prompt) stays WebView2's.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Type)]
+#[serde(rename_all = "camelCase")]
+pub enum PageError {
+  /// No network at all.
+  Offline,
+  /// The host doesn't resolve (a typo, a site that's gone, or no DNS).
+  NotFound,
+  /// The server refused, reset or dropped the connection, or is unreachable.
+  CantConnect,
+  TimedOut,
+  /// The certificate couldn't be verified: Ezel stops, with no way past it.
+  Certificate,
+  /// The page's renderer quit or hung.
+  Crashed,
+}
+
 /// `cert_error`: WebView2 reported a certificate problem for this page's own address.
 pub fn security_of(url: &str, cert_error: bool) -> PageSecurity {
   match Url::parse(url).map(|u| u.scheme().to_ascii_lowercase()).as_deref() {
@@ -61,6 +79,12 @@ pub fn popup_title(url: &str, title: Option<&str>) -> String {
 #[cfg(test)]
 mod tests {
   use super::*;
+
+  #[test]
+  fn page_errors_serialize_by_name() {
+    assert_eq!(serde_json::to_value(PageError::NotFound).unwrap(), "notFound");
+    assert_eq!(serde_json::to_value(PageError::CantConnect).unwrap(), "cantConnect");
+  }
 
   #[test]
   fn security_follows_the_scheme_and_certificate() {

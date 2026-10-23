@@ -10,6 +10,7 @@ const INITIAL_PAGE: PageChanged = {
   isLoading: false,
   security: "none",
   fullscreen: false,
+  error: null,
 }
 
 /** The shown tab's page: `get_page` on mount, then every `page-changed`. */

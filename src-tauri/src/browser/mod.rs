@@ -105,6 +105,8 @@ pub struct PageChanged {
   security: site::PageSecurity,
   /// The page is in HTML fullscreen: the UI steps aside and the page fills the window.
   fullscreen: bool,
+  /// Ezel's own error page shows instead of the website (the webview is hidden).
+  error: Option<site::PageError>,
 }
 
 fn now() -> u64 {
@@ -141,10 +143,11 @@ pub fn shown_webview(app: &AppHandle) -> Option<Webview> {
   tab_webview(app, id)
 }
 
-/// False while the shown tab's new webview has no page on screen yet (it stays hidden until then).
+/// False while the shown tab's webview must stay hidden: its new page has nothing on screen yet,
+/// or it failed and Ezel's error page shows instead.
 pub fn shown_painted(app: &AppHandle) -> bool {
   let shown = *browser(app).shown.lock().unwrap();
-  !shown.is_some_and(|id| browser(app).unpainted.lock().unwrap().contains(&id))
+  shown.is_none_or(|id| can_show(app, id))
 }
 
 /// The tab's page started rendering (or the fallback ran out): show its webview if it's the shown tab.
@@ -154,7 +157,7 @@ fn reveal(app: &AppHandle, id: Id) {
   }
   if *browser(app).shown.lock().unwrap() == Some(id) {
     if let Some(webview) = tab_webview(app, id) {
-      content::present(&webview, true);
+      content::present(&webview, can_show(app, id));
     }
   }
 }
@@ -372,8 +375,7 @@ fn show(app: &AppHandle, next: Option<Id>) {
   match next {
     Some(id) => match tab_webview(app, id).map(Ok).unwrap_or_else(|| create_webview(app, id)) {
       Ok(webview) => {
-        let painted = !browser(app).unpainted.lock().unwrap().contains(&id);
-        content::present(&webview, painted);
+        content::present(&webview, can_show(app, id));
         set_low_memory(&webview, false);
         #[cfg(windows)]
         let _ = webview.with_webview(|pw| crate::webview2::resume(&pw));
@@ -480,11 +482,17 @@ fn create_webview(app: &AppHandle, id: Id) -> tauri::Result<Webview> {
 /// A navigation the tab's page starts (or its first load): its address is what a certificate
 /// error must match, and the last page's certificate problem is over.
 fn navigation_started(app: &AppHandle, id: Id, url: &str) {
-  let browser = browser(app);
-  let mut model = browser.model.lock().unwrap();
-  if let Some(live) = model.live.get_mut(&id) {
+  let failed = {
+    let browser = browser(app);
+    let mut model = browser.model.lock().unwrap();
+    let Some(live) = model.live.get_mut(&id) else { return };
     live.cert_error = false;
     live.navigating_to = Some(url.to_string());
+    live.error.is_some()
+  };
+  // Trying again (Reload, a new address): the website comes back.
+  if failed {
+    set_page_error(app, id, None);
   }
 }
 
@@ -640,6 +648,42 @@ fn page_of(model: &Model, id: Id) -> PageChanged {
     is_loading: live.is_loading,
     security: site::security_of(&tab.url, live.cert_error),
     fullscreen: live.fullscreen,
+    error: live.error,
+  }
+}
+
+/// Whether a tab's webview may be on screen: its page has started rendering, and it isn't failed
+/// (Ezel's error page shows in its place).
+fn can_show(app: &AppHandle, id: Id) -> bool {
+  let browser = browser(app);
+  if browser.unpainted.lock().unwrap().contains(&id) {
+    return false;
+  }
+  let failed = browser.model.lock().unwrap().live.get(&id).is_some_and(|l| l.error.is_some());
+  !failed
+}
+
+/// A tab's page failed (or recovered, `None`): record it, hide or show its webview, tell the UI.
+fn set_page_error(app: &AppHandle, id: Id, error: Option<site::PageError>) {
+  {
+    let browser = browser(app);
+    let mut model = browser.model.lock().unwrap();
+    let Some(live) = model.live.get_mut(&id) else { return };
+    if live.error == error {
+      return;
+    }
+    live.error = error;
+    if error.is_some() {
+      live.is_loading = false;
+    }
+  }
+  if let Some(webview) = tab_webview(app, id) {
+    if *browser(app).shown.lock().unwrap() == Some(id) {
+      // After the WebView2 event that got us here has returned (no reentrant webview calls).
+      let (a, w) = (app.clone(), webview.clone());
+      let _ = app.run_on_main_thread(move || content::present(&w, can_show(&a, id)));
+    }
+    publish_page(&webview, id);
   }
 }
 
@@ -700,6 +744,14 @@ fn watch_platform_events(webview: &Webview, id: Id) {
         browser.store.save(&model.session);
         emit_tab(&a, &model, id);
       });
+      let a = app.clone();
+      webview2::on_navigation_failed(&pw, move |error| {
+        // A certificate problem reported for the page's own host counts as one, whatever the status.
+        let cert = browser(&a).model.lock().unwrap().live.get(&id).is_some_and(|l| l.cert_error);
+        set_page_error(&a, id, Some(if cert { site::PageError::Certificate } else { error }));
+      });
+      let a = app.clone();
+      webview2::on_page_crashed(&pw, move || set_page_error(&a, id, Some(site::PageError::Crashed)));
       let a = app.clone();
       webview2::on_fullscreen_changed(&pw, move |full| {
         {

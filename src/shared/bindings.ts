@@ -269,7 +269,25 @@ export type PageChanged = {
 	security: PageSecurity,
 	/**  The page is in HTML fullscreen: the UI steps aside and the page fills the window. */
 	fullscreen: boolean,
+	/**  Ezel's own error page shows instead of the website (the webview is hidden). */
+	error: PageError | null,
 };
+
+/**
+ *  Why the shown page couldn't be shown, when Ezel draws its own page instead of WebView2's.
+ *  Anything else (SmartScreen's warnings, a cancelled load, a sign-in prompt) stays WebView2's.
+ */
+export type PageError = 
+/**  No network at all. */
+"offline" | 
+/**  The host doesn't resolve (a typo, a site that's gone, or no DNS). */
+"notFound" | 
+/**  The server refused, reset or dropped the connection, or is unreachable. */
+"cantConnect" | "timedOut" | 
+/**  The certificate couldn't be verified: Ezel stops, with no way past it. */
+"certificate" | 
+/**  The page's renderer quit or hung. */
+"crashed";
 
 /**  A named CSS layer. Serialized as its name ("squint"). */
 export type PageLayer = 
