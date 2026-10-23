@@ -58,5 +58,16 @@
     "android": {
       "debugApplicationIdSuffix": ".debug"
     }
+  },
+  "plugins": {
+    "updater": {
+      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IEMwQkYwM0UzMjc4MTY3MDMKUldRRFo0RW40d08vd0NHM2ttamtwQjNNb0xBdFAxbVdCUHhiZEhSWXNVMDFES3hYVlJnUGZETmQK",
+      "endpoints": [
+        "https://github.com/simplyyliam/ezel-browser/releases/latest/download/latest.json"
+      ],
+      "windows": {
+        "installMode": "passive"
+      }
+    }
   }
 }

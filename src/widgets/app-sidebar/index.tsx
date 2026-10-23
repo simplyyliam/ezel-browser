@@ -15,9 +15,11 @@ import { Navigation } from "@/features/app-sidebar/navigation"
 import { SpaceSwitcher } from "@/features/app-sidebar/space-switcher"
 import { Swatches } from "@/features/app-sidebar/swatches"
 import { TempTabs } from "@/features/app-sidebar/temp-tabs"
+import { UpdateNote } from "@/features/app-sidebar/update-note"
 import { cn } from "@/lib/utils"
 import {
   activeSpace,
+  installUpdate,
   NEW_SPACE_ICONS,
   openCommandPalette,
   reopenClosedTab,
@@ -27,6 +29,7 @@ import {
   useContentCutout,
   useHotkey,
   usePage,
+  useReadyUpdate,
   useTabs,
   type Id,
   type Space,
@@ -74,6 +77,8 @@ const setFolderCollapsed = (id: Id, collapsed: boolean) =>
  */
 export function AppSidebar() {
   const page = usePage()
+  // A new version downloaded in the background, waiting for a restart (release builds).
+  const readyUpdate = useReadyUpdate()
   // Tab, folder and space data come only from the backend mirror; actions are commands whose
   // result returns through `tabs-changed`.
   const tabs = useTabs()
@@ -273,6 +278,7 @@ export function AppSidebar() {
       </SidebarContextMenu>
 
       <SidebarFooter>
+        {readyUpdate && <UpdateNote version={readyUpdate} onRestart={installUpdate} />}
         <BottomActions
           hasTempTabs={(space?.tempTabs.length ?? 0) > 0}
           onTrashAll={() => space && clearTempTabs(space.id)}

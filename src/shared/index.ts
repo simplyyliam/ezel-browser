@@ -19,3 +19,4 @@ export { useBrowserHotkeys, nthSwatch, lastTabOf, reopenClosedTab, toggleLens, L
 export { showToast, useToast } from "./toast"
 export type { ToastMessage } from "./toast"
 export type { Hotkey, HotkeyId } from "./hotkeys"
+export { useReadyUpdate, installUpdate } from "./update"

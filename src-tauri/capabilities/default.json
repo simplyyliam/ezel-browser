@@ -46,6 +46,8 @@
     "allow-delete-space",
     "allow-switch-space",
     "allow-set-forwarded-hotkeys",
+    "allow-get-update-status",
+    "allow-install-update",
     "core:window:allow-is-maximized",
     "core:window:allow-is-fullscreen",
     "core:window:allow-start-dragging",

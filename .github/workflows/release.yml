@@ -1,4 +1,5 @@
-# Builds the Windows installers for a pushed v* tag and drafts its GitHub Release.
+# Builds the Windows installers (plus the signed update bundles and latest.json) for a pushed v*
+# tag and drafts its GitHub Release.
 # Push the tag with `npm run release` (after /release prepared it); then test the
 # draft's installers and publish it by hand.
 name: Release
@@ -71,14 +72,21 @@ jobs:
         uses: tauri-apps/tauri-action@v1
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          # TODO(v0.6.0): auto-update. Add TAURI_SIGNING_PRIVATE_KEY and
-          # TAURI_SIGNING_PRIVATE_KEY_PASSWORD from repository secrets here, and set
-          # uploadUpdaterJson to true so the release carries latest.json.
+          # Auto-updates: the updater key signs the update bundles (not Windows code signing).
+          # Both are repository secrets, never committed; the public key is in tauri.conf.json.
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
         with:
           tagName: ${{ github.ref_name }}
           releaseName: Ezel ${{ steps.notes.outputs.version }}
           releaseBody: ${{ steps.notes.outputs.body }}
           releaseDraft: true
-          prerelease: true
-          args: --bundles nsis,msi
-          uploadUpdaterJson: false
+          # Not a pre-release: installed Ezel looks for updates at releases/latest, which skips
+          # pre-releases. The draft only goes out when it's published by hand.
+          prerelease: false
+          # tauri.release.conf.json turns on the signed update bundles (only here: local builds
+          # have no private key).
+          args: --bundles nsis,msi --config src-tauri/tauri.release.conf.json
+          # latest.json (version, download URLs, signatures) goes on the release with the installers.
+          uploadUpdaterJson: true
+          updaterJsonPreferNsis: true
