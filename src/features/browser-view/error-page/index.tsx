@@ -59,7 +59,7 @@ export function ErrorPage({ error, host, canGoBack, onTryAgain, onChangeAddress,
   return (
     <div role="alert" className="absolute inset-0 z-10 flex items-center justify-center rounded-[inherit] bg-background p-6">
       <motion.div
-        initial={reduced ? false : { opacity: 0, y: 4 }}
+        initial={reduced ? { opacity: 0 } : { opacity: 0, y: 4 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.2, ease: "easeOut" }}
         className="flex max-w-sm flex-col items-center gap-4 text-center"
