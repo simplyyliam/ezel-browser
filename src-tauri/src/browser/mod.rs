@@ -147,7 +147,10 @@ pub fn shown_webview(app: &AppHandle) -> Option<Webview> {
 /// or it failed and Ezel's error page shows instead.
 pub fn shown_painted(app: &AppHandle) -> bool {
   let shown = *browser(app).shown.lock().unwrap();
-  shown.is_none_or(|id| can_show(app, id))
+  match shown {
+    Some(id) => can_show(app, id),
+    None => true,
+  }
 }
 
 /// The tab's page started rendering (or the fallback ran out): show its webview if it's the shown tab.
