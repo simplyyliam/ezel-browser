@@ -1,6 +1,6 @@
 # Security review before a public release
 
-Review 2026-10-21 (`chore/security-check`), fixes 2026-10-21 (`chore/security-fixes`). Fixed items first; open risks stay ranked by severity.
+Review 2026-10-21 (`chore/security-check`), fixes 2026-10-21 (`chore/security-fixes`) and v0.3.0 (2026-10-23). Fixed items first; open risks stay ranked by severity.
 
 ## Fixed
 
@@ -41,12 +41,24 @@ Not covered, on purpose: `javascript:` links a page puts in its own HTML run in 
 - `devCsp` adds Vite's dev server (`http://localhost:5173`, HMR over `ws://localhost:5173`, React refresh's inline preamble). On desktop Tauri loads the dev server directly and applies neither policy in dev (it injects CSP only into assets it serves), so dev mode is unaffected either way.
 - Verified (no Ezel instance could be launched): the production `dist/` served with the exact header Tauri would send (including the inline-script hash, normalised CRLF→LF like Tauri's `normalize_script_for_csp`) in headless Edge (Chromium, as WebView2) with a stub of Tauri's internals so the real UI renders: no CSP violations from the UI; the theme script runs; a runtime `<style>` applies; Inter loads; remote and `data:` favicons load; an injected inline script is blocked (the policy is enforced). Not exercised there: real IPC over `ipc.localhost` (manual test).
 
+### 5. Visible site identity (was: High) — v0.3.0 (`feat/site-identity`)
+The titlebar peek shows the shown tab's host with a lock (an open lock for HTTP, a warning for certificate problems: `browser/site.rs`, `ServerCertificateErrorDetected` for the page's own host), only the registrable domain emphasised. The page can't change it. Sign-in popups (sized `window.open`) now open in Ezel's own window (`browser/popup.rs`, label `popup-<n>`, no IPC, same URL policy) titled with their domain first. Certificate errors show Ezel's page with no way past it. Left: the peek is hidden until hovered; the domain is a heuristic, not the Public Suffix List (`docs/research/site-identity.md`).
+
+### 6. Permissions have a review screen (was: Medium) — v0.3.0 (`feat/site-permissions`)
+Camera, microphone, location and clipboard requests get Ezel's prompt (naming the requesting host), only for the tab on screen; answers live in `<app data>/ezel/permissions.json` (never in WebView2's profile), listed in the site panel and Site Permissions, each revocable. Other kinds and sign-in popups keep WebView2's prompt (left).
+
+### 7. Ezel's own downloads list (was: Medium) — v0.3.0 (`feat/downloads`)
+Every download appears in Ezel's list (WebView2's flyout is off); SmartScreen still checks them. Opening a file uses Explorer, so Windows' own "file from the internet" warnings apply.
+
+### 8. Updates reach installed copies (was: Medium, half) — v0.3.0 (`feat/auto-updates`)
+Tauri's updater: release builds check GitHub daily, verify each update against Ezel's updater key (minisign; the private key only in GitHub Actions secrets) and install only on a click. The installer itself is still not code-signed (open risk 4).
+
 ## Open risks, by severity (not fixed)
 
-1. **High: no visible site identity.** Ezel has no address bar or lock icon: a tab shows the page's own title, which the page chooses. A phishing page titled "Google" looks like Google. The address is visible only by opening the palette (Ctrl+L) or the name field. Sign-in popups (sized `window.open`) open as native WebView2 windows with no Ezel UI at all. (SmartScreen, now on, catches *reported* phishing sites only.)
-2. **Medium: permissions without a review screen.** Camera, microphone, location and clipboard requests use WebView2's default prompt, and an "Allow" is remembered in the profile with no Ezel UI to see or revoke it. (Notifications are always denied.)
-3. **Medium: downloads are WebView2's defaults.** No Ezel download list (the button does nothing), so a drive-by download lands in Downloads with only WebView2's small flyout. SmartScreen (now on) checks it.
-4. **Medium: no updates or code signing.** A security fix reaches users only when they install a new build by hand, and an unsigned installer trains them to click through Windows warnings. (The WebView2 runtime itself updates through Windows, which covers Chromium's security fixes.)
+1. ~~High: no visible site identity~~: fixed in v0.3.0 (Fixed 5). Left: the identity shows only while the titlebar peeks.
+2. ~~Medium: permissions without a review screen~~: fixed in v0.3.0 (Fixed 6). Answers given before v0.3.0 to WebView2's own prompt stay in its profile until cleared (Clear This Site's Data clears the site's storage, not those grants).
+3. ~~Medium: downloads are WebView2's defaults~~: fixed in v0.3.0 (Fixed 7).
+4. **Medium: no code signing.** Updates now arrive and are signed with Ezel's updater key (Fixed 8), but the installer isn't Authenticode-signed, which trains people to click through Windows warnings. (The WebView2 runtime itself updates through Windows, which covers Chromium's security fixes.)
 5. **Medium: DevTools in release builds.** F12 opens a page's DevTools for anyone at the keyboard, which makes "paste this into the console" scams easier. Common in browsers, but worth a setting.
 6. **Low: `'unsafe-inline'` styles in the UI.** Needed by the theme store's runtime `<style>` elements; CSS injection can't run code but could restyle the UI. Removable by giving those elements a nonce (Tauri's style nonce) or moving tokens to `adoptedStyleSheets`.
 7. **Low: Google sees what you type in the palette** (site icons come from Google's favicon service for typed hosts; search defaults to Google).
