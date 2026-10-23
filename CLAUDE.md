@@ -79,6 +79,7 @@ Commands (`invoke`):
 - `get_memory()` → `MemoryReport { totalMb, sharedMb, tabs: { id, mb, approximate }[] }`: the load meter. Every WebView2 process plus Ezel's own (private bytes), split over the loaded tabs by the frames each renders (`browser/memory.rs`, tested; `docs/research/memory-meter.md`). Shared renderers are split evenly (`approximate`); processes serving no tab are `sharedMb`. Unloaded tabs aren't listed (the UI calls them resting). Async; one reading at a time; any failure (WebView2 not answering, a timeout, a reading already running) is `unavailable`. The readout keeps the last good reading through failures and hides only after 15s without one (counted while polling). Windows only (`unsupported` elsewhere). WebView2's frame-info iterator doesn't keep its collection alive: hold the collection while iterating (a dropped one crashed the app).
 - `toggle_page_layer(layer: "squint" | "greyscale")` → on: toggles a page layer (lens) in the shown tab (see Page layers). `no_tab_shown` without one.
 - `clear_site_data()` → host: everything the shown page's site stored (CDP `Storage.clearDataForOrigin`, origin built in Rust from the tab's URL: `browser/site.rs`), then it reloads. `invalid_input` for a page that isn't a website.
+- `find_start(query)`, `find_next(backward)`, `find_stop(refocus)`: find in page in the shown tab (WebView2's `ICoreWebView2Find`, 1.0.2849+, its own find dialog suppressed; `unsupported` on older runtimes). Queries: one line, at most 1000 characters (`invalid_input`); an empty one ends the session. Results come as `find-changed`.
 - `copy_page_url()` → the shown tab's URL, written to the OS clipboard by Rust (Win32), because a shortcut pressed in the website leaves focus there and the UI's `navigator.clipboard` can't write without focus. `no_tab_shown` when none is.
 - `get_page()`: the shown tab's page (`page-changed` shape), so the UI can catch up on mount
 - `choose_page_menu_item(id, action | null)`: the website's right-click menu (see Page menu). Only an offered, enabled action of the open menu `id` runs (`invalid_input` otherwise); a stale id is ignored.
@@ -111,6 +112,7 @@ Event emitted to the `ui` webview:
 - `tab-updated`: one `TabView`. A tab's URL, title, favicon, loading or audio state changed (any tab, shown or not).
 - `hotkey-pressed`: `{ id: string }`. A shortcut from `set_forwarded_hotkeys` was pressed while the website had focus. Rust catches it on each tab webview (WebView2 `AcceleratorKeyPressed`) because those keys never reach the `ui` webview; the page doesn't receive it. With `focusUi` it moves keyboard focus to `ui` first. Auto-repeat is swallowed but not re-emitted. Windows only for now.
 - `update-status`: same payload as `get_update_status`, when it changes.
+- `find-changed`: `{ active, count }` (active 1-based, 0 for none): the shown tab's find results.
 - `page-menu`: `{ id, x, y, groups: { action, enabled }[][], selection | null }`: open Ezel's page menu at that window point (logical px).
 - `window-radius-changed`: same payload as `get_window_radius`. Emitted only when the value changes (window resize/maximize/snap/fullscreen, or the mod's registry settings change).
 
@@ -127,7 +129,7 @@ src/
 - Widgets may import from their own features and from `shared/`.
 - Current widgets:
   - `widgets/app-titlebar` composes `features/app-titlebar/{quick-tabs,site-identity,window-controls}`. It's a Zen-style peek (studied from Zen's source, see `docs/design/decisions.md`): it overlays the top of the window, opens from a 4px strip at the top edge, grows its height over 150ms ease-in-out and never moves the page. The website is a native webview above the UI, so the bar is cut out of it with `useContentCutout` and Rust cuts it out of the page. No shadow. Left: the shown tab's folder's other tabs as icons (outside a folder, the Swatches); middle: the site's host with a lock (open lock for HTTP, a warning for certificate problems), only the registrable domain emphasised (`shared/site.ts`, `splitHost`); right: the window controls. Clicking the domain opens the site info panel inside the bar (the bar grows, so it's cut out with it; it keeps the bar open until Esc, a press elsewhere or the UI losing focus): connection status and "Clear This Site's Data…" (asks once, in place).
-  - `widgets/browser-view` composes `features/browser-view/content-slot` (the placeholder the content webview is placed over)
+  - `widgets/browser-view` composes `features/browser-view/{content-slot,find-bar,page-menu}`: the placeholder the content webview is placed over, the find bar (Ctrl+F: a small bar in the page's top-right corner, cut out of the page with `useContentCutout("find")`; Enter / Shift+Enter, Esc closes and gives the page focus back; showing another tab closes it) and the page menu
   - `widgets/app-sidebar` composes `features/app-sidebar/*` (see Sidebar below)
   - `widgets/command-palette` composes `features/command-palette/{search-field,results,footer}` (see Command palette below). Mounted in `AppLayout`.
 
@@ -193,6 +195,7 @@ Every app shortcut is in `shared/hotkeys.ts` (`HOTKEYS`: id, label, default keys
   - Alt+← / Alt+→ back / forward (`back` / `forward`), Esc stop loading (`stopLoading`, `whileLoading`)
   - F12 or Ctrl+Shift+I the page's DevTools (`devTools`)
   - Ctrl+Shift+C copy the page's link with a toast (`copyUrl`; the page keeps focus)
+  - Ctrl+F find in page (`find`, focuses the UI)
   - Ctrl+D pin the shown tab (`pinTab`; Ezel's bookmark: a temp tab goes to the end of its space's pinned list, a kept one says so)
   - Ctrl+Shift+T reopen the last closed tab (`reopenClosedTab`; also in the sidebar's right-click menu)
   - Ctrl+Alt+S Squint lens, Ctrl+Alt+G Greyscale lens (`squint` / `greyscale`; also palette actions)

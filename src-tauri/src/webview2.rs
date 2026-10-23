@@ -8,12 +8,14 @@ use std::cell::RefCell;
 use crate::{browser::page_menu::MenuTarget, hotkeys::KeyPress};
 use webview2_com::{
   take_pwstr, AcceleratorKeyPressedEventHandler, CallDevToolsProtocolMethodCompletedHandler, ContextMenuRequestedEventHandler,
-  FaviconChangedEventHandler, IsDocumentPlayingAudioChangedEventHandler,
+  FaviconChangedEventHandler, FindActiveMatchIndexChangedEventHandler, FindMatchCountChangedEventHandler, FindStartCompletedHandler,
+  IsDocumentPlayingAudioChangedEventHandler,
   GetProcessExtendedInfosCompletedHandler, PermissionRequestedEventHandler, ServerCertificateErrorDetectedEventHandler, TrySuspendCompletedHandler,
   WindowCloseRequestedEventHandler,
   Microsoft::Web::WebView2::Win32::{
     ICoreWebView2, ICoreWebView2ContextMenuRequestedEventArgs, ICoreWebView2Deferral, ICoreWebView2Environment13,
-    ICoreWebView2FrameInfo2, ICoreWebView2PermissionRequestedEventArgs3, ICoreWebView2_11,
+    ICoreWebView2Environment15, ICoreWebView2Find, ICoreWebView2FrameInfo2, ICoreWebView2PermissionRequestedEventArgs3,
+    ICoreWebView2_11, ICoreWebView2_28,
     COREWEBVIEW2_CONTEXT_MENU_TARGET_KIND, COREWEBVIEW2_CONTEXT_MENU_TARGET_KIND_IMAGE,
     ICoreWebView2ProcessExtendedInfoCollection, ICoreWebView2Settings4, ICoreWebView2_14, ICoreWebView2_15, ICoreWebView2_19, ICoreWebView2_2,
     ICoreWebView2_20, ICoreWebView2_3, ICoreWebView2_8,
@@ -103,6 +105,90 @@ pub fn on_certificate_error(pw: &PlatformWebview, f: impl Fn(String) + 'static) 
   // SAFETY: main thread, live webview.
   unsafe {
     let _ = core.add_ServerCertificateErrorDetected(&handler, &mut token);
+  }
+}
+
+/// The page's find session (WebView2 1.0.2849+; `None` on older runtimes).
+fn find(pw: &PlatformWebview) -> Option<ICoreWebView2Find> {
+  // SAFETY: main thread, live webview.
+  core(pw).and_then(|c| c.cast::<ICoreWebView2_28>().ok()).and_then(|c| unsafe { c.Find() }.ok())
+}
+
+/// Starts finding `term` in the page (all matches highlighted, the first one active, WebView2's
+/// own find bar suppressed). Returns false when the runtime has no find API.
+pub fn find_start(pw: &PlatformWebview, term: &str) -> bool {
+  let (Some(find), Some(env)) = (
+    find(pw),
+    core(pw)
+      .and_then(|c| c.cast::<ICoreWebView2_2>().ok())
+      // SAFETY: main thread, live webview.
+      .and_then(|c| unsafe { c.Environment() }.ok())
+      .and_then(|e| e.cast::<ICoreWebView2Environment15>().ok()),
+  ) else {
+    return false;
+  };
+  // SAFETY: main thread; the options and strings outlive the call.
+  unsafe {
+    let Ok(options) = env.CreateFindOptions() else { return false };
+    let _ = options.SetFindTerm(&HSTRING::from(term));
+    let _ = options.SetShouldHighlightAllMatches(true);
+    let _ = options.SetSuppressDefaultFindDialog(true);
+    let handler = FindStartCompletedHandler::create(Box::new(|_| Ok(())));
+    find.Start(&options, &handler).is_ok()
+  }
+}
+
+/// The next (or previous) match becomes active.
+pub fn find_next(pw: &PlatformWebview, backward: bool) {
+  let Some(find) = find(pw) else { return };
+  // SAFETY: main thread, live find session.
+  unsafe {
+    let _ = if backward { find.FindPrevious() } else { find.FindNext() };
+  }
+}
+
+/// Ends the find session and clears its highlights.
+pub fn find_stop(pw: &PlatformWebview) {
+  let Some(find) = find(pw) else { return };
+  // SAFETY: main thread, live find session.
+  unsafe {
+    let _ = find.Stop();
+  }
+}
+
+/// Calls `f(active match, match count)` whenever either changes (active is 1-based, 0 for none).
+pub fn on_find_changed(pw: &PlatformWebview, f: impl Fn(i32, i32) + 'static) {
+  let Some(session) = find(pw) else { return };
+  let f = std::rc::Rc::new(f);
+  let read = |find: &ICoreWebView2Find| {
+    let (mut index, mut count) = (0i32, 0i32);
+    // SAFETY: main thread, live find session.
+    unsafe {
+      let _ = find.ActiveMatchIndex(&mut index);
+      let _ = find.MatchCount(&mut count);
+    }
+    (index, count)
+  };
+  let (on_count, on_index) = (f.clone(), f);
+  let count_handler = FindMatchCountChangedEventHandler::create(Box::new(move |sender, _| {
+    if let Some(find) = sender {
+      let (index, count) = read(&find);
+      on_count(index, count);
+    }
+    Ok(())
+  }));
+  let index_handler = FindActiveMatchIndexChangedEventHandler::create(Box::new(move |sender, _| {
+    if let Some(find) = sender {
+      let (index, count) = read(&find);
+      on_index(index, count);
+    }
+    Ok(())
+  }));
+  let mut token = 0i64;
+  // SAFETY: main thread, live find session.
+  unsafe {
+    let _ = session.add_MatchCountChanged(&count_handler, &mut token);
+    let _ = session.add_ActiveMatchIndexChanged(&index_handler, &mut token);
   }
 }
 

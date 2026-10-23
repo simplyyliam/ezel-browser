@@ -134,6 +134,73 @@ pub async fn choose_page_menu_item(app: AppHandle, id: u32, action: Option<PageM
   Ok(())
 }
 
+/// Longest find term (more is a paste, not a search).
+const MAX_FIND: usize = 1000;
+
+fn check_find_query(query: &str) -> Result<()> {
+  if query.chars().count() > MAX_FIND || query.contains(['\n', '\r']) {
+    return Err(AppError::invalid_input("find takes one line of at most 1000 characters"));
+  }
+  Ok(())
+}
+
+/// Find in page (Ctrl+F): highlights every match of `query` in the shown tab and makes the first
+/// one active; results come as "find-changed". An empty query ends the session.
+#[tauri::command]
+#[specta::specta]
+pub async fn find_start(app: AppHandle, query: String) -> Result<()> {
+  check_find_query(&query)?;
+  let webview = shown(&app)?;
+  #[cfg(windows)]
+  {
+    // Async (off the main thread), so waiting for the main thread's answer is fine.
+    let (tx, rx) = std::sync::mpsc::channel();
+    webview.with_webview(move |pw| {
+      let started = if query.is_empty() {
+        crate::webview2::find_stop(&pw);
+        true
+      } else {
+        crate::webview2::find_start(&pw, &query)
+      };
+      let _ = tx.send(started);
+    })?;
+    match tauri::async_runtime::spawn_blocking(move || rx.recv_timeout(std::time::Duration::from_secs(2))).await {
+      Ok(Ok(false)) => Err(AppError::new(ErrorCode::Unsupported, "this WebView2 runtime can't find in pages")),
+      _ => Ok(()),
+    }
+  }
+  #[cfg(not(windows))]
+  {
+    let _ = (webview, query);
+    Err(AppError::new(ErrorCode::Unsupported, "find in page works only on Windows for now"))
+  }
+}
+
+/// The next match (Enter), or the previous one (`backward`, Shift+Enter).
+#[tauri::command]
+#[specta::specta]
+pub fn find_next(app: AppHandle, backward: bool) -> Result<()> {
+  let webview = shown(&app)?;
+  #[cfg(windows)]
+  webview.with_webview(move |pw| crate::webview2::find_next(&pw, backward))?;
+  #[cfg(not(windows))]
+  let _ = (webview, backward);
+  Ok(())
+}
+
+/// Closes find in page: highlights go. `refocus`: the page gets keyboard focus back (Esc).
+#[tauri::command]
+#[specta::specta]
+pub fn find_stop(app: AppHandle, refocus: bool) -> Result<()> {
+  let Some(webview) = shown_webview(&app) else { return Ok(()) };
+  #[cfg(windows)]
+  webview.with_webview(|pw| crate::webview2::find_stop(&pw))?;
+  if refocus {
+    webview.set_focus()?;
+  }
+  Ok(())
+}
+
 /// The shown tab's page, so the UI can catch up on events emitted before it started listening.
 #[tauri::command]
 #[specta::specta]
@@ -468,6 +535,15 @@ mod tests {
     assert_eq!(resolve_input("localhost:5173").unwrap().as_str(), "https://localhost:5173/");
     assert!(resolve_input("rust borrow checker").unwrap().as_str().contains("q=rust+borrow+checker"));
     assert_eq!(resolve_input("about:blank").unwrap().as_str(), "about:blank");
+  }
+
+  #[test]
+  fn find_queries_are_one_short_line() {
+    assert!(super::check_find_query("").is_ok(), "empty ends the session");
+    assert!(super::check_find_query("figma ✓").is_ok());
+    assert!(super::check_find_query(&"x".repeat(super::MAX_FIND)).is_ok());
+    assert!(super::check_find_query(&"x".repeat(super::MAX_FIND + 1)).is_err());
+    assert!(super::check_find_query("a\nb").is_err());
   }
 
   #[test]

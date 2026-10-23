@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-find-next"
+description = "Enables the find_next command without any pre-configured scope."
+commands.allow = ["find_next"]
+
+[[permission]]
+identifier = "deny-find-next"
+description = "Denies the find_next command without any pre-configured scope."
+commands.deny = ["find_next"]
