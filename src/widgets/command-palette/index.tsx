@@ -12,6 +12,7 @@ import {
   Search,
   Trash2,
   type LucideIcon,
+  ShieldCheck,
 } from "lucide-react"
 import { MotionConfig } from "motion/react"
 import { Command, CommandList } from "@/components/ui/command"
@@ -28,6 +29,7 @@ import {
   toggleLens,
   useHotkey,
   openCommandPalette,
+  openSitePermissions,
   spaceIcon,
   unwrap,
   useCommandPalette,
@@ -298,6 +300,14 @@ function PaletteBody({ target, tabs, page, inputRef, onToggleSidebar }: PaletteB
     ...(page.canGoForward
       ? [{ id: "action-forward", icon: { kind: "glyph" as const, icon: ArrowRight }, title: "Go Forward", keywords: "next history", hint: "Forward", run: () => (closeCommandPalette(), unwrap("go forward", commands.goForward())) }]
       : []),
+    {
+      id: "action-permissions",
+      icon: { kind: "glyph", icon: ShieldCheck },
+      title: "Site Permissions",
+      keywords: "camera microphone location clipboard allow block privacy settings",
+      hint: "Open",
+      run: () => (closeCommandPalette(), openSitePermissions()),
+    },
     {
       id: "action-sidebar",
       icon: { kind: "glyph", icon: PanelLeft },

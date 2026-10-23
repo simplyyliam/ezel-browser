@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-revoke-site-permission"
+description = "Enables the revoke_site_permission command without any pre-configured scope."
+commands.allow = ["revoke_site_permission"]
+
+[[permission]]
+identifier = "deny-revoke-site-permission"
+description = "Denies the revoke_site_permission command without any pre-configured scope."
+commands.deny = ["revoke_site_permission"]

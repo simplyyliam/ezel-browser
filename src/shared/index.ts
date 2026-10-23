@@ -23,4 +23,15 @@ export { useReadyUpdate, installUpdate } from "./update"
 export { siteHost, splitHost, SECURITY_COPY } from "./site"
 export { useFindResults, findInPage, findNext, stopFinding } from "./find"
 export { useDownloads, openDownload, showDownloadInFolder, cancelDownload, clearDownloads, formatBytes } from "./downloads"
-export type { Download } from "./bindings"
+export type { Download, PermissionAsked, SitePermission, SitePermissions } from "./bindings"
+export {
+  PERMISSION_ASKS,
+  PERMISSION_NAMES,
+  usePermissionAsks,
+  useSitePermissions,
+  revokeSitePermission,
+  originOf,
+  openSitePermissions,
+  setSitePermissionsOpen,
+  useSitePermissionsOpen,
+} from "./permissions"
