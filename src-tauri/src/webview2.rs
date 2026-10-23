@@ -8,7 +8,7 @@ use std::cell::RefCell;
 use crate::{browser::page_menu::MenuTarget, hotkeys::KeyPress};
 use webview2_com::{
   take_pwstr, AcceleratorKeyPressedEventHandler, BytesReceivedChangedEventHandler, CallDevToolsProtocolMethodCompletedHandler,
-  ContextMenuRequestedEventHandler, DownloadStartingEventHandler, StateChangedEventHandler,
+  ContainsFullScreenElementChangedEventHandler, ContextMenuRequestedEventHandler, DownloadStartingEventHandler, StateChangedEventHandler,
   FaviconChangedEventHandler, FindActiveMatchIndexChangedEventHandler, FindMatchCountChangedEventHandler, FindStartCompletedHandler,
   IsDocumentPlayingAudioChangedEventHandler,
   GetProcessExtendedInfosCompletedHandler, PermissionRequestedEventHandler, ServerCertificateErrorDetectedEventHandler, TrySuspendCompletedHandler,
@@ -589,6 +589,25 @@ pub fn set_low_memory(pw: &PlatformWebview, low: bool) {
   // SAFETY: main thread, live webview.
   unsafe {
     let _ = core.SetMemoryUsageTargetLevel(level);
+  }
+}
+
+/// Calls `f` whenever the page enters or leaves HTML fullscreen (a video's fullscreen button,
+/// `requestFullscreen`).
+pub fn on_fullscreen_changed(pw: &PlatformWebview, f: impl Fn(bool) + 'static) {
+  let Some(core) = core(pw) else { return };
+  let handler = ContainsFullScreenElementChangedEventHandler::create(Box::new(move |sender, _| {
+    let Some(sender) = sender else { return Ok(()) };
+    let mut full = windows::core::BOOL::default();
+    // SAFETY: WebView2 calls this on the main thread with a live sender.
+    unsafe { sender.ContainsFullScreenElement(&mut full)? };
+    f(full.as_bool());
+    Ok(())
+  }));
+  let mut token = 0i64;
+  // SAFETY: main thread, live webview.
+  unsafe {
+    let _ = core.add_ContainsFullScreenElementChanged(&handler, &mut token);
   }
 }
 

@@ -1,7 +1,8 @@
 import type { CSSProperties } from "react"
 import { Outlet } from "react-router-dom"
 import { SidebarInset, SidebarProvider } from "@/components/ui/sidebar"
-import { useBrowserHotkeys, useDismissPopupsOnBlur, useHotkeys, usePopupCutouts } from "@/shared"
+import { cn } from "@/lib/utils"
+import { useBrowserHotkeys, useDismissPopupsOnBlur, useHotkeys, usePage, usePopupCutouts } from "@/shared"
 import { Toaster, WindowFrame } from "@/shared/components"
 import { AppSidebar, SIDEBAR_WIDTH } from "@/widgets/app-sidebar"
 import { AppTitlebar } from "@/widgets/app-titlebar/AppTitlebar"
@@ -16,6 +17,9 @@ export default function AppLayout() {
   useHotkeys()
   // Ctrl+W, Ctrl+Tab, Ctrl+1…9, Ctrl+R/F5, Alt+←/→, Esc, F12, Ctrl+Shift+C (shared/browser-hotkeys).
   useBrowserHotkeys()
+  // A video (any element) in HTML fullscreen: the window is fullscreen (Rust) and the UI steps
+  // aside, so the page fills it edge to edge. Esc or the site's own button brings everything back.
+  const { fullscreen } = usePage()
 
   return (
     // Wraps the whole frame so the titlebar can toggle the sidebar too (Ctrl+B does the same).
@@ -25,13 +29,13 @@ export default function AppLayout() {
       style={{ "--sidebar-width": SIDEBAR_WIDTH } as CSSProperties}
       className="h-full min-h-0"
     >
-      <WindowFrame titlebar={<AppTitlebar />}>
+      <WindowFrame titlebar={fullscreen ? null : <AppTitlebar />} className={cn(fullscreen && "p-0 [&>div]:rounded-none")}>
         {/* relative: the sidebar positions itself against this area, below the titlebar. */}
         <div className="relative flex min-h-0 flex-1">
-          <AppSidebar />
+          {!fullscreen && <AppSidebar />}
           {/* Sits flush in the window frame, so it uses the frame radius. Docked (sidebar open), its
               left side meets the sidebar flush, so only the right corners stay rounded. */}
-          <SidebarInset className="min-h-0 min-w-0 rounded-frame peer-data-[state=expanded]:rounded-l-none">
+          <SidebarInset className={cn("min-h-0 min-w-0 rounded-frame peer-data-[state=expanded]:rounded-l-none", fullscreen && "rounded-none")}>
             <Outlet />
           </SidebarInset>
         </div>

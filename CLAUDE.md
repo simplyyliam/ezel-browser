@@ -107,7 +107,7 @@ Tab commands (ids are numbers; every change also emits `tabs-changed`):
 Window APIs (`@tauri-apps/api/window`): `minimize`, `toggleMaximize`, `close`, `startDragging`, `isMaximized`, `isFullscreen`, `cursorPosition`, `innerPosition`, `innerSize`, `scaleFactor` (the last four let the titlebar peek follow the cursor above the window).
 
 Event emitted to the `ui` webview:
-- `page-changed`: `{ url: string, title: string | null, canGoBack: boolean, canGoForward: boolean, isLoading: boolean, security: "none" | "secure" | "notSecure" | "certificateError" }` (`browser/site.rs`: the scheme, plus WebView2's `ServerCertificateErrorDetected` for the page's own host, cleared by each navigation)
+- `page-changed`: `{ url: string, title: string | null, canGoBack: boolean, canGoForward: boolean, isLoading: boolean, security: "none" | "secure" | "notSecure" | "certificateError", fullscreen: boolean }` (`browser/site.rs`: the scheme, plus WebView2's `ServerCertificateErrorDetected` for the page's own host, cleared by each navigation)
   The shown tab's page. Emitted on navigation start, on page load finish, when the document title changes, and when another tab is shown (all empty/false when none is).
 - `tabs-changed`: `TabsState` (as `get_tabs`). Emitted after every tab/folder/space change.
 - `tab-updated`: one `TabView`. A tab's URL, title, favicon, loading or audio state changed (any tab, shown or not).
@@ -204,6 +204,9 @@ Every app shortcut is in `shared/hotkeys.ts` (`HOTKEYS`: id, label, default keys
   - Ctrl+Alt+S Squint lens, Ctrl+Alt+G Greyscale lens (`squint` / `greyscale`; also palette actions)
 - These also act while the UI has focus: Ctrl+R/F5 reload the page, not the UI, and F12 opens the page's DevTools (the UI's own DevTools: right-click › Inspect in a debug build).
 - **Toasts**: `showToast({ title, detail?, tone? })` (`shared/toast.ts`), drawn by `Toaster` (`shared/components/toast`, mounted in `AppLayout`): one small pill at a time, bottom-left inside the sidebar's width above its footer, cut out of the website while it shows (`useContentCutout("toast")`), 1.8s. Passive confirmations only (HIG feedback.md); a check draws itself for `tone: "done"`.
+
+## HTML fullscreen
+A page entering fullscreen (WebView2 `ContainsFullScreenElementChanged`, `Live.fullscreen`) makes the window fullscreen while that tab is shown (`apply_fullscreen`, also on every tab switch) and sets `page-changed.fullscreen`; `AppLayout` then drops the titlebar, the sidebar and the frame's padding and radius, so the page fills the window. Esc (caught in Rust before any other shortcut while the shown page is fullscreen) or the site's button leaves it; the window returns to what it was.
 
 ## Theme
 `src/theme/`: `ThemeProvider` (in `App.tsx`, `defaultTheme="system"`, no persistence yet; pass `storageKey` to persist) around a framework-agnostic store (`theme-store.ts`).

@@ -103,6 +103,8 @@ pub struct PageChanged {
   is_loading: bool,
   /// The lock in the titlebar peek.
   security: site::PageSecurity,
+  /// The page is in HTML fullscreen: the UI steps aside and the page fills the window.
+  fullscreen: bool,
 }
 
 fn now() -> u64 {
@@ -386,6 +388,8 @@ fn show(app: &AppHandle, next: Option<Id>) {
     },
     None => emit_page(app, PageChanged::default()),
   }
+  // Another tab: the window leaves (or re-enters) fullscreen with it.
+  apply_fullscreen(app);
   if let Some(previous) = previous.filter(|p| Some(*p) != next) {
     if let Some(webview) = tab_webview(app, previous) {
       let _ = webview.hide();
@@ -635,6 +639,38 @@ fn page_of(model: &Model, id: Id) -> PageChanged {
     can_go_forward: live.can_go_forward,
     is_loading: live.is_loading,
     security: site::security_of(&tab.url, live.cert_error),
+    fullscreen: live.fullscreen,
+  }
+}
+
+/// The window is fullscreen exactly while the shown tab's page is (a video's fullscreen button);
+/// leaving the tab, or the page leaving fullscreen, restores the window as it was.
+fn apply_fullscreen(app: &AppHandle) {
+  let full = {
+    let browser = browser(app);
+    let shown = *browser.shown.lock().unwrap();
+    let model = browser.model.lock().unwrap();
+    shown.and_then(|id| model.live.get(&id)).is_some_and(|l| l.fullscreen)
+  };
+  if let Some(window) = app.get_window(crate::WINDOW_LABEL) {
+    if window.is_fullscreen().unwrap_or(false) != full {
+      let _ = window.set_fullscreen(full);
+    }
+  }
+}
+
+/// True while the shown tab's page is in HTML fullscreen (Esc then leaves it).
+pub fn shown_is_fullscreen(app: &AppHandle) -> bool {
+  let browser = browser(app);
+  let Some(id) = *browser.shown.lock().unwrap() else { return false };
+  let full = browser.model.lock().unwrap().live.get(&id).is_some_and(|l| l.fullscreen);
+  full
+}
+
+/// Esc in HTML fullscreen: the page leaves it (WebView2 doesn't do this itself).
+pub fn exit_page_fullscreen(app: &AppHandle) {
+  if let Some(webview) = shown_webview(app) {
+    let _ = webview.eval("document.fullscreenElement&&document.exitFullscreen()");
   }
 }
 
@@ -663,6 +699,20 @@ fn watch_platform_events(webview: &Webview, id: Id) {
         model.set_favicon(id, favicon);
         browser.store.save(&model.session);
         emit_tab(&a, &model, id);
+      });
+      let a = app.clone();
+      webview2::on_fullscreen_changed(&pw, move |full| {
+        {
+          let browser = browser(&a);
+          let mut model = browser.model.lock().unwrap();
+          if let Some(live) = model.live.get_mut(&id) {
+            live.fullscreen = full;
+          }
+        }
+        apply_fullscreen(&a);
+        if let Some(webview) = tab_webview(&a, id) {
+          publish_page(&webview, id);
+        }
       });
       let a = app.clone();
       webview2::on_audio_changed(&pw, move |playing| {
