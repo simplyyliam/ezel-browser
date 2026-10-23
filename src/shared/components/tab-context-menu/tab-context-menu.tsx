@@ -42,8 +42,9 @@ export function ContextMenuEntries({ groups }: { groups: MenuGroups }) {
   return shown.map((group, index) => (
     <Fragment key={index}>
       {index > 0 && <ContextMenuSeparator />}
-      {group.map((entry) => (
-        <Entry key={entry.label} entry={entry} />
+      {/* Labels can repeat (two folders called "New Folder"), so the place keys them too. */}
+      {group.map((entry, i) => (
+        <Entry key={`${i}-${entry.label}`} entry={entry} />
       ))}
     </Fragment>
   ));
@@ -55,8 +56,8 @@ function Entry({ entry }: { entry: MenuEntry }) {
       <ContextMenuSub>
         <ContextMenuSubTrigger>{entry.label}</ContextMenuSubTrigger>
         <ContextMenuSubContent>
-          {entry.items.map((sub) => (
-            <Entry key={sub.label} entry={sub} />
+          {entry.items.map((sub, i) => (
+            <Entry key={`${i}-${sub.label}`} entry={sub} />
           ))}
         </ContextMenuSubContent>
       </ContextMenuSub>

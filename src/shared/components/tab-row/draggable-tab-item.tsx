@@ -1,6 +1,6 @@
 import { SidebarMenuItem, SidebarMenuSubItem } from "@/components/ui/sidebar";
 import { cn } from "@/lib/utils";
-import { DROP_ROW, useTabDraggable, type TabDragSource } from "../../tab-dnd";
+import { DROP_ROW, FOLDER_TAB_ROW, useTabDraggable, type TabDragSource } from "../../tab-dnd";
 import type { Id, Tab } from "../../types";
 import { DropIndicator } from "../drop-indicator/drop-indicator";
 import { TabContextMenu, type MenuGroups } from "../tab-context-menu/tab-context-menu";
@@ -30,7 +30,7 @@ interface DraggableTabItemProps {
   actions: TabRowActions;
   /** Where a drop line shows on this row, if any. */
   indicator?: "top" | "bottom" | null;
-  /** In a folder: a sub item, and not a list row of its own (the folder is). */
+  /** In a folder: a sub item, a row of the folder's list (not of the space's: the folder is one). */
   sub?: boolean;
 }
 
@@ -45,7 +45,7 @@ export const DraggableTabItem = ({ tab, source, actions, indicator = null, sub =
       ref={setNodeRef}
       // An address being typed isn't dragged.
       {...(editValue === null ? listeners : {})}
-      {...(sub ? {} : DROP_ROW)}
+      {...(sub ? FOLDER_TAB_ROW : DROP_ROW)}
       // `group/tab`: this tab's own hover (its speaker and close buttons), even inside a folder.
       className={cn("group/tab", actions.draggedTabId === tab.id && "opacity-40")}
     >

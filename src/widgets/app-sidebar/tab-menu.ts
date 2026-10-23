@@ -12,7 +12,7 @@ import { hasFreeSlot, insertSwatch, swatchOrder } from "./swatch-moves"
 type Place =
   | { kind: "swatch" }
   | { kind: "pinned"; space: Space; index: number }
-  | { kind: "folder"; space: Space }
+  | { kind: "folder"; space: Space; folderId: Id }
   | { kind: "temp"; space: Space; index: number }
 
 function locate(tabs: TabsState, tabId: Id): { tab: Tab; place: Place } | null {
@@ -24,7 +24,7 @@ function locate(tabs: TabsState, tabId: Id): { tab: Tab; place: Place } | null {
     for (const [index, item] of space.items.entries()) {
       if (item.kind === "tab" && item.tab.id === tabId) return { tab: item.tab, place: { kind: "pinned", space, index } }
       const inFolder = item.kind === "folder" ? item.folder.tabs.find((tab) => tab.id === tabId) : undefined
-      if (inFolder) return { tab: inFolder, place: { kind: "folder", space } }
+      if (inFolder && item.kind === "folder") return { tab: inFolder, place: { kind: "folder", space, folderId: item.folder.id } }
     }
   }
   return null
@@ -42,6 +42,8 @@ type TabMenuContext = {
   onEdit: (tabId: Id) => void
   /** After a new tab is open: its name field, empty, ready to type. */
   onOpened: (tabId: Id) => void
+  /** After "New Folder with Tab": the folder's name opens as a field. */
+  onFolderCreated: (folderId: Id) => void
 }
 
 /** Runs a menu action; failures are reported (the menu has closed, and state is the backend's anyway). */
@@ -49,7 +51,10 @@ const run = (action: string, task: () => Promise<unknown>) => () => {
   task().catch((error) => reportError(action, error))
 }
 
-export function tabMenu(tabId: Id, { tabs, activeSpaceId, onEdit, onOpened }: TabMenuContext): MenuGroups {
+/** What a new folder is called until it's renamed. */
+const NEW_FOLDER_NAME = "New Folder"
+
+export function tabMenu(tabId: Id, { tabs, activeSpaceId, onEdit, onOpened, onFolderCreated }: TabMenuContext): MenuGroups {
   const found = locate(tabs, tabId)
   if (!found) return []
   const { tab, place } = found
@@ -127,21 +132,35 @@ export function tabMenu(tabId: Id, { tabs, activeSpaceId, onEdit, onOpened }: Ta
                 label: menuLabel("tab", "unpin"),
                 onSelect: move("unpin tab", { kind: "temp", spaceId: place.space.id, index: null }),
               },
-          ...(place.kind === "temp" || place.kind === "pinned" ? [moveWithin(tab, place)] : []),
-          moveToSpace(tab, place, tabs.spaces),
         ]
 
-  const unloadEntry: MenuEntry[] = tab.isLoaded
-    ? [{ label: menuLabel(area, "unload"), onSelect: run("unload tab", () => unwrap("unload tab", commands.unloadTab(tab.id))) }]
-    : []
+  const arrangeGroup: MenuEntry[] = [
+    ...(place.kind === "temp" || place.kind === "pinned" ? [moveWithin(tab, place)] : []),
+    ...(place.kind !== "swatch"
+      ? [
+          moveToFolder(tab, place),
+          moveToSpace(tab, place, tabs.spaces),
+          {
+            label: menuLabel("tab", "newFolderWithTab"),
+            onSelect: run("new folder with tab", async () => {
+              const id = await unwrap("new folder with tab", commands.createFolderWithTab(tab.id, NEW_FOLDER_NAME))
+              if (id !== null) onFolderCreated(id)
+            }),
+          },
+        ]
+      : []),
+    ...(tab.isLoaded
+      ? [{ label: menuLabel(area, "unload"), onSelect: run("unload tab", () => unwrap("unload tab", commands.unloadTab(tab.id))) }]
+      : []),
+  ]
 
   const closeGroup: MenuEntry[] = [
     { label: menuLabel(area, "close"), onSelect: run("close tab", () => unwrap("close tab", commands.closeTab(tab.id))) },
     ...(temp ? [closeMultiple(tab, temp.space, temp.index)] : []),
   ]
 
-  // Three groups (HIG: about three): the page, keeping and placing the tab, closing it.
-  return [pageGroup, [...keepGroup, ...unloadEntry], closeGroup]
+  // The page, keeping the tab, placing it, closing it (HIG: about three groups; placing grew with folders).
+  return [pageGroup, keepGroup, arrangeGroup, closeGroup]
 }
 
 /** Move Tab ▸ to the start or end of its own list. Only the moves that change something. */
@@ -166,6 +185,29 @@ function moveWithin(tab: Tab, place: Extract<Place, { kind: "temp" | "pinned" }>
       // `move_tab` takes the tab out first: the last index is then count - 1.
       ...(place.index < count - 1 ? [{ label: "Move to End", onSelect: to(count - 1) }] : []),
     ],
+  }
+}
+
+/** Move to Folder ▸ the space's folders (not its own): into the folder, at the end. */
+function moveToFolder(tab: Tab, place: Exclude<Place, { kind: "swatch" }>): MenuEntry {
+  const own = place.kind === "folder" ? place.folderId : null
+  return {
+    label: menuLabel("tab", "moveToFolder"),
+    items: place.space.items.flatMap((item) =>
+      item.kind === "folder" && item.folder.id !== own
+        ? [
+            {
+              label: item.folder.name,
+              onSelect: run("move to folder", () =>
+                unwrap(
+                  "move to folder",
+                  commands.moveTab(tab.id, { kind: "pinned", spaceId: place.space.id, folderId: item.folder.id, index: null }),
+                ),
+              ),
+            },
+          ]
+        : [],
+    ),
   }
 }
 

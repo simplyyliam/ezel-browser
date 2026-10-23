@@ -8,3 +8,4 @@ export { DraggableTabItem } from "./tab-row/draggable-tab-item";
 export type { TabRowActions } from "./tab-row/draggable-tab-item";
 export { TabContextMenu, ContextMenuEntries } from "./tab-context-menu/tab-context-menu";
 export type { MenuGroups, MenuEntry } from "./tab-context-menu/tab-context-menu";
+export { NameField } from "./name-field/name-field";

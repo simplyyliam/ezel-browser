@@ -6,7 +6,7 @@ import type { Id, Tab } from "./types"
 // widgets/app-sidebar; features only register what can be dragged and where it can land, and draw
 // the indicator the widget passes them.
 
-/** Where a dragged tab comes from. Folder tabs can be dragged out; nothing drops into a folder yet. */
+/** Where a dragged tab comes from. */
 export type TabDragSource = "swatch" | "pinned" | "folder" | "temp"
 
 export type TabDragData = { tab: Tab; source: TabDragSource }
@@ -31,10 +31,30 @@ export type TabDropTarget =
   | { kind: "swatches"; index: number }
   | { kind: "pinned"; gap: number }
   | { kind: "temp"; gap: number }
+  /**
+   * Into a folder: `gap` counts its tabs above the line (between its open rows), or null for the
+   * middle of the folder's own row (into it, at the end; the row lights up). Zen.
+   */
+  | { kind: "folder"; folderId: Id; gap: number | null }
 
 /** Marks a list's rows (top-level only: a folder and its open tabs are one row). */
 export const DROP_ROW = { "data-drop-row": "" }
 export const DROP_ROW_SELECTOR = "[data-drop-row]"
+
+/** Marks a folder's own row (its name): the middle of it drops into the folder. */
+export const folderRow = (folderId: Id) => ({ "data-folder-row": String(folderId) })
+export const FOLDER_ROW_SELECTOR = "[data-folder-row]"
+/** Marks the list of a folder's open tabs, and each tab row in it. */
+export const folderTabs = (folderId: Id) => ({ "data-folder-tabs": String(folderId) })
+export const FOLDER_TABS_SELECTOR = "[data-folder-tabs]"
+export const FOLDER_TAB_ROW = { "data-folder-tab-row": "" }
+export const FOLDER_TAB_ROW_SELECTOR = "[data-folder-tab-row]"
+
+/**
+ * Zen's zen.tabs.folder-dragover-threshold-percent: the top and bottom 20% of a folder's row drop
+ * beside it, the middle into it.
+ */
+export const FOLDER_EDGE = 0.2
 
 const dragId = (tabId: Id) => `tab-${tabId}`
 

@@ -47,6 +47,7 @@ fn main() {
       "update_pinned_url",
       "clear_temp_tabs",
       "create_folder",
+      "create_folder_with_tab",
       "rename_folder",
       "set_folder_collapsed",
       "move_folder",

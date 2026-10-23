@@ -18,6 +18,10 @@ import { tabLabel } from "@/shared/components"
 import { hasFreeSlot, insertSwatch, swatchOrder } from "./swatch-moves"
 import {
   DROP_ROW_SELECTOR,
+  FOLDER_EDGE,
+  FOLDER_ROW_SELECTOR,
+  FOLDER_TAB_ROW_SELECTOR,
+  FOLDER_TABS_SELECTOR,
   getCursorPosition,
   getWindowClientRect,
   reportError,
@@ -86,6 +90,48 @@ function gapAt(zoneId: string, y: number): number | null {
     if (y > rect.top + rect.height / 2) gap++
   }
   return gap
+}
+
+/** Rows of `list` whose middle is above `y`. */
+function rowsAbove(list: Element, selector: string, y: number): number {
+  let gap = 0
+  for (const row of list.querySelectorAll(selector)) {
+    const rect = row.getBoundingClientRect()
+    if (y > rect.top + rect.height / 2) gap++
+  }
+  return gap
+}
+
+/**
+ * A drop into a folder at `y` in the pinned list (Zen): the middle of a folder's row goes into it
+ * (at the end), its top and bottom 20% beside it (null: the list's own gap decides), except the
+ * bottom edge of an open folder, which is its first place. Among a folder's open tabs, the gap
+ * between them.
+ */
+function folderTargetAt(y: number): { folderId: Id; gap: number | null } | null {
+  const zone = tabDropZoneNode("pinned")
+  if (!zone) return null
+  for (const row of zone.querySelectorAll<HTMLElement>(FOLDER_ROW_SELECTOR)) {
+    const rect = row.getBoundingClientRect()
+    if (y < rect.top || y > rect.bottom) continue
+    const folderId = Number(row.dataset.folderRow)
+    const at = (y - rect.top) / rect.height
+    if (at > FOLDER_EDGE && at < 1 - FOLDER_EDGE) return { folderId, gap: null }
+    if (at >= 1 - FOLDER_EDGE && row.getAttribute("aria-expanded") === "true") return { folderId, gap: 0 }
+    return null
+  }
+  for (const list of zone.querySelectorAll<HTMLElement>(FOLDER_TABS_SELECTOR)) {
+    const rect = list.getBoundingClientRect()
+    if (y < rect.top || y > rect.bottom) continue
+    return { folderId: Number(list.dataset.folderTabs), gap: rowsAbove(list, FOLDER_TAB_ROW_SELECTOR, y) }
+  }
+  return null
+}
+
+/** A folder's tabs, as displayed. */
+function folderTabsOf(space: Space, folderId: Id): Tab[] {
+  for (const item of space.items) if (item.kind === "folder" && item.folder.id === folderId) return item.folder.tabs
+  return []
 }
 
 /** Where the dragged tab sits in a list, as displayed (top-level items for the pinned list). */
@@ -170,6 +216,13 @@ export function useTabDrag({
       }
       case "pinned":
       case "temp": {
+        const folder = zone.kind === "pinned" ? folderTargetAt(pointer.current.y) : null
+        if (folder) {
+          const from = folderTabsOf(space, folder.folderId).findIndex((tab) => tab.id === data.tab.id)
+          // Already there: into its own folder, or right above or below itself in it.
+          if (from >= 0 && (folder.gap === null || folder.gap === from || folder.gap === from + 1)) return { zone, target: null }
+          return { zone, target: { kind: "folder", ...folder } as const }
+        }
         const gap = gapAt(zone.kind, pointer.current.y)
         if (gap === null) return { zone, target: null }
         const from = data.source === zone.kind ? indexIn(zone.kind, space, data.tab.id) : -1
@@ -287,12 +340,20 @@ export function useTabDrag({
       return
     }
     // `move_tab` takes the tab out first, so a move down its own list lands one index higher.
-    const from = data.source === dropTarget.kind ? indexIn(dropTarget.kind, space, tabId) : -1
-    const index = from >= 0 && dropTarget.gap > from ? dropTarget.gap - 1 : dropTarget.gap
-    const to: TabLocation =
-      dropTarget.kind === "pinned"
-        ? { kind: "pinned", spaceId: space.id, folderId: null, index }
-        : { kind: "temp", spaceId: space.id, index }
+    const lower = (gap: number, from: number) => (from >= 0 && gap > from ? gap - 1 : gap)
+    let to: TabLocation
+    if (dropTarget.kind === "folder") {
+      const from = folderTabsOf(space, dropTarget.folderId).findIndex((tab) => tab.id === tabId)
+      const index = dropTarget.gap === null ? null : lower(dropTarget.gap, from)
+      to = { kind: "pinned", spaceId: space.id, folderId: dropTarget.folderId, index }
+    } else {
+      const from = data.source === dropTarget.kind ? indexIn(dropTarget.kind, space, tabId) : -1
+      const index = lower(dropTarget.gap, from)
+      to =
+        dropTarget.kind === "pinned"
+          ? { kind: "pinned", spaceId: space.id, folderId: null, index }
+          : { kind: "temp", spaceId: space.id, index }
+    }
     commands.moveTab(tabId, to).then((result) => (result.status === "error" ? fail(result.error) : settle()))
   }
 
@@ -371,7 +432,7 @@ export function useTabDrag({
     onDragCancel,
     accessibility: {
       screenReaderInstructions: {
-        draggable: "Drag with the pointer to move this tab to Swatches, pinned or temporary tabs.",
+        draggable: "Drag with the pointer to move this tab to Swatches, a folder, pinned or temporary tabs.",
       },
       announcements: {
         // `active` is fine at the start; later the source may have unmounted (see update).

@@ -21,12 +21,13 @@ type BottomActionsProps = {
   onTrashAll: () => void
   onAddSpace: () => void
   onAddTab: () => void
+  onAddFolder: () => void
   /** The load meter's numbers; null hides it (not read yet, or unsupported here). */
   load: LoadMeterData | null
 }
 
 /** Pinned to the bottom of the sidebar (render inside SidebarFooter). */
-export function BottomActions({ hasTempTabs, onTrashAll, onAddSpace, onAddTab, load }: BottomActionsProps) {
+export function BottomActions({ hasTempTabs, onTrashAll, onAddSpace, onAddTab, onAddFolder, load }: BottomActionsProps) {
   return (
     <SidebarMenu className="flex-row items-center gap-1.5">
       <SidebarMenuItem>
@@ -57,7 +58,7 @@ export function BottomActions({ hasTempTabs, onTrashAll, onAddSpace, onAddTab, l
           <DropdownMenuContent side="top" align="end">
             {/* Catalog area "add". A pull-down is a regular menu: what isn't built yet shows dimmed (HIG menus.md). */}
             <DropdownMenuItem onClick={onAddTab}>{menuLabel("add", "newTab")}</DropdownMenuItem>
-            <DropdownMenuItem disabled>{menuLabel("add", "newFolder")}</DropdownMenuItem>
+            <DropdownMenuItem onClick={onAddFolder}>{menuLabel("add", "newFolder")}</DropdownMenuItem>
             <DropdownMenuItem onClick={onAddSpace}>{menuLabel("add", "newSpace")}</DropdownMenuItem>
           </DropdownMenuContent>
         </DropdownMenu>

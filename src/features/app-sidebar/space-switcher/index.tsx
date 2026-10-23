@@ -1,4 +1,4 @@
-import { createElement, useState, type KeyboardEvent, type ReactNode } from "react"
+import { createElement, useState, type ReactNode } from "react"
 import { ChevronsUpDown, Plus } from "lucide-react"
 import {
   AlertDialog,
@@ -23,7 +23,7 @@ import {
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
 import { SidebarGroup, SidebarMenu, SidebarMenuButton, SidebarMenuItem } from "@/components/ui/sidebar"
 import { cn } from "@/lib/utils"
-import { ContextMenuEntries, Favicon, type MenuGroups } from "@/shared/components"
+import { ContextMenuEntries, Favicon, NameField, type MenuGroups } from "@/shared/components"
 import {
   menuLabel,
   SPACE_ICON_NAMES,
@@ -94,6 +94,8 @@ export function SpaceSwitcher(props: SpaceSwitcherProps) {
           {space.id === renamingSpaceId ? (
             <NameField
               name={space.name}
+              label="Space name"
+              maxLength={40}
               icon={<SpaceIcon name={space.icon} className="size-4 shrink-0" />}
               onDone={(name) => {
                 if (name && name !== space.name) props.onRename(space.id, name)
@@ -243,41 +245,6 @@ function spaceMenu(
     // The last space can't go (the backend refuses), so it isn't offered.
     spaces.length > 1 ? [{ label: menuLabel("space", "delete"), onSelect: open.delete, destructive: true }] : [],
   ]
-}
-
-/** The title's place, as plain text like a tab's address field: no border, background or ring. */
-function NameField({ name, icon, onDone }: { name: string; icon: ReactNode; onDone: (name: string | null) => void }) {
-  const [value, setValue] = useState(name)
-  // Enter and Escape blur the field, which would report a second time.
-  const [done, setDone] = useState(false)
-  const finish = (result: string | null) => {
-    if (done) return
-    setDone(true)
-    onDone(result)
-  }
-  function handleKeyDown(event: KeyboardEvent<HTMLInputElement>) {
-    event.stopPropagation()
-    if (event.key === "Enter") finish(value.trim())
-    else if (event.key === "Escape") finish(null)
-  }
-
-  return (
-    <SidebarMenuButton render={<div />} isActive>
-      {icon}
-      <input
-        aria-label="Space name"
-        autoFocus
-        maxLength={40}
-        spellCheck={false}
-        value={value}
-        onChange={(event) => setValue(event.target.value)}
-        onFocus={(event) => event.currentTarget.select()}
-        onBlur={() => finish(value.trim())}
-        onKeyDown={handleKeyDown}
-        className="min-w-0 flex-1 bg-transparent p-0 text-sm font-medium outline-none"
-      />
-    </SidebarMenuButton>
-  )
 }
 
 /** A grid of icons under the title. Picking one applies it and closes (HIG popovers.md). */
