@@ -2,13 +2,13 @@ import type { ReactNode } from "react"
 import {
   ContextMenu,
   ContextMenuCheckboxItem,
-  ContextMenuContent,
   ContextMenuItem,
   ContextMenuSeparator,
   ContextMenuTrigger,
 } from "@/components/ui/context-menu"
 import { useSidebar } from "@/components/ui/sidebar"
 import { menuLabel } from "@/shared"
+import { SidebarMenuPopup } from "@/shared/components"
 
 // The sidebar's own menu (catalog area "sidebar", shared/menus/catalog.ts): the sidebar itself and
 // making things in the shown space. Item-level menus (tab, swatch, space) come with those items;
@@ -34,7 +34,7 @@ export function SidebarContextMenu({ children, onNewTab, onNewFolder, closedCoun
   return (
     <ContextMenu>
       <ContextMenuTrigger className={className}>{children}</ContextMenuTrigger>
-      <ContextMenuContent>
+      <SidebarMenuPopup>
         {/* Compact mode = the collapsed sidebar that peeks from the left edge; off = docked. */}
         <ContextMenuCheckboxItem checked={!open} onCheckedChange={(compact) => setOpen(!compact)}>
           {menuLabel("sidebar", "compactMode")}
@@ -45,7 +45,7 @@ export function SidebarContextMenu({ children, onNewTab, onNewFolder, closedCoun
           <ContextMenuItem onClick={onReopenClosedTab}>{menuLabel("sidebar", "reopenClosed")}</ContextMenuItem>
         )}
         <ContextMenuItem onClick={onNewFolder}>{menuLabel("sidebar", "newFolder")}</ContextMenuItem>
-      </ContextMenuContent>
+      </SidebarMenuPopup>
     </ContextMenu>
   )
 }

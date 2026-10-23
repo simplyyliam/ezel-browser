@@ -13,6 +13,11 @@ export const commands = {
 	goBack: () => typedError<null, AppError>(__TAURI_INVOKE("go_back")),
 	goForward: () => typedError<null, AppError>(__TAURI_INVOKE("go_forward")),
 	reload: () => typedError<null, AppError>(__TAURI_INVOKE("reload")),
+	/**
+	 *  Reloads any loaded tab (its menu's Reload Tab), shown or not. An unloaded tab has no page to
+	 *  reload: nothing happens (`not_found` if the tab doesn't exist).
+	 */
+	reloadTab: (id: Id) => typedError<null, AppError>(__TAURI_INVOKE("reload_tab", { id })),
 	/**  Reloads the shown tab bypassing the cache (Ctrl+Shift+R). */
 	hardReload: () => typedError<null, AppError>(__TAURI_INVOKE("hard_reload")),
 	/**  Stops the shown tab loading (Esc). */
@@ -83,8 +88,11 @@ export const commands = {
 	createSpace: (name: string, icon: string) => typedError<Id, AppError>(__TAURI_INVOKE("create_space", { name, icon })),
 	updateSpace: (id: Id, name: string | null, icon: string | null) => typedError<null, AppError>(__TAURI_INVOKE("update_space", { id, name, icon })),
 	moveSpace: (id: Id, index: number) => typedError<null, AppError>(__TAURI_INVOKE("move_space", { id, index })),
-	/**  Deletes a space and its tabs. The last space can't be deleted. */
-	deleteSpace: (id: Id) => typedError<null, AppError>(__TAURI_INVOKE("delete_space", { id })),
+	/**
+	 *  Deletes a space: its tabs and folders move to `move_to`'s lists, or close with it. The last
+	 *  space can't be deleted.
+	 */
+	deleteSpace: (id: Id, moveTo: number | null) => typedError<null, AppError>(__TAURI_INVOKE("delete_space", { id, moveTo })),
 	/**  Selects a space; it shows the tab it showed last. */
 	switchSpace: (id: Id) => typedError<null, AppError>(__TAURI_INVOKE("switch_space", { id })),
 	/**  Replaces the shortcuts caught in the tab webviews (existing ones too: the list is read per key). */

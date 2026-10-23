@@ -160,7 +160,7 @@ export function AppSidebar() {
   const renameSpace = (id: Id, name: string) => unwrap("rename space", commands.updateSpace(id, name, null))
   const changeSpaceIcon = (id: Id, icon: string) => unwrap("change space icon", commands.updateSpace(id, null, icon))
   const moveSpace = (id: Id, index: number) => unwrap("move space", commands.moveSpace(id, index))
-  const deleteSpace = (id: Id) => unwrap("delete space", commands.deleteSpace(id))
+  const deleteSpace = (id: Id, moveTo: Id | null) => unwrap("delete space", commands.deleteSpace(id, moveTo))
 
   /** Frees every loaded tab of the space but the one on screen (HIG: don't take away what people look at). */
   function unloadSpace(id: Id) {

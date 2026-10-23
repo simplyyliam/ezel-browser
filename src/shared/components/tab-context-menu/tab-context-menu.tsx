@@ -1,15 +1,14 @@
 import { Fragment, type ReactNode } from "react";
 import {
   ContextMenu,
-  ContextMenuContent,
   ContextMenuItem,
   ContextMenuSeparator,
   ContextMenuShortcut,
   ContextMenuSub,
-  ContextMenuSubContent,
   ContextMenuSubTrigger,
   ContextMenuTrigger,
 } from "@/components/ui/context-menu";
+import { SidebarMenuPopup, SidebarMenuSubPopup } from "../sidebar-menu-popup/sidebar-menu-popup";
 import type { Id } from "../../types";
 
 // Context menus built from data: the widget decides the items (it knows where things live and
@@ -55,11 +54,11 @@ function Entry({ entry }: { entry: MenuEntry }) {
     return (
       <ContextMenuSub>
         <ContextMenuSubTrigger>{entry.label}</ContextMenuSubTrigger>
-        <ContextMenuSubContent>
+        <SidebarMenuSubPopup>
           {entry.items.map((sub, i) => (
             <Entry key={`${i}-${sub.label}`} entry={sub} />
           ))}
-        </ContextMenuSubContent>
+        </SidebarMenuSubPopup>
       </ContextMenuSub>
     );
   }
@@ -87,8 +86,8 @@ interface TabContextMenuProps {
 export const TabContextMenu = ({ tabId, menuFor, children, className }: TabContextMenuProps) => (
   <ContextMenu>
     <ContextMenuTrigger className={className}>{children}</ContextMenuTrigger>
-    <ContextMenuContent className="min-w-48">
+    <SidebarMenuPopup className="min-w-48">
       <ContextMenuEntries groups={menuFor(tabId)} />
-    </ContextMenuContent>
+    </SidebarMenuPopup>
   </ContextMenu>
 );

@@ -11,7 +11,7 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog"
-import { ContextMenu, ContextMenuContent, ContextMenuTrigger } from "@/components/ui/context-menu"
+import { ContextMenu, ContextMenuTrigger } from "@/components/ui/context-menu"
 import {
   SidebarGroup,
   SidebarGroupContent,
@@ -23,6 +23,7 @@ import {
 import { cn } from "@/lib/utils"
 import {
   ContextMenuEntries,
+  SidebarMenuPopup,
   DraggableTabItem,
   DropIndicator,
   NameField,
@@ -178,9 +179,9 @@ function FolderItem({ folder, menu, folderActions, renaming, actions, indicator,
               <span>{folder.name}</span>
             </SidebarMenuButton>
           </ContextMenuTrigger>
-          <ContextMenuContent className="min-w-48">
+          <SidebarMenuPopup className="min-w-48">
             <ContextMenuEntries groups={menu()} />
-          </ContextMenuContent>
+          </SidebarMenuPopup>
         </ContextMenu>
       )}
       <AnimatePresence initial={false}>

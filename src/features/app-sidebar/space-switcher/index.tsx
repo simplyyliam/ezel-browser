@@ -10,7 +10,7 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog"
-import { ContextMenu, ContextMenuContent, ContextMenuTrigger } from "@/components/ui/context-menu"
+import { ContextMenu, ContextMenuTrigger } from "@/components/ui/context-menu"
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -23,7 +23,7 @@ import {
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
 import { SidebarGroup, SidebarMenu, SidebarMenuButton, SidebarMenuItem } from "@/components/ui/sidebar"
 import { cn } from "@/lib/utils"
-import { ContextMenuEntries, Favicon, NameField, type MenuGroups } from "@/shared/components"
+import { ContextMenuEntries, Favicon, NameField, SidebarMenuPopup, type MenuGroups } from "@/shared/components"
 import {
   menuLabel,
   SPACE_ICON_NAMES,
@@ -67,7 +67,8 @@ type SpaceSwitcherProps = {
   onChangeIcon: (spaceId: Id, icon: string) => void
   onMove: (spaceId: Id, index: number) => void
   onUnload: (spaceId: Id) => void
-  onDelete: (spaceId: Id) => void
+  /** `moveTo`: the space that takes its tabs and folders; null closes them with it. */
+  onDelete: (spaceId: Id, moveTo: Id | null) => void
   /** The space whose title is being renamed inline ("Rename Space…", and a new space starts so). */
   renamingSpaceId: Id | null
   onRenamingChange: (spaceId: Id | null) => void
@@ -112,15 +113,16 @@ export function SpaceSwitcher(props: SpaceSwitcherProps) {
                   <ChevronsUpDown aria-hidden className="ml-auto size-3.5! text-sidebar-foreground/45" />
                 </SpaceList>
               </ContextMenuTrigger>
-              <ContextMenuContent className="min-w-44">
+              <SidebarMenuPopup className="min-w-44">
                 <ContextMenuEntries
                   groups={spaceMenu(space, props, {
                     rename: () => props.onRenamingChange(space.id),
                     changeIcon: () => setIconPickerOpen(true),
-                    delete: () => setConfirmDelete(true),
+                    // An empty space has nothing to lose: no question then.
+                    delete: () => (spaceTabs(space).length === 0 && space.items.length === 0 ? props.onDelete(space.id, null) : setConfirmDelete(true)),
                   })}
                 />
-              </ContextMenuContent>
+              </SidebarMenuPopup>
             </ContextMenu>
           )}
           <IconPicker
@@ -134,13 +136,16 @@ export function SpaceSwitcher(props: SpaceSwitcherProps) {
           />
         </SidebarMenuItem>
       </SidebarMenu>
+      {/* Keyed: each opening starts from the default target. */}
       <DeleteSpaceAlert
+        key={`${space.id}-${confirmDelete}`}
         space={space}
+        spaces={spaces}
         open={confirmDelete}
         onOpenChange={setConfirmDelete}
-        onDelete={() => {
+        onDelete={(moveTo) => {
           setConfirmDelete(false)
-          props.onDelete(space.id)
+          props.onDelete(space.id, moveTo)
         }}
       />
     </SidebarGroup>
@@ -296,20 +301,29 @@ function IconPicker({
 }
 
 /**
- * Deleting a space is uncommon and can't be undone, and its tabs go with it: an alert asks first
- * (HIG alerts.md). Cancel first, nothing pre-selected as the default, a verb on the action.
+ * Deleting a space with tabs asks first (HIG alerts.md: uncommon, and its tabs are at stake), and
+ * asks what happens to them: they move to another space (the default, nothing is lost) or close
+ * with it. An empty space goes without a question.
  */
 function DeleteSpaceAlert({
   space,
+  spaces,
   open,
   onOpenChange,
   onDelete,
 }: {
   space: Space
+  spaces: Space[]
   open: boolean
   onOpenChange: (open: boolean) => void
-  onDelete: () => void
+  onDelete: (moveTo: Id | null) => void
 }) {
+  const others = spaces.filter((s) => s.id !== space.id)
+  // The space that shows next (the one before it, or after the first): where its tabs go by default.
+  const index = spaces.findIndex((s) => s.id === space.id)
+  const neighbour = spaces[index === 0 ? 1 : index - 1] ?? others[0]
+  const [targetId, setTargetId] = useState<Id | null>(null)
+  const target = others.find((s) => s.id === targetId) ?? neighbour
   const tabCount = spaceTabs(space).length
   const folderCount = space.items.filter((item) => item.kind === "folder").length
   const contents = [
@@ -319,21 +333,48 @@ function DeleteSpaceAlert({
 
   return (
     <AlertDialog open={open} onOpenChange={onOpenChange}>
-      <AlertDialogContent size="sm">
+      {/* The default size: three buttons in one row. */}
+      <AlertDialogContent>
         <AlertDialogHeader>
           <AlertDialogTitle>Delete “{space.name}”?</AlertDialogTitle>
           <AlertDialogDescription>
-            {contents.length > 0
-              ? `Its ${contents.join(" and ")} will be deleted too. This can't be undone.`
-              : "This can't be undone."}
+            Its {contents.join(" and ")} can move to another space, or close with it.
           </AlertDialogDescription>
         </AlertDialogHeader>
+        {others.length > 1 && target && (
+          // A pop-up button: which space gets them (HIG pop-up-buttons.md).
+          <div className="flex items-center justify-between gap-3 text-sm">
+            <span className="text-muted-foreground">Move them to</span>
+            <DropdownMenu modal={false}>
+              <DropdownMenuTrigger className="flex min-w-0 items-center gap-1.5 rounded-md px-2 py-1 font-medium outline-none hover:bg-accent focus-visible:ring-2 focus-visible:ring-ring">
+                <SpaceIcon name={target.icon} className="size-4 shrink-0" />
+                <span className="truncate">{target.name}</span>
+                <ChevronsUpDown aria-hidden className="size-3.5 shrink-0 text-muted-foreground" />
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end" className="w-auto min-w-40">
+                <DropdownMenuRadioGroup value={target.id} onValueChange={(id: Id) => setTargetId(id)}>
+                  {others.map((s) => (
+                    <DropdownMenuRadioItem key={s.id} value={s.id}>
+                      <SpaceIcon name={s.icon} />
+                      <span className="truncate">{s.name}</span>
+                    </DropdownMenuRadioItem>
+                  ))}
+                </DropdownMenuRadioGroup>
+              </DropdownMenuContent>
+            </DropdownMenu>
+          </div>
+        )}
         <AlertDialogFooter>
           <AlertDialogCancel>Cancel</AlertDialogCancel>
-          {/* Not the destructive style: deleting is what they chose (HIG alerts.md › Buttons). */}
-          <AlertDialogAction onClick={onDelete}>
-            Delete
+          {/* Closing loses the tabs (Ctrl+Shift+T can still bring them back): not the default. */}
+          <AlertDialogAction variant="outline" onClick={() => onDelete(null)}>
+            Close Tabs
           </AlertDialogAction>
+          {target && (
+            <AlertDialogAction onClick={() => onDelete(target.id)}>
+              {others.length > 1 ? "Move and Delete" : `Move to “${target.name}”`}
+            </AlertDialogAction>
+          )}
         </AlertDialogFooter>
       </AlertDialogContent>
     </AlertDialog>

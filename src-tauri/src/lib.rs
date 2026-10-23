@@ -44,6 +44,7 @@ pub fn specta_builder() -> tauri_specta::Builder<tauri::Wry> {
       go_back,
       go_forward,
       reload,
+      reload_tab,
       hard_reload,
       stop_loading,
       open_devtools,
