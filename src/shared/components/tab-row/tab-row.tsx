@@ -3,6 +3,7 @@ import { LoaderCircle, X } from "lucide-react";
 import { SidebarMenuAction, SidebarMenuButton } from "@/components/ui/sidebar";
 import { cn } from "@/lib/utils";
 import type { Tab } from "../../types";
+import { PERF, perfCount } from "../../perf";
 import { Favicon } from "../favicon/favicon";
 import { SpeakerIcon } from "./speaker-icon";
 
@@ -53,6 +54,7 @@ export const TabRow = ({
   onEditDone,
   className,
 }: TabRowProps) => {
+  perfCount("row");
   const label = tabLabel(tab);
   const editing = editValue !== null;
   const speaker = !editing && !!onToggleMute && (tab.isPlayingAudio || tab.isMuted);
@@ -71,6 +73,8 @@ export const TabRow = ({
         // Editing: the row stays a row, but a button can't hold a text field.
         render={editing ? <div /> : undefined}
         isActive={active}
+        // Measurement builds: how scripts/measure-many-tabs.mjs finds a tab's row.
+        {...(PERF ? { "data-tab-id": tab.id } : {})}
         aria-current={active ? "page" : undefined}
         title={editing ? undefined : label}
         onClick={editing ? undefined : onSelect}

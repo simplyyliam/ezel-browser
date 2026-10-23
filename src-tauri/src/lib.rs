@@ -125,7 +125,11 @@ pub fn export_bindings(builder: &tauri_specta::Builder<tauri::Wry>, path: &Path)
 /// Emits a typed event to the `ui` webview (the only one with IPC). Failures are ignored: a missed
 /// update is re-sent with the next change. The event must be registered with `collect_events!`.
 fn emit_to_ui<R: Runtime, H: Emitter<R> + Manager<R>, E: tauri_specta::Event + Serialize + Clone>(handle: &H, event: &E) {
+  #[cfg(feature = "perf")]
+  let started = std::time::Instant::now();
   let _ = event.emit_to(handle, EventTarget::webview(UI_LABEL));
+  #[cfg(feature = "perf")]
+  browser::perf::note(&format!("event={}", E::NAME), serde_json::to_vec(event).map_or(0, |v| v.len()), started);
 }
 
 /// Thin overlay scrollbars that auto-hide and have no track (WebView2 125+; ignored elsewhere).
@@ -141,8 +145,13 @@ const SCROLL_BAR_STYLE: ScrollBarStyle = ScrollBarStyle::FluentOverlay;
 /// wry also disables `msSmartScreenProtection` by default; Ezel doesn't: Microsoft Defender
 /// SmartScreen checks the sites and downloads people open (docs/security-review.md). Never add it
 /// back, and never turn off other security features here.
+#[cfg(not(feature = "perf"))]
 const BROWSER_ARGS: &str =
   "--disable-features=msWebOOUI,msPdfOOUI --autoplay-policy=document-user-activation-required";
+/// Measurement builds only (`perf`): the same, plus a local DevTools port so
+/// `scripts/measure-many-tabs.mjs` can time the UI. Never in normal builds.
+#[cfg(feature = "perf")]
+const BROWSER_ARGS: &str = "--disable-features=msWebOOUI,msPdfOOUI --autoplay-policy=document-user-activation-required    --remote-debugging-port=9333";
 
 /// Cached Windhawk settings (re-read only when the registry changes) and the last reported radius.
 #[derive(Default)]

@@ -16,6 +16,55 @@ function set(next: TabsState) {
   subscribers.forEach((notify) => notify())
 }
 
+/** Same fields, so the same row: a tab from a new `tabs-changed` that didn't change. */
+function sameTab(a: Tab, b: Tab) {
+  return (
+    a.id === b.id &&
+    a.url === b.url &&
+    a.title === b.title &&
+    a.favicon === b.favicon &&
+    a.pinnedUrl === b.pinnedUrl &&
+    a.isLoaded === b.isLoaded &&
+    a.isLoading === b.isLoading &&
+    a.isPlayingAudio === b.isPlayingAudio &&
+    a.isMuted === b.isMuted &&
+    a.isDev === b.isDev &&
+    a.layers.length === b.layers.length &&
+    a.layers.every((layer, i) => layer === b.layers[i])
+  )
+}
+
+/**
+ * `next` with every unchanged tab replaced by the object already on screen. Each `tabs-changed`
+ * carries the whole state, freshly parsed; keeping the old objects lets memoised rows skip
+ * re-rendering, so one tab's change redraws one row, not all of them (docs/perf/many-tabs.md).
+ */
+function reuseTabs(prev: TabsState | null, next: TabsState): TabsState {
+  if (!prev) return next
+  const old = new Map<number, Tab>()
+  const collect = (tab: Tab | null) => tab && old.set(tab.id, tab)
+  prev.swatches.forEach(collect)
+  for (const space of prev.spaces) {
+    space.items.forEach((item) => (item.kind === "tab" ? collect(item.tab) : item.folder.tabs.forEach(collect)))
+    space.tempTabs.forEach(collect)
+  }
+  const keep = (tab: Tab) => {
+    const before = old.get(tab.id)
+    return before && sameTab(before, tab) ? before : tab
+  }
+  return {
+    ...next,
+    swatches: next.swatches.map((tab) => tab && keep(tab)),
+    spaces: next.spaces.map((space) => ({
+      ...space,
+      items: space.items.map((item): SpaceItem =>
+        item.kind === "tab" ? { kind: "tab", tab: keep(item.tab) } : { kind: "folder", folder: { ...item.folder, tabs: item.folder.tabs.map(keep) } },
+      ),
+      tempTabs: space.tempTabs.map(keep),
+    })),
+  }
+}
+
 function patchTab(tab: Tab) {
   if (!state) return
   const swap = (t: Tab) => (t.id === tab.id ? tab : t)
@@ -41,7 +90,7 @@ function start() {
   const unlisteners = [
     events.tabsChanged.listen((event) => {
       gotState = true
-      set(event.payload)
+      set(reuseTabs(state, event.payload))
     }),
     events.tabUpdated.listen((event) => patchTab(event.payload)),
   ]

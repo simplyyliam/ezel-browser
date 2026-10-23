@@ -29,6 +29,17 @@ pub struct TsId(#[specta(type = u32)] pub Id);
 /// (8 before v0.3.0: older session files have 8 slots, see [`swatch_slots`]).
 pub const SWATCH_SLOTS: usize = 12;
 
+/// Longest favicon a tab keeps, in bytes: Firefox's favicon service limit (`nsIFaviconService.idl`,
+/// 64 KB). Pages and Zen's session can hand over whole images as `data:` URLs (one imported icon was
+/// 26 MB); every tab event and session save carries them, so a bigger one is dropped and the tab
+/// gets the site's own icon address the next time it loads (docs/perf/many-tabs.md).
+pub const MAX_FAVICON_BYTES: usize = 64 * 1024;
+
+/// A favicon a tab may keep: not empty, at most [`MAX_FAVICON_BYTES`].
+pub fn favicon(favicon: Option<String>) -> Option<String> {
+  favicon.filter(|f| !f.is_empty() && f.len() <= MAX_FAVICON_BYTES)
+}
+
 /// Most loaded webviews kept at once, the active one included. Beyond this the least recently used
 /// background tabs are unloaded (they keep their place and reload when selected). 5, down from 8:
 /// each loaded tab costs a renderer (docs/perf/results.md).
@@ -292,6 +303,13 @@ impl Session {
     // Closed tabs point at places that may be gone; reopening checks them, so only the length matters.
     let excess = self.closed.len().saturating_sub(MAX_CLOSED_TABS);
     self.closed.drain(..excess);
+    // Sessions from before the favicon limit: oversized icons go (each tab's next load brings one back).
+    for tab in self.tabs.values_mut() {
+      tab.favicon = favicon(tab.favicon.take());
+    }
+    for tab in &mut self.closed {
+      tab.favicon = favicon(tab.favicon.take());
+    }
     self
   }
 }
@@ -449,7 +467,7 @@ impl Model {
       }
     }
     let id = self.alloc_id();
-    self.session.tabs.insert(id, Tab { title, favicon, ..new_tab(id, &url, now) });
+    self.session.tabs.insert(id, Tab { title, favicon: self::favicon(favicon), ..new_tab(id, &url, now) });
     self.attach(id, to);
     Ok(id)
   }
@@ -774,7 +792,7 @@ impl Model {
 
   pub fn set_favicon(&mut self, id: Id, favicon: Option<String>) {
     if let Some(tab) = self.session.tabs.get_mut(&id) {
-      tab.favicon = favicon.filter(|f| !f.is_empty());
+      tab.favicon = self::favicon(favicon);
     }
   }
 
@@ -1457,6 +1475,34 @@ b", &"x".repeat(MAX_FOLDER_NAME + 1)] {
     let effects = m.unload_idle(IDLE_UNLOAD_MS);
     assert_eq!(effects, vec![Effect::Destroy(quiet)]);
     assert!(m.live.contains_key(&music) && m.live.contains_key(&active));
+  }
+
+  #[test]
+  fn oversized_favicons_are_dropped_everywhere_a_tab_gets_one() {
+    let small = format!("data:image/png;base64,{}", "A".repeat(100));
+    let huge = format!("data:image/png;base64,{}", "A".repeat(MAX_FAVICON_BYTES));
+    let (mut m, a, _, _) = three_tabs();
+    let space_id = m.session.active_space;
+    let temp = |index| TabLocation::Temp { space_id, index };
+    let kept = m.add_tab("https://k.test/".into(), None, Some(small.clone()), temp(None), 1).unwrap();
+    let dropped = m.add_tab("https://d.test/".into(), None, Some(huge.clone()), temp(None), 1).unwrap();
+    assert_eq!(m.tab(kept).unwrap().favicon.as_deref(), Some(small.as_str()));
+    assert_eq!(m.tab(dropped).unwrap().favicon, None, "an import's 26 MB icon");
+    m.set_favicon(a, Some(huge.clone()));
+    assert_eq!(m.tab(a).unwrap().favicon, None, "a page's own data: icon");
+    m.set_favicon(a, Some(String::new()));
+    assert_eq!(m.tab(a).unwrap().favicon, None);
+
+    // A session saved before the limit loads without its oversized icons, closed tabs included.
+    let mut session = m.session.clone();
+    session.tabs.get_mut(&kept).unwrap().favicon = Some(huge.clone());
+    m.close_tab(dropped, 2).unwrap();
+    session.closed = m.session.closed.clone();
+    session.closed.last_mut().unwrap().favicon = Some(huge);
+    let repaired = session.repaired("https://home.test/", 3);
+    assert_eq!(repaired.tabs[&kept].favicon, None);
+    assert_eq!(repaired.closed.last().unwrap().favicon, None);
+    assert!(repaired.tabs.len() > 3, "only icons go, never tabs");
   }
 
   #[test]

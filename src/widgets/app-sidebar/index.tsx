@@ -1,4 +1,4 @@
-import { useCallback, useState } from "react"
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react"
 import { DndContext, DragOverlay } from "@dnd-kit/core"
 import {
   Sidebar,
@@ -25,6 +25,8 @@ import {
   NEW_SPACE_ICONS,
   openCommandPalette,
   openDownload,
+  PERF,
+  perfMark,
   reopenClosedTab,
   reportError,
   showDownloadInFolder,
@@ -93,25 +95,37 @@ export function AppSidebar() {
   const tabs = useTabs()
   const space = tabs ? activeSpace(tabs) : undefined
   const activeTabId = tabs?.activeTabId ?? null
+  // Measurement builds: the first frame that shows the backend's tabs.
+  useEffect(() => {
+    if (PERF && tabs) requestAnimationFrame(() => perfMark("sidebar-ready"))
+  }, [tabs])
   const [renamingSpaceId, setRenamingSpaceId] = useState<Id | null>(null)
   // The tab whose name is the address field right now (double-click, "Change URL…", New Tab).
   const [editing, setEditing] = useState<{ tabId: Id; value: string } | null>(null)
 
-  async function editTab(tabId: Id) {
+  // Rows get callbacks that never change and read the latest state when called, so one tab's
+  // change re-renders only its row (DraggableTabItem is memoised; docs/perf/many-tabs.md).
+  const latest = useRef({ tabs, space })
+  useLayoutEffect(() => {
+    latest.current = { tabs, space }
+  })
+
+  const editTab = useCallback(async (tabId: Id) => {
+    const { tabs } = latest.current
     const tab = tabs && findTab(tabs, tabId)
     if (!tab) return
     // The address loads in the shown tab.
     await showTab(tabs, tabId)
     setEditing({ tabId, value: tab.url })
-  }
+  }, [])
 
-  function finishEdit(input: string | null) {
+  const finishEdit = useCallback((input: string | null) => {
     setEditing(null)
     if (input) navigate(input)
-  }
+  }, [])
 
   /** A new tab with its name field empty, ready for an address (the URL bar's old job). */
-  const startNewTab = (tabId: Id) => setEditing({ tabId, value: "" })
+  const startNewTab = useCallback((tabId: Id) => setEditing({ tabId, value: "" }), [])
 
   /** New Tab asks where to go first (the command palette), so no blank page is ever opened. */
   const newTab = () => openCommandPalette("new-tab")
@@ -193,15 +207,22 @@ export function AppSidebar() {
   const tabDrag = useTabDrag({ tabs, space, getSidebar: getSidebarCard, onSpaceListOpen: setSpaceListOpen })
   const dropTarget = tabDrag.target
 
+  // Built when the menu opens, from the state at that moment.
+  const menuFor = useCallback(
+    (tabId: Id) => {
+      const { tabs, space } = latest.current
+      return tabs && space
+        ? tabMenu(tabId, { tabs, activeSpaceId: space.id, onEdit: editTab, onOpened: startNewTab, onFolderCreated: setRenamingFolderId })
+        : []
+    },
+    [editTab, startNewTab],
+  )
   const rowActions: TabRowActions = {
     activeTabId,
     onSelect: activateTab,
     onClose: closeTab,
     onSetMuted: setTabMuted,
-    menuFor: (tabId) =>
-      tabs && space
-        ? tabMenu(tabId, { tabs, activeSpaceId: space.id, onEdit: editTab, onOpened: startNewTab, onFolderCreated: setRenamingFolderId })
-        : [],
+    menuFor,
     editing,
     onEdit: editTab,
     onEditDone: finishEdit,
