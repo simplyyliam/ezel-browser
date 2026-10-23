@@ -148,17 +148,18 @@
     }
 }
 /* Press feel (polish): buttons and sidebar rows give a little when pressed, 98% for as long as
-   they're held, and spring back on release. Scale only, no colour flash. A row being dragged
-   leaves the press at once (the drag preview takes over). Never under reduced motion. */
-@media (prefers-reduced-motion: no-preference) {
-  :is(button, [role="button"], [data-slot="sidebar-menu-button"], [data-slot$="-item"]):not(:disabled, [data-disabled]) {
-    transition-property: scale, var(--tw-transition-property, color, background-color, opacity);
-    transition-duration: 160ms;
-    transition-timing-function: cubic-bezier(0.34, 1.56, 0.64, 1);
-  }
-  :is(button, [role="button"], [data-slot="sidebar-menu-button"]):not(:disabled, [data-disabled]):active {
-    scale: 0.98;
-    transition-duration: 60ms;
-    transition-timing-function: ease-out;
+   they're held, and spring back on release. Scale only, no colour flash. In the base layer, so a
+   component's own transition utilities still win (they then just skip the spring). Never under
+   reduced motion. */
+@layer base {
+  @media (prefers-reduced-motion: no-preference) {
+    :is(button, [role="button"], [data-slot="sidebar-menu-button"]):not(:disabled, [data-disabled]) {
+      transition-property: scale, color, background-color, opacity;
+      transition-duration: 160ms;
+      transition-timing-function: cubic-bezier(0.34, 1.56, 0.64, 1);
+    }
+    :is(button, [role="button"], [data-slot="sidebar-menu-button"]):not(:disabled, [data-disabled]):active {
+      scale: 0.98;
+    }
   }
 }
