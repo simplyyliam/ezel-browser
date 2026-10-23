@@ -663,13 +663,26 @@ impl Model {
   /// no longer exists falls back to the end of the same list in its space, then to the active
   /// space. `None` when nothing is left to reopen.
   pub fn reopen_closed_tab(&mut self, now: u64) -> Result<Option<(Id, Vec<Effect>)>> {
-    let Some(closed) = self.session.closed.pop() else { return Ok(None) };
+    if self.session.closed.is_empty() {
+      return Ok(None);
+    }
+    self.reopen_recent(0, now).map(Some)
+  }
+
+  /// Reopens the `n`-th most recently closed tab (0 = the last one), like [`Self::reopen_closed_tab`]
+  /// (the palette's recently closed chips). `invalid_input` past the end.
+  pub fn reopen_recent(&mut self, n: usize, now: u64) -> Result<(Id, Vec<Effect>)> {
+    let len = self.session.closed.len();
+    if n >= len {
+      return Err(AppError::invalid_input(format!("only {len} closed tabs to reopen")));
+    }
+    let closed = self.session.closed.remove(len - 1 - n);
     let to = self.reopen_location(closed.location);
     let id = self.alloc_id();
     let tab = Tab { title: closed.title, favicon: closed.favicon, pinned_url: closed.pinned_url, ..new_tab(id, &closed.url, now) };
     self.session.tabs.insert(id, tab);
     self.attach(id, to);
-    Ok(Some((id, self.activate(id, now)?)))
+    Ok((id, self.activate(id, now)?))
   }
 
   /// Where a closed tab goes back to, given what still exists.
@@ -1108,6 +1121,24 @@ mod tests {
     assert_eq!(m.active_tab(), Some(shown), "the page stays");
     assert!(!m.live.contains_key(&id), "loads only when opened");
     assert_eq!(m.activate(id, 2).unwrap()[0], Effect::Show(Some(id)));
+  }
+
+  #[test]
+  fn any_recently_closed_tab_can_come_back() {
+    let mut m = model();
+    let (a, _) = m.open_tab("https://a.test/".into(), 1);
+    let (b, _) = m.open_tab("https://b.test/".into(), 2);
+    let (c, _) = m.open_tab("https://c.test/".into(), 3);
+    for id in [a, b, c] {
+      m.close_tab(id, 4).unwrap();
+    }
+    // 0 = c (newest), 1 = b, 2 = a: bring back b from the middle.
+    let (id, _) = m.reopen_recent(1, 5).unwrap();
+    assert_eq!(m.tab(id).unwrap().url, "https://b.test/");
+    assert_eq!(m.session.closed.iter().map(|c| c.url.as_str()).collect::<Vec<_>>(), vec!["https://a.test/", "https://c.test/"]);
+    assert_eq!(m.reopen_recent(2, 6).unwrap_err().code, ErrorCode::InvalidInput, "past the end");
+    let (id, _) = m.reopen_closed_tab(7).unwrap().unwrap();
+    assert_eq!(m.tab(id).unwrap().url, "https://c.test/", "Ctrl+Shift+T still takes the newest");
   }
 
   #[test]

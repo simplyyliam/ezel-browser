@@ -101,6 +101,8 @@ export const commands = {
 	 *  `null` when there's nothing to reopen.
 	 */
 	reopenClosedTab: () => typedError<number | null, AppError>(__TAURI_INVOKE("reopen_closed_tab")),
+	/**  Reopens the `n`-th most recently closed tab (0 = the newest), where it was, and selects it. */
+	reopenRecentTab: (n: number) => typedError<Id, AppError>(__TAURI_INVOKE("reopen_recent_tab", { n })),
 	/**  Frees the tab's memory; it keeps its place and page, and reloads when selected. */
 	unloadTab: (id: Id) => typedError<null, AppError>(__TAURI_INVOKE("unload_tab", { id })),
 	/**  Ctrl+Tab / Ctrl+Shift+Tab (`backward`): the active space's next tab in most-recently-used order. */
@@ -150,6 +152,7 @@ export const events = {
 	downloadsChanged: makeEvent<DownloadsState>("downloads-changed"),
 	findChanged: makeEvent<FindChanged>("find-changed"),
 	hotkeyPressed: makeEvent<HotkeyPressed>("hotkey-pressed"),
+	linkStatus: makeEvent<LinkStatus>("link-status"),
 	pageChanged: makeEvent<PageChanged>("page-changed"),
 	pageMenu: makeEvent<PageMenu>("page-menu"),
 	permissionAsked: makeEvent<PermissionAsked>("permission-asked"),
@@ -164,6 +167,12 @@ export const events = {
 export type AppError = {
 	code: ErrorCode,
 	message: string,
+};
+
+export type ClosedTab = {
+	url: string,
+	title: string | null,
+	favicon: string | null,
 };
 
 export type Decision = "allow" | "deny";
@@ -256,6 +265,14 @@ export type HotkeyPressed = {
 
 /**  A tab, folder or space id: a number from one shared counter, never reused. */
 export type Id = number;
+
+/**
+ *  Payload of "link-status": the shown page's status text (a hovered link's address), or "" for
+ *  none. Shown as text only, at most [`MAX_STATUS`] characters.
+ */
+export type LinkStatus = {
+	text: string,
+};
 
 /**  What `get_memory` returns. MB, so the UI never deals in bytes. */
 export type MemoryReport = {
@@ -422,6 +439,11 @@ export type TabsState = {
 	spaces: Space[],
 	/**  How many closed tabs "Reopen Closed Tab" can bring back (0 hides it). */
 	closedCount: number,
+	/**
+	 *  The last few closed tabs, newest first (the palette's chips); `reopen_recent_tab(n)` takes
+	 *  the n-th.
+	 */
+	recentlyClosed: ClosedTab[],
 };
 
 /**

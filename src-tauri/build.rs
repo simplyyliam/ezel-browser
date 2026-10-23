@@ -53,6 +53,7 @@ fn main() {
       "close_tab",
       "remove_tab",
       "reopen_closed_tab",
+      "reopen_recent_tab",
       "unload_tab",
       "cycle_tab",
       "set_tab_muted",

@@ -20,6 +20,7 @@ import { Dialog, DialogPortal } from "@/components/ui/dialog"
 import { useSidebar } from "@/components/ui/sidebar"
 import { Footer } from "@/features/command-palette/footer"
 import { Results, SwatchTiles, type PaletteRow, type PaletteSection } from "@/features/command-palette/results"
+import { RecentlyClosed } from "@/features/command-palette/recently-closed"
 import { SearchField } from "@/features/command-palette/search-field"
 import {
   activeSpace,
@@ -429,6 +430,16 @@ function PaletteBody({ target, tabs, page, inputRef, onToggleSidebar }: PaletteB
             />
           </CommandList>
         </ScrollArea>
+        {/* The last few closed tabs, while nothing's typed. */}
+        {!trimmed && (
+          <RecentlyClosed
+            tabs={tabs.recentlyClosed}
+            onReopen={(n) => {
+              closeCommandPalette()
+              unwrap("reopen closed tab", commands.reopenRecentTab(n))
+            }}
+          />
+        )}
         <Footer destination={destination} keys={footerKeys} />
       </Command>
     </MotionConfig>

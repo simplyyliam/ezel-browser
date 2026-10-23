@@ -41,6 +41,7 @@
     "allow-close-tab",
     "allow-remove-tab",
     "allow-reopen-closed-tab",
+    "allow-reopen-recent-tab",
     "allow-unload-tab",
     "allow-cycle-tab",
     "allow-set-tab-muted",
