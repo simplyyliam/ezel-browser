@@ -14,6 +14,7 @@ pub mod commands;
 pub mod layers;
 pub mod memory;
 mod model;
+pub mod page_menu;
 #[cfg(feature = "perf")]
 mod perf;
 mod popup;
@@ -65,7 +66,17 @@ pub struct Browser {
   /// Tabs whose webview was just created and has no page on screen yet: kept hidden (see
   /// `REVEAL_FALLBACK`).
   unpainted: Mutex<HashSet<Id>>,
+  /// The page menu on screen: which tab, what was right-clicked, what it offers.
+  menu: Mutex<Option<OpenMenu>>,
   store: store::Store,
+}
+
+/// A page's right-click menu waiting for a choice (`choose_page_menu_item`).
+pub struct OpenMenu {
+  pub id: u32,
+  pub tab: Id,
+  pub target: page_menu::MenuTarget,
+  pub groups: Vec<Vec<page_menu::PageMenuEntry>>,
 }
 
 /// Payload of "page-changed": the shown tab's page.
@@ -213,6 +224,7 @@ pub fn init(app: &AppHandle) -> tauri::Result<()> {
     ops: Mutex::new(()),
     shown: Mutex::new(None),
     unpainted: Mutex::new(HashSet::new()),
+    menu: Mutex::new(None),
     store: store::Store::new(dir),
   });
   if let Err(e) = update(app, |m, now| Ok(((), m.restore(now)))) {
@@ -480,6 +492,36 @@ fn certificate_error(app: &AppHandle, id: Id, request: &str) {
   }
 }
 
+/// A right-click in a tab's page: Ezel's menu opens at that point (the UI draws it and takes
+/// focus for it). WebView2 waits until `choose_page_menu_item`.
+#[cfg(windows)]
+fn page_menu_requested(app: &AppHandle, id: Id, request: crate::webview2::MenuRequest) {
+  let mut target = request.target;
+  let selection = target.selection.as_deref().map(page_menu::preview);
+  {
+    let browser = browser(app);
+    let model = browser.model.lock().unwrap();
+    if let Some(live) = model.live.get(&id) {
+      (target.can_go_back, target.can_go_forward) = (live.can_go_back, live.can_go_forward);
+    }
+  }
+  let groups = page_menu::groups(&target, &request.native);
+  let scale = app.get_window(crate::WINDOW_LABEL).and_then(|w| w.scale_factor().ok()).unwrap_or(1.0);
+  let (left, top) = match content::current_bounds(app).position {
+    tauri::Position::Logical(p) => (p.x, p.y),
+    tauri::Position::Physical(p) => (p.x as f64 / scale, p.y as f64 / scale),
+  };
+  static NEXT: std::sync::atomic::AtomicU32 = std::sync::atomic::AtomicU32::new(1);
+  let menu_id = NEXT.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+  let menu = page_menu::PageMenu { id: menu_id, x: left + request.x as f64 / scale, y: top + request.y as f64 / scale, groups: groups.clone(), selection };
+  *browser(app).menu.lock().unwrap() = Some(OpenMenu { id: menu_id, tab: id, target, groups });
+  // The menu takes typing (arrows, Enter, Esc); the page gets focus back when it closes.
+  if let Some(ui) = app.get_webview(crate::UI_LABEL) {
+    let _ = ui.set_focus();
+  }
+  emit_to_ui(app, &menu);
+}
+
 /// A tab's page changed: record it, tell the UI about the tab, and about the page if it's shown.
 /// `title: Some(None)` clears the title (a new navigation started); `loading: None` = unchanged.
 fn on_page_event(webview: &Webview, id: Id, url: Option<String>, title: Option<Option<String>>, loading: Option<bool>) {
@@ -589,6 +631,8 @@ fn watch_platform_events(webview: &Webview, id: Id) {
       });
       let a = app.clone();
       webview2::on_certificate_error(&pw, move |request| certificate_error(&a, id, &request));
+      let a = app.clone();
+      webview2::on_context_menu(&pw, move |request| page_menu_requested(&a, id, request));
       webview2::quiet_defaults(&pw);
       webview2::forward_shortcuts(&pw, move |key| crate::hotkeys::handle(&app, key));
     });

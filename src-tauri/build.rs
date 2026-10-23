@@ -19,6 +19,7 @@ fn main() {
     tauri_build::AppManifest::new().commands(&[
       "navigate",
       "get_page",
+      "choose_page_menu_item",
       "go_back",
       "go_forward",
       "reload",

@@ -3,13 +3,18 @@
 
 use tauri::webview::PlatformWebview;
 
-use crate::hotkeys::KeyPress;
+use std::cell::RefCell;
+
+use crate::{browser::page_menu::MenuTarget, hotkeys::KeyPress};
 use webview2_com::{
-  take_pwstr, AcceleratorKeyPressedEventHandler, CallDevToolsProtocolMethodCompletedHandler, FaviconChangedEventHandler, IsDocumentPlayingAudioChangedEventHandler,
+  take_pwstr, AcceleratorKeyPressedEventHandler, CallDevToolsProtocolMethodCompletedHandler, ContextMenuRequestedEventHandler,
+  FaviconChangedEventHandler, IsDocumentPlayingAudioChangedEventHandler,
   GetProcessExtendedInfosCompletedHandler, PermissionRequestedEventHandler, ServerCertificateErrorDetectedEventHandler, TrySuspendCompletedHandler,
   WindowCloseRequestedEventHandler,
   Microsoft::Web::WebView2::Win32::{
-    ICoreWebView2, ICoreWebView2Environment13, ICoreWebView2FrameInfo2, ICoreWebView2PermissionRequestedEventArgs3,
+    ICoreWebView2, ICoreWebView2ContextMenuRequestedEventArgs, ICoreWebView2Deferral, ICoreWebView2Environment13,
+    ICoreWebView2FrameInfo2, ICoreWebView2PermissionRequestedEventArgs3, ICoreWebView2_11,
+    COREWEBVIEW2_CONTEXT_MENU_TARGET_KIND, COREWEBVIEW2_CONTEXT_MENU_TARGET_KIND_IMAGE,
     ICoreWebView2ProcessExtendedInfoCollection, ICoreWebView2Settings4, ICoreWebView2_14, ICoreWebView2_15, ICoreWebView2_19, ICoreWebView2_2,
     ICoreWebView2_20, ICoreWebView2_3, ICoreWebView2_8,
     COREWEBVIEW2_KEY_EVENT_KIND, COREWEBVIEW2_PERMISSION_KIND, COREWEBVIEW2_PERMISSION_KIND_NOTIFICATIONS, COREWEBVIEW2_PERMISSION_STATE,
@@ -98,6 +103,107 @@ pub fn on_certificate_error(pw: &PlatformWebview, f: impl Fn(String) + 'static) 
   // SAFETY: main thread, live webview.
   unsafe {
     let _ = core.add_ServerCertificateErrorDetected(&handler, &mut token);
+  }
+}
+
+/// A right-click in a page, for Ezel's own menu.
+pub struct MenuRequest {
+  /// Where, in the webview's own physical pixels.
+  pub x: i32,
+  pub y: i32,
+  /// What was clicked (history comes from the runtime).
+  pub target: MenuTarget,
+  /// WebView2's own items for it (`Name`, enabled), top level only.
+  pub native: Vec<(String, bool)>,
+}
+
+/// The right-click WebView2 is waiting on: its args (to pick a command) and deferral (to finish).
+/// COM objects live on the main thread only, so this does too. One at a time: a new right-click
+/// finishes the previous one first.
+struct PendingMenu {
+  args: ICoreWebView2ContextMenuRequestedEventArgs,
+  deferral: ICoreWebView2Deferral,
+  /// (`Name`, `CommandId`) of WebView2's items.
+  commands: Vec<(String, i32)>,
+}
+
+thread_local! {
+  static PENDING_MENU: RefCell<Option<PendingMenu>> = const { RefCell::new(None) };
+}
+
+/// Right-clicks in the page open Ezel's menu instead of WebView2's (WebView2's documented custom
+/// menu: handled, with a deferral kept until the choice). `f` gets the request; the menu is then
+/// finished with [`finish_menu`]. WebView2 1.0.1185+; older runtimes keep their own menu.
+pub fn on_context_menu(pw: &PlatformWebview, f: impl Fn(MenuRequest) + 'static) {
+  let Some(core) = core(pw).and_then(|c| c.cast::<ICoreWebView2_11>().ok()) else { return };
+  let handler = ContextMenuRequestedEventHandler::create(Box::new(move |_, args| {
+    let Some(args) = args else { return Ok(()) };
+    // SAFETY: WebView2 calls this on the main thread with live args; every string is freed by
+    // take_pwstr, and the collection is held while its items are read.
+    let request = unsafe {
+      let target = args.ContextMenuTarget()?;
+      let flag = |get: &dyn Fn(*mut windows::core::BOOL) -> windows::core::Result<()>| {
+        let mut value = windows::core::BOOL::default();
+        get(&mut value).is_ok() && value.as_bool()
+      };
+      let text = |get: &dyn Fn(*mut PWSTR) -> windows::core::Result<()>| {
+        let mut value = PWSTR::null();
+        get(&mut value).ok().map(|_| take_pwstr(value)).filter(|s| !s.is_empty())
+      };
+      let mut kind = COREWEBVIEW2_CONTEXT_MENU_TARGET_KIND::default();
+      target.Kind(&mut kind)?;
+      let menu_target = MenuTarget {
+        is_image: kind == COREWEBVIEW2_CONTEXT_MENU_TARGET_KIND_IMAGE,
+        editable: flag(&|v| target.IsEditable(v)),
+        link: if flag(&|v| target.HasLinkUri(v)) { text(&|v| target.LinkUri(v)) } else { None },
+        image: if flag(&|v| target.HasSourceUri(v)) { text(&|v| target.SourceUri(v)) } else { None },
+        selection: if flag(&|v| target.HasSelection(v)) { text(&|v| target.SelectionText(v)) } else { None },
+        can_go_back: false,
+        can_go_forward: false,
+      };
+      let items = args.MenuItems()?;
+      let mut count = 0u32;
+      items.Count(&mut count)?;
+      let mut native = vec![];
+      let mut commands = vec![];
+      for i in 0..count {
+        let Ok(item) = items.GetValueAtIndex(i) else { continue };
+        let Some(name) = text(&|v| item.Name(v)) else { continue };
+        let mut id = 0i32;
+        if item.CommandId(&mut id).is_err() {
+          continue;
+        }
+        native.push((name.clone(), flag(&|v| item.IsEnabled(v))));
+        commands.push((name, id));
+      }
+      let mut at = windows::Win32::Foundation::POINT::default();
+      args.Location(&mut at)?;
+      args.SetHandled(true)?;
+      let deferral = args.GetDeferral()?;
+      finish_menu(None);
+      PENDING_MENU.with(|p| *p.borrow_mut() = Some(PendingMenu { args: args.clone(), deferral, commands }));
+      MenuRequest { x: at.x, y: at.y, target: menu_target, native }
+    };
+    f(request);
+    Ok(())
+  }));
+  let mut token = 0i64;
+  // SAFETY: main thread, live webview.
+  unsafe {
+    let _ = core.add_ContextMenuRequested(&handler, &mut token);
+  }
+}
+
+/// Finishes the waiting right-click (main thread): runs WebView2's item called `native` on what
+/// was right-clicked, or nothing. A no-op when nothing waits.
+pub fn finish_menu(native: Option<&str>) {
+  let Some(pending) = PENDING_MENU.with(|p| p.borrow_mut().take()) else { return };
+  // SAFETY: main thread; the args and deferral were kept alive in PENDING_MENU until now.
+  unsafe {
+    if let Some(id) = native.and_then(|name| pending.commands.iter().find(|(n, _)| n == name)).map(|(_, id)| *id) {
+      let _ = pending.args.SetSelectedCommandId(id);
+    }
+    let _ = pending.deferral.Complete();
   }
 }
 

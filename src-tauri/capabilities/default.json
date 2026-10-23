@@ -18,6 +18,7 @@
     "allow-get-memory",
     "allow-toggle-page-layer",
     "allow-get-page",
+    "allow-choose-page-menu-item",
     "allow-set-content-bounds",
     "allow-set-content-visible",
     "allow-set-content-radius",
