@@ -255,7 +255,8 @@ export const MENU_CATALOG = {
     ],
   },
 
-  // ---- The website (native webview; its menus need Rust: WebView2 ContextMenuRequested) ----
+  // ---- The website (native webview; Ezel draws the menu from WebView2's ContextMenuRequested:
+  // src-tauri/src/browser/page_menu.rs decides the entries, features/browser-view/page-menu draws them) ----
 
   page: {
     kind: "context",
@@ -263,9 +264,9 @@ export const MENU_CATALOG = {
     scope: "The page",
     groups: [
       [
-        item({ id: "back", label: "Back", origin: "browser", status: "needs-backend" }),
-        item({ id: "forward", label: "Forward", origin: "browser", status: "needs-backend" }),
-        item({ id: "reload", label: "Reload", origin: "browser", status: "needs-backend" }),
+        item({ id: "back", label: "Back", origin: "browser", status: "built", note: "Dimmed without history" }),
+        item({ id: "forward", label: "Forward", origin: "browser", status: "built", note: "Dimmed without history" }),
+        item({ id: "reload", label: "Reload", origin: "browser", status: "built" }),
       ],
       [
         item({ id: "savePage", label: "Save Page As…", origin: "browser", status: "needs-backend" }),
@@ -275,7 +276,7 @@ export const MENU_CATALOG = {
       [
         item({ id: "pickColor", label: "Pick Color", origin: "designer", status: "needs-backend", note: "Eyedropper at the pointer; copies HEX / OKLCH" }),
         item({ id: "viewSource", label: "View Page Source", origin: "browser", status: "needs-backend" }),
-        item({ id: "inspect", label: "Inspect", origin: "browser", status: "needs-backend" }),
+        item({ id: "inspect", label: "Inspect", origin: "browser", status: "built", note: "Last in every page menu (WebView2's inspectElement)" }),
       ],
     ],
   },
@@ -286,12 +287,12 @@ export const MENU_CATALOG = {
     scope: "The link's address",
     groups: [
       [
-        item({ id: "openInNewTab", label: "Open Link in New Tab", origin: "browser", status: "needs-backend" }),
+        item({ id: "openInNewTab", label: "Open Link in New Tab", origin: "browser", status: "built", note: "A temp tab on top, not selected and not loaded until opened" }),
         item({ id: "openInSpace", label: "Open Link in Space", origin: "ezel", status: "needs-backend", submenu: ["<spaces>"] }),
         item({ id: "addToSwatches", label: "Add Link to Swatches", origin: "ezel", status: "needs-backend" }),
       ],
       [
-        item({ id: "copyLink", label: "Copy Link", origin: "browser", status: "needs-backend" }),
+        item({ id: "copyLink", label: "Copy Link", origin: "browser", status: "built" }),
         item({ id: "copyLinkText", label: "Copy Link Text", origin: "browser", status: "needs-backend" }),
       ],
     ],
@@ -302,12 +303,12 @@ export const MENU_CATALOG = {
     trigger: "Right-click an image on the page",
     scope: "That image",
     groups: [
-      [item({ id: "openInNewTab", label: "Open Image in New Tab", origin: "browser", status: "needs-backend" })],
+      [item({ id: "openInNewTab", label: "Open Image in New Tab", origin: "browser", status: "built" })],
       [
-        item({ id: "copyImage", label: "Copy Image", origin: "browser", status: "needs-backend" }),
-        item({ id: "copyImageAddress", label: "Copy Image Address", origin: "browser", status: "needs-backend" }),
+        item({ id: "copyImage", label: "Copy Image", origin: "browser", status: "built" }),
+        item({ id: "copyImageAddress", label: "Copy Image Address", origin: "browser", status: "built" }),
         item({ id: "copySvg", label: "Copy as SVG", origin: "designer", status: "needs-backend", when: "an inline or linked SVG" }),
-        item({ id: "saveImage", label: "Save Image As…", origin: "browser", status: "needs-backend" }),
+        item({ id: "saveImage", label: "Save Image As…", origin: "browser", status: "built", note: "WebView2's save dialog" }),
       ],
       [item({ id: "extractPalette", label: "Copy Palette", origin: "designer", status: "needs-backend", note: "Dominant colours of the image as swatch values" })],
     ],
@@ -319,10 +320,10 @@ export const MENU_CATALOG = {
     scope: "The selected text",
     groups: [
       [
-        item({ id: "copy", label: "Copy", origin: "browser", status: "needs-backend" }),
+        item({ id: "copy", label: "Copy", origin: "browser", status: "built" }),
         item({ id: "copyLinkToHighlight", label: "Copy Link to Highlight", origin: "browser", status: "needs-backend" }),
       ],
-      [item({ id: "search", label: "Search for “…”", origin: "browser", status: "needs-backend", uses: "open_tab(SEARCH_URL)" })],
+      [item({ id: "search", label: "Search for “…”", origin: "browser", status: "built", uses: "open_tab(SEARCH_URL)", note: "Shows the first 24 characters; opens and selects a new tab" })],
       [item({ id: "inspectType", label: "Inspect Typography", origin: "designer", status: "needs-backend", note: "Font family, weight, size, line height, letter spacing; copy as CSS" })],
     ],
   },
@@ -332,7 +333,7 @@ export const MENU_CATALOG = {
     trigger: "Right-click a text field on the page",
     scope: "The field's text",
     groups: [
-      [item({ id: "undo", label: "Undo", origin: "browser", status: "built" }), item({ id: "redo", label: "Redo", origin: "browser", status: "built" })],
+      [item({ id: "undo", label: "Undo", origin: "browser", status: "built", note: "Ezel's menu running WebView2's commands; dimmed when WebView2 says so" }), item({ id: "redo", label: "Redo", origin: "browser", status: "built" })],
       [
         item({ id: "cut", label: "Cut", origin: "browser", status: "built" }),
         item({ id: "copy", label: "Copy", origin: "browser", status: "built" }),

@@ -420,6 +420,16 @@ impl Model {
     (id, self.activate(id, now).expect("tab was just created"))
   }
 
+  /// A new temp tab on top of the active space that isn't selected or loaded ("Open Link in New
+  /// Tab": the page stays; the tab loads when it's opened, so it costs nothing until then).
+  pub fn open_background_tab(&mut self, url: String, now: u64) -> Id {
+    let id = self.alloc_id();
+    self.session.tabs.insert(id, new_tab(id, &url, now));
+    let space = self.session.active_space;
+    self.space_mut(space).expect("active space exists").temp.insert(0, id);
+    id
+  }
+
   /// [`Model::open_tab`] for a tab a page opens (`target=_blank`, `window.open`): marked so its
   /// webview may start at the page's own `blob:` URL.
   pub fn open_tab_from_page(&mut self, url: String, now: u64) -> (Id, Vec<Effect>) {
@@ -1082,6 +1092,17 @@ mod tests {
     assert_eq!(effects, vec![Effect::Show(Some(id))]);
     assert_eq!(m.active_space().temp[0], id);
     assert_eq!(m.active_tab(), Some(id));
+  }
+
+  #[test]
+  fn a_background_tab_waits_unloaded_on_top() {
+    let mut m = model();
+    let shown = m.active_tab().unwrap();
+    let id = m.open_background_tab("https://later.test/".into(), 1);
+    assert_eq!(m.active_space().temp[0], id);
+    assert_eq!(m.active_tab(), Some(shown), "the page stays");
+    assert!(!m.live.contains_key(&id), "loads only when opened");
+    assert_eq!(m.activate(id, 2).unwrap()[0], Effect::Show(Some(id)));
   }
 
   #[test]

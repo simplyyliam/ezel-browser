@@ -6,7 +6,7 @@
 use tauri::{AppHandle, Url};
 
 use super::{
-  browser, edit, layers::PageLayer, page_of, shown_webview, update, url_policy,
+  browser, edit, layers::PageLayer, page_menu::{self, PageMenuAction}, page_of, shown_webview, tab_webview, update, url_policy,
   model::{TabLocation, TsId},
   view::TabsState,
   PageChanged, SEARCH_URL,
@@ -54,6 +54,84 @@ pub async fn navigate(app: AppHandle, input: String) -> Result<()> {
     Some(webview) => Ok(webview.navigate(url)?),
     None => update(&app, |m, now| Ok(((), m.open_tab(url.to_string(), now).1))),
   }
+}
+
+/// The page menu's choice (`null`: it closed without one) for menu `id` (an older menu's answer is
+/// ignored: a new right-click already finished it). WebView2's own commands run on what was
+/// right-clicked; Ezel's act on the link, image or selection Rust kept from the request. Anything
+/// that wasn't offered is refused (`invalid_input`).
+#[tauri::command]
+#[specta::specta]
+pub async fn choose_page_menu_item(app: AppHandle, id: u32, action: Option<PageMenuAction>) -> Result<()> {
+  let open = {
+    let browser = browser(&app);
+    let mut menu = browser.menu.lock().unwrap();
+    if menu.as_ref().map(|m| m.id) != Some(id) {
+      return Ok(());
+    }
+    menu.take()
+  };
+  let Some(open) = open else { return Ok(()) };
+  let finish = |native: Option<&'static str>| {
+    #[cfg(windows)]
+    let _ = app.run_on_main_thread(move || crate::webview2::finish_menu(native));
+    #[cfg(not(windows))]
+    let _ = native;
+  };
+  let Some(action) = action else {
+    finish(None);
+    return Ok(());
+  };
+  if !page_menu::offered(&open.groups, action) {
+    finish(None);
+    return Err(AppError::invalid_input("that wasn't in the menu"));
+  }
+  let webview = tab_webview(&app, open.tab);
+  if let Some(name) = action.native_name() {
+    // Its own commands act where the page's focus is: give it back first.
+    if let Some(webview) = &webview {
+      let _ = webview.set_focus();
+    }
+    finish(Some(name));
+    return Ok(());
+  }
+  finish(None);
+  let target = open.target;
+  match action {
+    PageMenuAction::Back | PageMenuAction::Forward | PageMenuAction::Reload => {
+      let Some(webview) = webview else { return Ok(()) };
+      let _ = webview.set_focus();
+      match action {
+        PageMenuAction::Back => webview.eval("history.back()")?,
+        PageMenuAction::Forward => webview.eval("history.forward()")?,
+        _ => webview.reload()?,
+      }
+    }
+    PageMenuAction::OpenLinkInNewTab | PageMenuAction::OpenImageInNewTab => {
+      let url = if action == PageMenuAction::OpenLinkInNewTab { target.link } else { target.image };
+      let url = url.filter(|u| url_policy::is_allowed(u)).ok_or_else(|| AppError::invalid_input("only web addresses open in a tab"))?;
+      update(&app, |m, now| Ok(((), { m.open_background_tab(url, now); vec![] })))?;
+    }
+    PageMenuAction::CopyLink => {
+      let link = target.link.ok_or_else(|| AppError::invalid_input("no link"))?;
+      #[cfg(windows)]
+      crate::clipboard::set_text(&link).map_err(|e| AppError::internal(format!("clipboard: {e}")))?;
+      #[cfg(not(windows))]
+      let _ = link;
+    }
+    PageMenuAction::SearchSelection => {
+      let text: String = target.selection.unwrap_or_default().split_whitespace().collect::<Vec<_>>().join(" ");
+      let text: String = text.chars().take(page_menu::MAX_SEARCH).collect();
+      if text.is_empty() {
+        return Err(AppError::invalid_input("nothing selected"));
+      }
+      let url = Url::parse_with_params(SEARCH_URL, &[("q", text.as_str())]).map_err(|e| AppError::invalid_input(e.to_string()))?;
+      update(&app, |m, now| Ok(((), m.open_tab(url.to_string(), now).1)))?;
+    }
+    // Every other action has a native name (handled above).
+    _ => {}
+  }
+  Ok(())
 }
 
 /// The shown tab's page, so the UI can catch up on events emitted before it started listening.

@@ -41,6 +41,7 @@ pub fn specta_builder() -> tauri_specta::Builder<tauri::Wry> {
     .commands(collect_commands![
       navigate,
       get_page,
+      choose_page_menu_item,
       go_back,
       go_forward,
       reload,
@@ -93,6 +94,7 @@ pub fn specta_builder() -> tauri_specta::Builder<tauri::Wry> {
       hotkeys::HotkeyPressed,
       window_radius::WindowRadius,
       updater::UpdateStatus,
+      browser::page_menu::PageMenu,
     ])
 }
 

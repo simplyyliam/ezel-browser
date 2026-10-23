@@ -10,6 +10,13 @@ export const commands = {
 	navigate: (input: string) => typedError<null, AppError>(__TAURI_INVOKE("navigate", { input })),
 	/**  The shown tab's page, so the UI can catch up on events emitted before it started listening. */
 	getPage: () => typedError<PageChanged, AppError>(__TAURI_INVOKE("get_page")),
+	/**
+	 *  The page menu's choice (`null`: it closed without one) for menu `id` (an older menu's answer is
+	 *  ignored: a new right-click already finished it). WebView2's own commands run on what was
+	 *  right-clicked; Ezel's act on the link, image or selection Rust kept from the request. Anything
+	 *  that wasn't offered is refused (`invalid_input`).
+	 */
+	choosePageMenuItem: (id: number, action: "back" | "forward" | "reload" | "openLinkInNewTab" | "copyLink" | "openImageInNewTab" | "copyImage" | "copyImageAddress" | "saveImage" | "undo" | "redo" | "cut" | "copy" | "paste" | "pasteAsPlainText" | "selectAll" | "searchSelection" | "inspect" | null) => typedError<null, AppError>(__TAURI_INVOKE("choose_page_menu_item", { id, action })),
 	goBack: () => typedError<null, AppError>(__TAURI_INVOKE("go_back")),
 	goForward: () => typedError<null, AppError>(__TAURI_INVOKE("go_forward")),
 	reload: () => typedError<null, AppError>(__TAURI_INVOKE("reload")),
@@ -114,6 +121,7 @@ export const commands = {
 export const events = {
 	hotkeyPressed: makeEvent<HotkeyPressed>("hotkey-pressed"),
 	pageChanged: makeEvent<PageChanged>("page-changed"),
+	pageMenu: makeEvent<PageMenu>("page-menu"),
 	tabUpdated: makeEvent<Tab>("tab-updated"),
 	tabsChanged: makeEvent<TabsState>("tabs-changed"),
 	updateStatus: makeEvent<UpdateStatus>("update-status"),
@@ -219,6 +227,27 @@ export type PageLayer =
 "squint" | 
 /**  Removes colour: does the design still work without it? */
 "greyscale";
+
+/**  Payload of "page-menu": open Ezel's menu at this window point (logical px). */
+export type PageMenu = {
+	/**  Which right-click this is: the choice names it, so a late answer for an older menu is ignored. */
+	id: number,
+	x: number,
+	y: number,
+	groups: PageMenuEntry[][],
+	/**  The selected text, shortened, for "Search for “…”". Shown as text only. */
+	selection: string | null,
+};
+
+/**  One entry of the page menu. */
+export type PageMenuAction = "back" | "forward" | "reload" | "openLinkInNewTab" | "copyLink" | "openImageInNewTab" | "copyImage" | "copyImageAddress" | "saveImage" | "undo" | "redo" | "cut" | "copy" | "paste" | "pasteAsPlainText" | "selectAll" | "searchSelection" | "inspect";
+
+/**  An entry as the UI shows it. */
+export type PageMenuEntry = {
+	action: PageMenuAction,
+	/**  Dimmed when false (Paste with an empty clipboard, Back without history). */
+	enabled: boolean,
+};
 
 /**  The shown page's connection, as the titlebar's lock shows it. */
 export type PageSecurity = 
