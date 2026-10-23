@@ -827,19 +827,47 @@ impl Model {
     Ok(())
   }
 
-  /// Deletes a space and all its tabs. The last space can't be deleted.
-  pub fn delete_space(&mut self, id: Id, now: u64) -> Result<Vec<Effect>> {
+  /// Deletes a space. `move_to`: its folders, pinned and temp tabs go to the end of that space's
+  /// lists (and it shows the tab the deleted one showed, if that was the shown space); otherwise
+  /// its tabs close (onto the closed-tab stack). The last space can't be deleted.
+  pub fn delete_space(&mut self, id: Id, move_to: Option<Id>, now: u64) -> Result<Vec<Effect>> {
     if self.session.spaces.len() == 1 {
       return Err(AppError::new(ErrorCode::LastSpace, "can't delete the last space"));
     }
     let index = self.session.spaces.iter().position(|s| s.id == id).ok_or_else(|| AppError::not_found(format!("space {id} not found")))?;
+    if let Some(to) = move_to {
+      if to == id {
+        return Err(AppError::invalid_input("a space's tabs can't move into itself"));
+      }
+      self.space(to)?;
+    }
+    let was_active = self.session.active_space == id;
+    if let Some(to) = move_to {
+      let space = self.session.spaces.remove(index);
+      let target = self.space_mut(to).expect("checked above");
+      target.pinned.extend(space.pinned);
+      target.temp.extend(space.temp);
+      if !was_active {
+        return Ok(vec![]);
+      }
+      return match space.active_tab {
+        Some(tab) => self.activate(tab, now),
+        None => self.switch_space(to, now),
+      };
+    }
     let mut effects = vec![];
-    if self.session.active_space == id {
+    if was_active {
       let neighbour = self.session.spaces[if index == 0 { 1 } else { index - 1 }].id;
       effects.extend(self.switch_space(neighbour, now)?);
     }
-    let space = self.session.spaces.remove(index);
-    for tab in Self::space_tabs(&space) {
+    let tabs: Vec<Id> = Self::space_tabs(self.space(id)?).collect();
+    for tab in &tabs {
+      if let Some(location) = self.locate(*tab) {
+        self.remember_closed(*tab, location);
+      }
+    }
+    self.session.spaces.retain(|s| s.id != id);
+    for tab in tabs {
       self.session.tabs.remove(&tab);
       if self.live.remove(&tab).is_some() {
         effects.push(Effect::Destroy(tab));
@@ -1246,10 +1274,55 @@ b", &"x".repeat(MAX_FOLDER_NAME + 1)] {
     assert!(matches!(m.locate(work_tab), Some(TabLocation::Temp { space_id, .. }) if space_id == work));
     assert_eq!(m.switch_space(home, 3).unwrap(), vec![Effect::Show(Some(home_tab))]);
 
-    let effects = m.delete_space(home, 4).unwrap();
+    let effects = m.delete_space(home, None, 4).unwrap();
     assert!(effects.contains(&Effect::Show(Some(work_tab))));
     assert!(effects.contains(&Effect::Destroy(home_tab)));
-    assert!(m.delete_space(work, 5).is_err());
+    assert_eq!(m.delete_space(work, None, 5).unwrap_err().code, ErrorCode::LastSpace);
+    assert_eq!(m.session.closed.last().map(|c| c.url.as_str()), Some(HOME), "closed tabs can come back");
+  }
+
+  #[test]
+  fn deleting_a_space_can_move_its_tabs() {
+    let mut m = model();
+    let home = space(&m);
+    let home_temp = m.active_tab().unwrap();
+    let (home_pinned, _) = m.open_tab("https://p.test/".into(), 1);
+    m.move_tab(home_pinned, TabLocation::Pinned { space_id: home, folder_id: None, index: None }).unwrap();
+    let folder = m.create_folder(home, "F".into(), None).unwrap();
+    m.activate(home_temp, 2).unwrap();
+    let work = m.create_space("Work".into(), "hammer".into());
+    m.switch_space(work, 3).unwrap();
+    let (work_tab, _) = m.open_tab("https://w.test/".into(), 4);
+    m.move_tab(work_tab, TabLocation::Pinned { space_id: work, folder_id: None, index: None }).unwrap();
+    m.switch_space(home, 5).unwrap();
+
+    // The shown space goes; its things land at the end of Work's lists, and its tab stays on screen.
+    let effects = m.delete_space(home, Some(work), 6).unwrap();
+    assert_eq!(effects.first(), Some(&Effect::Show(Some(home_temp))));
+    assert!(!effects.iter().any(|e| matches!(e, Effect::Destroy(_))), "nothing closes");
+    assert_eq!(m.session.active_space, work);
+    assert_eq!(m.active_tab(), Some(home_temp));
+    let w = m.active_space();
+    assert_eq!(w.pinned.len(), 3);
+    assert_eq!(w.pinned[0], Pinned::Tab { id: work_tab });
+    assert_eq!(w.pinned[1], Pinned::Tab { id: home_pinned });
+    assert!(matches!(&w.pinned[2], Pinned::Folder(f) if f.id == folder));
+    assert_eq!(w.temp, vec![home_temp]);
+    assert_eq!(m.session.tabs.len(), 3);
+  }
+
+  #[test]
+  fn deleting_a_space_refuses_bad_targets() {
+    let mut m = model();
+    let home = space(&m);
+    let work = m.create_space("Work".into(), "hammer".into());
+    assert_eq!(m.delete_space(home, Some(home), 1).unwrap_err().code, ErrorCode::InvalidInput);
+    assert_eq!(m.delete_space(home, Some(999), 1).unwrap_err().code, ErrorCode::NotFound);
+    assert_eq!(m.session.spaces.len(), 2, "nothing deleted");
+    // A background space moves quietly: the shown tab stays.
+    let shown = m.active_tab();
+    assert_eq!(m.delete_space(work, Some(home), 2).unwrap(), vec![]);
+    assert_eq!(m.active_tab(), shown);
   }
 
   #[test]
@@ -1420,7 +1493,7 @@ b", &"x".repeat(MAX_FOLDER_NAME + 1)] {
 
     m.remove_tab(back, 4).unwrap();
     m.switch_space(home, 5).unwrap();
-    m.delete_space(work, 6).unwrap();
+    m.delete_space(work, None, 6).unwrap();
     let (again, _) = m.reopen_closed_tab(7).unwrap().unwrap();
     assert!(matches!(m.locate(again), Some(TabLocation::Pinned { space_id, .. }) if space_id == home), "space gone: the active space");
 

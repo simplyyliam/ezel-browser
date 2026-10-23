@@ -9,6 +9,7 @@
     "allow-go-back",
     "allow-go-forward",
     "allow-reload",
+    "allow-reload-tab",
     "allow-hard-reload",
     "allow-stop-loading",
     "allow-open-devtools",

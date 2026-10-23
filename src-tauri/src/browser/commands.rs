@@ -83,6 +83,18 @@ pub fn reload(app: AppHandle) -> Result<()> {
   Ok(shown(&app)?.reload()?)
 }
 
+/// Reloads any loaded tab (its menu's Reload Tab), shown or not. An unloaded tab has no page to
+/// reload: nothing happens (`not_found` if the tab doesn't exist).
+#[tauri::command]
+#[specta::specta]
+pub fn reload_tab(app: AppHandle, id: TsId) -> Result<()> {
+  browser(&app).model.lock().unwrap().tab(id.0)?;
+  match super::tab_webview(&app, id.0) {
+    Some(webview) => Ok(webview.reload()?),
+    None => Ok(()),
+  }
+}
+
 /// Runs a WebView2 call on the shown tab (on the main thread, with a live controller).
 #[cfg(windows)]
 fn with_shown_webview2(app: &AppHandle, f: fn(&tauri::webview::PlatformWebview)) -> Result<()> {
@@ -330,11 +342,12 @@ pub async fn move_space(app: AppHandle, id: TsId, index: u32) -> Result<()> {
   edit(&app, |m| m.move_space(id.0, index as usize))
 }
 
-/// Deletes a space and its tabs. The last space can't be deleted.
+/// Deletes a space: its tabs and folders move to `move_to`'s lists, or close with it. The last
+/// space can't be deleted.
 #[tauri::command]
 #[specta::specta]
-pub async fn delete_space(app: AppHandle, id: TsId) -> Result<()> {
-  update(&app, |m, now| Ok(((), m.delete_space(id.0, now)?)))
+pub async fn delete_space(app: AppHandle, id: TsId, move_to: Option<TsId>) -> Result<()> {
+  update(&app, |m, now| Ok(((), m.delete_space(id.0, move_to.map(|t| t.0), now)?)))
 }
 
 /// Selects a space; it shows the tab it showed last.

@@ -60,7 +60,6 @@ export function tabMenu(tabId: Id, { tabs, activeSpaceId, onEdit, onOpened, onFo
   const { tab, place } = found
   const area = place.kind === "swatch" ? "swatch" : "tab"
   const temp = place.kind === "temp" ? place : null
-  const shown = tab.id === tabs.activeTabId
   const swatchCount = swatchOrder(tabs.swatches).length
 
   /** A new temp tab right below a temp tab; otherwise on top of the temp tabs, the first place below. */
@@ -87,9 +86,9 @@ export function tabMenu(tabId: Id, { tabs, activeSpaceId, onEdit, onOpened, onFo
         ]
       : []),
     { label: menuLabel(area, "duplicate"), onSelect: run("duplicate tab", () => openBelow(tab.url)) },
-    // `reload` acts on the shown tab only.
-    ...(shown && tab.isLoaded
-      ? [{ label: menuLabel(area, "reload"), onSelect: run("reload", () => unwrap("reload", commands.reload())) }]
+    // Any loaded tab, shown or in the background (an unloaded one reloads when it's opened).
+    ...(tab.isLoaded
+      ? [{ label: menuLabel(area, "reload"), onSelect: run("reload tab", () => unwrap("reload tab", commands.reloadTab(tab.id))) }]
       : []),
     // Only while there's sound to silence, or a mute to undo (HIG: toggles name their next state).
     ...(tab.isPlayingAudio || tab.isMuted
