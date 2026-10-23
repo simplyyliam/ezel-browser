@@ -11,6 +11,7 @@
 //! touching a webview, because webview events lock `model` on the main thread.
 
 pub mod commands;
+pub mod downloads;
 pub mod layers;
 pub mod memory;
 mod model;
@@ -68,6 +69,8 @@ pub struct Browser {
   unpainted: Mutex<HashSet<Id>>,
   /// The page menu on screen: which tab, what was right-clicked, what it offers.
   menu: Mutex<Option<OpenMenu>>,
+  /// This session's downloads (memory only).
+  downloads: Mutex<downloads::Downloads>,
   store: store::Store,
 }
 
@@ -234,6 +237,7 @@ pub fn init(app: &AppHandle) -> tauri::Result<()> {
     shown: Mutex::new(None),
     unpainted: Mutex::new(HashSet::new()),
     menu: Mutex::new(None),
+    downloads: Mutex::new(downloads::Downloads::default()),
     store: store::Store::new(dir),
   });
   if let Err(e) = update(app, |m, now| Ok(((), m.restore(now)))) {
@@ -501,6 +505,37 @@ fn certificate_error(app: &AppHandle, id: Id, request: &str) {
   }
 }
 
+/// A download began in any tab: it joins Ezel's list.
+#[cfg(windows)]
+fn download_started(app: &AppHandle, path: String, total: Option<u64>) -> u32 {
+  let browser = browser(app);
+  let mut list = browser.downloads.lock().unwrap();
+  let id = list.start(std::path::PathBuf::from(path), total, now());
+  emit_to_ui(app, &list.view());
+  id
+}
+
+#[cfg(windows)]
+fn download_event(app: &AppHandle, id: u32, event: crate::webview2::DownloadEvent) {
+  use crate::webview2::DownloadEvent;
+  let browser = browser(app);
+  let mut list = browser.downloads.lock().unwrap();
+  let changed = match event {
+    DownloadEvent::Progress { received, total } => list.progress(id, received, total, now()),
+    DownloadEvent::Ended { completed, cancelled, path } => {
+      let state = match (completed, cancelled) {
+        (true, _) => downloads::DownloadState::Completed,
+        (false, true) => downloads::DownloadState::Cancelled,
+        (false, false) => downloads::DownloadState::Failed,
+      };
+      list.finish(id, state, Some(path).filter(|p| !p.is_empty()).map(std::path::PathBuf::from))
+    }
+  };
+  if changed {
+    emit_to_ui(app, &list.view());
+  }
+}
+
 /// A right-click in a tab's page: Ezel's menu opens at that point (the UI draws it and takes
 /// focus for it). WebView2 waits until `choose_page_menu_item`.
 #[cfg(windows)]
@@ -642,6 +677,8 @@ fn watch_platform_events(webview: &Webview, id: Id) {
       webview2::on_certificate_error(&pw, move |request| certificate_error(&a, id, &request));
       let a = app.clone();
       webview2::on_context_menu(&pw, move |request| page_menu_requested(&a, id, request));
+      let (a, b) = (app.clone(), app.clone());
+      webview2::on_download_starting(&pw, move |path, total| download_started(&a, path, total), move |id, event| download_event(&b, id, event));
       let a = app.clone();
       webview2::on_find_changed(&pw, move |active, count| {
         if *browser(&a).shown.lock().unwrap() == Some(id) {

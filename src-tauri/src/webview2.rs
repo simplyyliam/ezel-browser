@@ -7,13 +7,16 @@ use std::cell::RefCell;
 
 use crate::{browser::page_menu::MenuTarget, hotkeys::KeyPress};
 use webview2_com::{
-  take_pwstr, AcceleratorKeyPressedEventHandler, CallDevToolsProtocolMethodCompletedHandler, ContextMenuRequestedEventHandler,
+  take_pwstr, AcceleratorKeyPressedEventHandler, BytesReceivedChangedEventHandler, CallDevToolsProtocolMethodCompletedHandler,
+  ContextMenuRequestedEventHandler, DownloadStartingEventHandler, StateChangedEventHandler,
   FaviconChangedEventHandler, FindActiveMatchIndexChangedEventHandler, FindMatchCountChangedEventHandler, FindStartCompletedHandler,
   IsDocumentPlayingAudioChangedEventHandler,
   GetProcessExtendedInfosCompletedHandler, PermissionRequestedEventHandler, ServerCertificateErrorDetectedEventHandler, TrySuspendCompletedHandler,
   WindowCloseRequestedEventHandler,
   Microsoft::Web::WebView2::Win32::{
-    ICoreWebView2, ICoreWebView2ContextMenuRequestedEventArgs, ICoreWebView2Deferral, ICoreWebView2Environment13,
+    ICoreWebView2, ICoreWebView2ContextMenuRequestedEventArgs, ICoreWebView2Deferral, ICoreWebView2DownloadOperation,
+    ICoreWebView2Environment13, ICoreWebView2_4, COREWEBVIEW2_DOWNLOAD_INTERRUPT_REASON, COREWEBVIEW2_DOWNLOAD_INTERRUPT_REASON_USER_CANCELED,
+    COREWEBVIEW2_DOWNLOAD_STATE, COREWEBVIEW2_DOWNLOAD_STATE_COMPLETED, COREWEBVIEW2_DOWNLOAD_STATE_IN_PROGRESS,
     ICoreWebView2Environment15, ICoreWebView2Find, ICoreWebView2FrameInfo2, ICoreWebView2PermissionRequestedEventArgs3,
     ICoreWebView2_11, ICoreWebView2_28,
     COREWEBVIEW2_CONTEXT_MENU_TARGET_KIND, COREWEBVIEW2_CONTEXT_MENU_TARGET_KIND_IMAGE,
@@ -189,6 +192,103 @@ pub fn on_find_changed(pw: &PlatformWebview, f: impl Fn(i32, i32) + 'static) {
   unsafe {
     let _ = session.add_MatchCountChanged(&count_handler, &mut token);
     let _ = session.add_ActiveMatchIndexChanged(&index_handler, &mut token);
+  }
+}
+
+/// What a download reports: where it's saved, how far it got, how it ended.
+pub enum DownloadEvent {
+  Progress { received: u64, total: Option<u64> },
+  /// `cancelled`: by the user; otherwise it completed (`completed`) or failed.
+  Ended { completed: bool, cancelled: bool, path: String },
+}
+
+thread_local! {
+  /// Running downloads' operations by Ezel's id: kept alive (their events need them) and
+  /// cancellable from a command. Main thread only, like every COM object.
+  static DOWNLOADS: RefCell<std::collections::HashMap<u32, ICoreWebView2DownloadOperation>> = RefCell::new(Default::default());
+}
+
+/// A size WebView2 reports: -1 (or less) is unknown.
+fn bytes(value: i64) -> Option<u64> {
+  u64::try_from(value).ok()
+}
+
+/// Downloads start in Ezel's list instead of WebView2's flyout (`Handled`). `start(path, total)`
+/// returns Ezel's id for it; `event(id, …)` then hears its progress and its end. The file goes
+/// where WebView2 puts it (the Downloads folder unless the page's Save As picked one).
+pub fn on_download_starting(
+  pw: &PlatformWebview,
+  start: impl Fn(String, Option<u64>) -> u32 + 'static,
+  event: impl Fn(u32, DownloadEvent) + 'static,
+) {
+  let Some(core) = core(pw).and_then(|c| c.cast::<ICoreWebView2_4>().ok()) else { return };
+  let event = std::rc::Rc::new(event);
+  let handler = DownloadStartingEventHandler::create(Box::new(move |_, args| {
+    let Some(args) = args else { return Ok(()) };
+    // SAFETY: WebView2 calls this on the main thread with live args; the operation is kept in
+    // DOWNLOADS for as long as its handlers may run; take_pwstr frees every string.
+    unsafe {
+      args.SetHandled(true)?;
+      let operation = args.DownloadOperation()?;
+      let mut path = PWSTR::null();
+      args.ResultFilePath(&mut path)?;
+      let mut total = -1i64;
+      let _ = operation.TotalBytesToReceive(&mut total);
+      let id = start(take_pwstr(path), bytes(total));
+
+      let on_bytes = event.clone();
+      let progress = BytesReceivedChangedEventHandler::create(Box::new(move |sender, _| {
+        if let Some(op) = sender {
+          let (mut received, mut total) = (0i64, -1i64);
+          let _ = op.BytesReceived(&mut received);
+          let _ = op.TotalBytesToReceive(&mut total);
+          on_bytes(id, DownloadEvent::Progress { received: bytes(received).unwrap_or(0), total: bytes(total) });
+        }
+        Ok(())
+      }));
+      let on_state = event.clone();
+      let state = StateChangedEventHandler::create(Box::new(move |sender, _| {
+        let Some(op) = sender else { return Ok(()) };
+        let mut state = COREWEBVIEW2_DOWNLOAD_STATE::default();
+        op.State(&mut state)?;
+        if state == COREWEBVIEW2_DOWNLOAD_STATE_IN_PROGRESS {
+          return Ok(());
+        }
+        let mut reason = COREWEBVIEW2_DOWNLOAD_INTERRUPT_REASON::default();
+        let _ = op.InterruptReason(&mut reason);
+        let mut path = PWSTR::null();
+        let path = op.ResultFilePath(&mut path).map(|_| take_pwstr(path)).unwrap_or_default();
+        on_state(id, DownloadEvent::Ended {
+          completed: state == COREWEBVIEW2_DOWNLOAD_STATE_COMPLETED,
+          cancelled: reason == COREWEBVIEW2_DOWNLOAD_INTERRUPT_REASON_USER_CANCELED,
+          path,
+        });
+        // Done: let the operation go once this handler has returned (it's still the sender here).
+        DOWNLOADS.with(|d| d.borrow_mut().remove(&id));
+        Ok(())
+      }));
+      let mut token = 0i64;
+      let _ = operation.add_BytesReceivedChanged(&progress, &mut token);
+      let _ = operation.add_StateChanged(&state, &mut token);
+      DOWNLOADS.with(|d| d.borrow_mut().insert(id, operation));
+    }
+    Ok(())
+  }));
+  let mut token = 0i64;
+  // SAFETY: main thread, live webview.
+  unsafe {
+    let _ = core.add_DownloadStarting(&handler, &mut token);
+  }
+}
+
+/// Cancels a running download (main thread). A no-op once it has ended.
+pub fn cancel_download(id: u32) {
+  let operation = DOWNLOADS.with(|d| d.borrow().get(&id).cloned());
+  if let Some(operation) = operation {
+    // SAFETY: main thread; the clone keeps the operation alive for the call.
+    unsafe {
+      let _ = operation.Cancel();
+    }
   }
 }
 
