@@ -25,8 +25,9 @@ pub type Id = u64;
 #[serde(transparent, rename = "Id")]
 pub struct TsId(#[specta(type = u32)] pub Id);
 
-/// Swatches (Zen's essentials, Arc's favorites): a global grid shared by every space.
-pub const SWATCH_SLOTS: usize = 8;
+/// Swatches (Zen's essentials, Arc's favorites): a global grid shared by every space. 12, Zen's limit
+/// (8 before v0.3.0: older session files have 8 slots, see [`swatch_slots`]).
+pub const SWATCH_SLOTS: usize = 12;
 
 /// Most loaded webviews kept at once, the active one included. Beyond this the least recently used
 /// background tabs are unloaded (they keep their place and reload when selected). 5, down from 8:
@@ -106,11 +107,24 @@ pub struct Session {
   pub next_id: Id,
   pub spaces: Vec<Space>,
   pub active_space: Id,
+  #[serde(deserialize_with = "swatch_slots")]
   pub swatches: [Option<Id>; SWATCH_SLOTS],
   pub tabs: HashMap<Id, Tab>,
   /// Recently closed tabs, the most recent last. Added after version 1 shipped: older files have none.
   #[serde(default)]
   pub closed: Vec<ClosedTab>,
+}
+
+/// Reads the swatch slots of any session file: fewer than [`SWATCH_SLOTS`] (older files had 8) are
+/// padded with empty slots; more are refused, so the file is set aside rather than losing tabs.
+fn swatch_slots<'de, D: serde::Deserializer<'de>>(de: D) -> std::result::Result<[Option<Id>; SWATCH_SLOTS], D::Error> {
+  let slots = Vec::<Option<Id>>::deserialize(de)?;
+  if slots.len() > SWATCH_SLOTS {
+    return Err(serde::de::Error::invalid_length(slots.len(), &"at most SWATCH_SLOTS swatches"));
+  }
+  let mut out = [None; SWATCH_SLOTS];
+  out[..slots.len()].copy_from_slice(&slots);
+  Ok(out)
 }
 
 /// A removed tab, kept so it can be reopened where it was.
@@ -1622,6 +1636,21 @@ b", &"x".repeat(MAX_FOLDER_NAME + 1)] {
     value.as_object_mut().unwrap().remove("closed");
     let old: Session = serde_json::from_value(value).unwrap();
     assert!(old.closed.is_empty(), "a file from before the stack existed");
+  }
+
+  #[test]
+  fn sessions_with_eight_swatch_slots_still_load_and_too_many_are_refused() {
+    let (mut m, a, b, _) = three_tabs();
+    m.move_tab(a, TabLocation::Swatch { slot: 0 }).unwrap();
+    m.move_tab(b, TabLocation::Swatch { slot: 7 }).unwrap();
+    let mut value = serde_json::to_value(&m.session).unwrap();
+    let slots = value["swatches"].as_array_mut().unwrap();
+    slots.truncate(8);
+    let old: Session = serde_json::from_value(value.clone()).unwrap();
+    assert_eq!(old.swatches, m.session.swatches, "padded to SWATCH_SLOTS, tabs in their slots");
+
+    value["swatches"] = serde_json::json!(vec![serde_json::Value::Null; SWATCH_SLOTS + 1]);
+    assert!(serde_json::from_value::<Session>(value).is_err(), "never drops a slot");
   }
 
   #[test]

@@ -34,7 +34,7 @@ Quiet defaults (`docs/design/decisions.md`, "Quiet defaults"): no password savin
 ### Tabs backend (`src-tauri/src/browser/`)
 Studied from Zen (workspaces, pinned tabs, folders, essentials, session store) and Arc (spaces, pinned/today tabs, favorites); see `docs/design/decisions.md`, "Tabs, folders and spaces".
 - `model.rs`: pure data + rules, no Tauri. Operations return `Effect`s (show / destroy / navigate) that `mod.rs` applies to webviews. Unit-tested (`cargo test`).
-- Spaces each hold `pinned` items (tabs and one-level folders) and `temp` tabs (newest first), and remember their own shown tab. Swatches: 8 global slots shared by every space.
+- Spaces each hold `pinned` items (tabs and one-level folders) and `temp` tabs (newest first), and remember their own shown tab. Swatches: 12 global slots (Zen's limit; `SWATCH_SLOTS`) shared by every space. Session files from before v0.3.0 have 8 and are padded on load (`swatch_slots`).
 - Memory (see Performance): a webview exists only for loaded tabs. Restored tabs stay unloaded until selected; at most `MAX_LOADED_TABS` (5) stay loaded, least recently used unloaded first; background tabs idle `IDLE_UNLOAD_MS` (5 min) are unloaded (checked every 15s); background tabs hidden `SUSPEND_AFTER_MS` (30s) are frozen with WebView2 `TrySuspend` and resumed when shown; tabs playing audio and dev tabs (`is_dev_url`: `localhost`, `127.0.0.1`, `[::1]`, `*.localhost`, any port) are never auto-unloaded or frozen (only by hand); hidden webviews get WebView2's low memory target.
 - Persistence (`store.rs`): `<app data>/ezel/session.json`, debounced 1s, atomic write with a `.bak` fallback, flushed on exit. Unreadable files are moved aside, never overwritten.
 - Threading: commands that may load a tab are `async` (creating a webview from the main thread's sync command/event handlers deadlocks on Windows). Never hold the model lock while calling a webview API.
@@ -95,7 +95,7 @@ Commands (`invoke`):
 - `get_window_radius()` → `{ radius: number | null, customized: boolean }`: the corner radius Windows 11 actually draws for the window, logical px. Without the Windhawk "Custom Window Corner Radius" mod: 8, or 0 when fullscreen/maximized/snapped. With it (`customized: true`): the mod's radius, or 0 where it leaves windows square. `radius: null` = unknown (not Windows): keep the UI's default radii. The UI sets `--radius-frame` to `radius − 4` (frame padding).
 
 Tab commands (ids are numbers; every change also emits `tabs-changed`):
-- `get_tabs()` → `TabsState`: `{ activeSpaceId, activeTabId | null, closedCount, recentlyClosed: { url, title | null, favicon | null }[] (the last 5, newest first), swatches: (TabView | null)[8], spaces: { id, name, icon, items: ({kind:"tab", tab} | {kind:"folder", folder:{ id, name, collapsed, tabs }})[], tempTabs }[] }`. `TabView`: `{ id, url, title | null, favicon | null, pinnedUrl | null, isLoaded, isLoading, isPlayingAudio, isMuted, isDev, layers }`. `icon` is a lucide icon name.
+- `get_tabs()` → `TabsState`: `{ activeSpaceId, activeTabId | null, closedCount, recentlyClosed: { url, title | null, favicon | null }[] (the last 5, newest first), swatches: (TabView | null)[12], spaces: { id, name, icon, items: ({kind:"tab", tab} | {kind:"folder", folder:{ id, name, collapsed, tabs }})[], tempTabs }[] }`. `TabView`: `{ id, url, title | null, favicon | null, pinnedUrl | null, isLoaded, isLoading, isPlayingAudio, isMuted, isDev, layers }`. `icon` is a lucide icon name.
 - `open_tab(input?: string)` → id: new temp tab on top of the active space, selected (home page without input). Links opened in a new window (`target=_blank`) do the same; sized popups (OAuth) open in a small window of Ezel's own (`browser/popup.rs`, label `popup-<n>`, no IPC, same environment so `window.opener` works) titled with its domain first (`site::popup_title`); `window.close()` closes it.
 - `cycle_tab(backward)`: Ctrl+Tab / Ctrl+Shift+Tab. The active space's next tab in most-recently-used order (`model.rs`, `CYCLE_WINDOW_MS`): presses within 1.2s walk deeper into one frozen order (Ctrl "held"; the website's key-ups never reach us), after a pause it returns to the previous tab. Swatches aren't in the walk, but a shown swatch starts it.
 - `reopen_closed_tab()` → id | null: Ctrl+Shift+T. Pops the closed-tab stack (`session.closed`, newest last, max `MAX_CLOSED_TABS` = 25, persisted in session.json) and puts the tab back in its space, folder or swatch slot at its old index (clamped to the end); a folder that's gone → the end of its space's pinned list, a space that's gone → the active space, a full swatch grid → top of the active space's temp tabs. Selected. A tab goes on the stack when it's removed (temp close, `remove_tab`, trash-all, top tab reopened first); closing a pinned tab or swatch only unloads it, so it doesn't.
@@ -176,7 +176,7 @@ Zen's behaviour, rebuilt on dnd-kit (HTML5 drag events are swallowed by Tauri on
 - dnd-kit fills `active.rect` only after `onDragStart`; measure the source with `tabDragNode(id)` instead.
 
 ### Rules for the tabs step
-- The top grid is called **Swatches** (max 8). It shows only the swatches there are (no empty slots), in slot order; it's hidden while there are none. Tabs join by "Add to Swatches" or by dragging onto the grid once it has some.
+- The top grid is called **Swatches** (max 12, 4 per row). It shows only the swatches there are (no empty slots), in slot order; it's hidden while there are none. Tabs join by "Add to Swatches" or by dragging onto the grid once it has some.
 - Temp tabs and pinned tabs both survive an app restart.
 - Closing a temp tab removes it immediately.
 - Closing a pinned tab only unloads the site; the pinned tab stays in its space and can be reopened.
@@ -200,7 +200,7 @@ Every app shortcut is in `shared/hotkeys.ts` (`HOTKEYS`: id, label, default keys
   - Ctrl+T new tab palette (`newTab`), Ctrl+L change address (`editAddress`), Ctrl+K the same palette on the shown tab, for commands (`commandPalette`; Chrome's Ctrl+K), Ctrl+B toggle sidebar (`toggleSidebar`)
   - Ctrl+W close the shown tab (`closeTab`; pinned tabs and swatches unload, like their close button)
   - Ctrl+Tab / Ctrl+Shift+Tab recent tabs of the space (`nextTab` / `previousTab`, `cycle_tab`)
-  - Ctrl+1…8 the n-th swatch as the grid shows it (`swatch1`…`swatch8`); Ctrl+9 the space's bottom row (`lastTab`)
+  - Ctrl+1…8 the n-th swatch as the grid shows it (`swatch1`…`swatch8`; swatches 9–12 have no shortcut, as in Zen); Ctrl+9 the space's bottom row (`lastTab`)
   - Ctrl+R or F5 reload (`reload`), Ctrl+Shift+R reload without cache (`hardReload`)
   - Alt+← / Alt+→ back / forward (`back` / `forward`), Esc stop loading (`stopLoading`, `whileLoading`)
   - F12 or Ctrl+Shift+I the page's DevTools (`devTools`)

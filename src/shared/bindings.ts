@@ -451,7 +451,7 @@ export type TabMemory = {
 export type TabsState = {
 	activeSpaceId: Id,
 	activeTabId: Id | null,
-	/**  Always `SWATCH_SLOTS` (8) long. */
+	/**  Always `SWATCH_SLOTS` (12) long. */
 	swatches: Swatch[],
 	spaces: Space[],
 	/**  How many closed tabs "Reopen Closed Tab" can bring back (0 hides it). */

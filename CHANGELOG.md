@@ -23,6 +23,7 @@ Everyday and safe: folders, full right-click menus, find, downloads and error pa
 - **Automatic updates.** Ezel checks for a new version when it starts and once a day, downloads it quietly and shows "Update ready" at the bottom of the sidebar. Nothing restarts until you click it.
 
 ### Changed
+- **Swatches hold up to 12 sites** (was 8), like Zen's Essentials: three rows of four. Ctrl+1–8 still reach the first eight.
 - **Every sidebar right-click menu is complete**, and menus always stay inside the sidebar. Reload works on any loaded tab, not just the one on screen.
 - **Deleting a space asks what to do with its tabs**: move them to another space, or close them (closed tabs can still be reopened with Ctrl+Shift+T). Empty spaces and folders go without a question.
 - **Sign-in pop-ups** ("Sign in with Google") open in a small Ezel window whose title starts with the site's domain, so you can see who's asking.
