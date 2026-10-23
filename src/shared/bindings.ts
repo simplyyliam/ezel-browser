@@ -87,6 +87,12 @@ export const commands = {
 	switchSpace: (id: Id) => typedError<null, AppError>(__TAURI_INVOKE("switch_space", { id })),
 	/**  Replaces the shortcuts caught in the tab webviews (existing ones too: the list is read per key). */
 	setForwardedHotkeys: (hotkeys: ForwardedHotkey[]) => typedError<null, AppError>(__TAURI_INVOKE("set_forwarded_hotkeys", { hotkeys })),
+	getUpdateStatus: () => typedError<UpdateStatus, AppError>(__TAURI_INVOKE("get_update_status")),
+	/**
+	 *  Installs the downloaded update and restarts Ezel (the note's button). On Windows the installer
+	 *  takes over: the session is saved first, then Ezel exits and the installer starts it again.
+	 */
+	installUpdate: () => typedError<null, AppError>(__TAURI_INVOKE("install_update")),
 };
 
 /** Events */
@@ -95,6 +101,7 @@ export const events = {
 	pageChanged: makeEvent<PageChanged>("page-changed"),
 	tabUpdated: makeEvent<Tab>("tab-updated"),
 	tabsChanged: makeEvent<TabsState>("tabs-changed"),
+	updateStatus: makeEvent<UpdateStatus>("update-status"),
 	windowRadiusChanged: makeEvent<WindowRadius>("window-radius-changed"),
 };
 
@@ -256,6 +263,14 @@ export type TabsState = {
 	spaces: Space[],
 	/**  How many closed tabs "Reopen Closed Tab" can bring back (0 hides it). */
 	closedCount: number,
+};
+
+/**
+ *  Payload of "update-status" and `get_update_status`: the version downloaded and waiting for a
+ *  restart, or `null`.
+ */
+export type UpdateStatus = {
+	readyVersion: string | null,
 };
 
 /**

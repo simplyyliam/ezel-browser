@@ -4,6 +4,7 @@ mod clipboard;
 mod content;
 mod error;
 mod hotkeys;
+mod updater;
 #[cfg(windows)]
 mod webview2;
 mod window_radius;
@@ -79,6 +80,8 @@ pub fn specta_builder() -> tauri_specta::Builder<tauri::Wry> {
       delete_space,
       switch_space,
       set_forwarded_hotkeys,
+      updater::get_update_status,
+      updater::install_update,
     ])
     .events(collect_events![
       browser::PageChanged,
@@ -86,6 +89,7 @@ pub fn specta_builder() -> tauri_specta::Builder<tauri::Wry> {
       browser::TabView,
       hotkeys::HotkeyPressed,
       window_radius::WindowRadius,
+      updater::UpdateStatus,
     ])
 }
 
@@ -267,6 +271,9 @@ pub fn run() {
     .manage(Mutex::new(content::ContentShape::default()))
     .manage(Mutex::new(RadiusState::default()))
     .manage(hotkeys::ForwardedHotkeys::default())
+    .manage(updater::Updates::default())
+    // Its JS commands are never granted (no `updater:` permission): only Rust checks and installs.
+    .plugin(tauri_plugin_updater::Builder::new().build())
     .invoke_handler(specta.invoke_handler())
     .setup(move |app| {
       // Before anything emits: typed events look their name up in what this registers.
@@ -281,6 +288,7 @@ pub fn run() {
       build_window(app.handle())?;
       // Restores the saved tabs and shows the active one (hidden until the frontend reports bounds).
       browser::init(app.handle())?;
+      updater::start(app.handle());
       Ok(())
     })
     .build(tauri::generate_context!())
@@ -347,13 +355,13 @@ mod tests {
 
     let ts = std::fs::read_to_string(path).unwrap();
     assert!(ts.starts_with(BINDINGS_HEADER));
-    for command in ["navigate", "get_page", "hard_reload", "stop_loading", "open_devtools", "copy_page_url", "cycle_tab", "reopen_closed_tab", "set_tab_muted", "get_memory", "toggle_page_layer", "set_content_bounds", "get_window_radius", "get_tabs", "move_tab", "switch_space", "set_forwarded_hotkeys"] {
+    for command in ["navigate", "get_page", "hard_reload", "stop_loading", "open_devtools", "copy_page_url", "cycle_tab", "reopen_closed_tab", "set_tab_muted", "get_memory", "toggle_page_layer", "set_content_bounds", "get_window_radius", "get_tabs", "move_tab", "switch_space", "set_forwarded_hotkeys", "get_update_status", "install_update"] {
       assert!(ts.contains(&format!("\"{command}\"")), "{command} command missing");
     }
-    for event in ["page-changed", "tabs-changed", "tab-updated", "hotkey-pressed", "window-radius-changed"] {
+    for event in ["page-changed", "tabs-changed", "tab-updated", "hotkey-pressed", "window-radius-changed", "update-status"] {
       assert!(ts.contains(&format!("\"{event}\"")), "{event} event missing");
     }
-    for ty in ["PageLayer", "MemoryReport", "TabMemory", "AppError", "ErrorCode", "Id", "Tab", "Folder", "Space", "SpaceItem", "Swatch", "TabsState", "TabLocation", "PageChanged", "WindowRadius"] {
+    for ty in ["PageLayer", "MemoryReport", "TabMemory", "AppError", "ErrorCode", "Id", "Tab", "Folder", "Space", "SpaceItem", "Swatch", "TabsState", "TabLocation", "PageChanged", "WindowRadius", "UpdateStatus"] {
       assert!(ts.contains(&format!("export type {ty} =")), "{ty} type missing");
     }
   }

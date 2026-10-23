@@ -58,6 +58,8 @@ fn main() {
       "delete_space",
       "switch_space",
       "set_forwarded_hotkeys",
+      "get_update_status",
+      "install_update",
     ]),
   ))
   .expect("failed to run tauri-build");
