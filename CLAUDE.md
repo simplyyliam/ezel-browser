@@ -75,6 +75,7 @@ Commands (`invoke`):
 - `hard_reload()` (bypasses the cache, through the DevTools protocol), `stop_loading()`, `open_devtools()` (its own window; tab webviews are built with `devtools(true)`, release included): the shown tab. Windows only for now (`unsupported` elsewhere, except reload/stop fallbacks).
 - `get_memory()` → `MemoryReport { totalMb, sharedMb, tabs: { id, mb, approximate }[] }`: the load meter. Every WebView2 process plus Ezel's own (private bytes), split over the loaded tabs by the frames each renders (`browser/memory.rs`, tested; `docs/research/memory-meter.md`). Shared renderers are split evenly (`approximate`); processes serving no tab are `sharedMb`. Unloaded tabs aren't listed (the UI calls them resting). Async; one reading at a time; any failure (WebView2 not answering, a timeout, a reading already running) is `unavailable`. The readout keeps the last good reading through failures and hides only after 15s without one (counted while polling). Windows only (`unsupported` elsewhere). WebView2's frame-info iterator doesn't keep its collection alive: hold the collection while iterating (a dropped one crashed the app).
 - `toggle_page_layer(layer: "squint" | "greyscale")` → on: toggles a page layer (lens) in the shown tab (see Page layers). `no_tab_shown` without one.
+- `clear_site_data()` → host: everything the shown page's site stored (CDP `Storage.clearDataForOrigin`, origin built in Rust from the tab's URL: `browser/site.rs`), then it reloads. `invalid_input` for a page that isn't a website.
 - `copy_page_url()` → the shown tab's URL, written to the OS clipboard by Rust (Win32), because a shortcut pressed in the website leaves focus there and the UI's `navigator.clipboard` can't write without focus. `no_tab_shown` when none is.
 - `get_page()`: the shown tab's page (`page-changed` shape), so the UI can catch up on mount
 - `set_content_bounds(x: number, y: number, width: number, height: number)`: places the content webview; logical px relative to the window's top-left
@@ -87,7 +88,7 @@ Commands (`invoke`):
 
 Tab commands (ids are numbers; every change also emits `tabs-changed`):
 - `get_tabs()` → `TabsState`: `{ activeSpaceId, activeTabId | null, closedCount, swatches: (TabView | null)[8], spaces: { id, name, icon, items: ({kind:"tab", tab} | {kind:"folder", folder:{ id, name, collapsed, tabs }})[], tempTabs }[] }`. `TabView`: `{ id, url, title | null, favicon | null, pinnedUrl | null, isLoaded, isLoading, isPlayingAudio, isMuted, isDev, layers }`. `icon` is a lucide icon name.
-- `open_tab(input?: string)` → id: new temp tab on top of the active space, selected (home page without input). Links opened in a new window (`target=_blank`) do the same; sized popups (OAuth) get a native popup window.
+- `open_tab(input?: string)` → id: new temp tab on top of the active space, selected (home page without input). Links opened in a new window (`target=_blank`) do the same; sized popups (OAuth) open in a small window of Ezel's own (`browser/popup.rs`, label `popup-<n>`, no IPC, same environment so `window.opener` works) titled with its domain first (`site::popup_title`); `window.close()` closes it.
 - `cycle_tab(backward)`: Ctrl+Tab / Ctrl+Shift+Tab. The active space's next tab in most-recently-used order (`model.rs`, `CYCLE_WINDOW_MS`): presses within 1.2s walk deeper into one frozen order (Ctrl "held"; the website's key-ups never reach us), after a pause it returns to the previous tab. Swatches aren't in the walk, but a shown swatch starts it.
 - `reopen_closed_tab()` → id | null: Ctrl+Shift+T. Pops the closed-tab stack (`session.closed`, newest last, max `MAX_CLOSED_TABS` = 25, persisted in session.json) and puts the tab back in its space, folder or swatch slot at its old index (clamped to the end); a folder that's gone → the end of its space's pinned list, a space that's gone → the active space, a full swatch grid → top of the active space's temp tabs. Selected. A tab goes on the stack when it's removed (temp close, `remove_tab`, trash-all, top tab reopened first); closing a pinned tab or swatch only unloads it, so it doesn't.
 - `activate_tab(id)`; `close_tab(id)`: a temp tab is removed, a pinned/swatch tab is unloaded and reset to its pinned URL; `remove_tab(id)`: removes any tab; `unload_tab(id)`: frees memory, keeps the page.
@@ -100,7 +101,7 @@ Tab commands (ids are numbers; every change also emits `tabs-changed`):
 Window APIs (`@tauri-apps/api/window`): `minimize`, `toggleMaximize`, `close`, `startDragging`, `isMaximized`, `isFullscreen`, `cursorPosition`, `innerPosition`, `innerSize`, `scaleFactor` (the last four let the titlebar peek follow the cursor above the window).
 
 Event emitted to the `ui` webview:
-- `page-changed`: `{ url: string, title: string | null, canGoBack: boolean, canGoForward: boolean, isLoading: boolean }`
+- `page-changed`: `{ url: string, title: string | null, canGoBack: boolean, canGoForward: boolean, isLoading: boolean, security: "none" | "secure" | "notSecure" | "certificateError" }` (`browser/site.rs`: the scheme, plus WebView2's `ServerCertificateErrorDetected` for the page's own host, cleared by each navigation)
   The shown tab's page. Emitted on navigation start, on page load finish, when the document title changes, and when another tab is shown (all empty/false when none is).
 - `tabs-changed`: `TabsState` (as `get_tabs`). Emitted after every tab/folder/space change.
 - `tab-updated`: one `TabView`. A tab's URL, title, favicon, loading or audio state changed (any tab, shown or not).
@@ -120,7 +121,7 @@ src/
 - Features never import from widgets or from other features. Code two features need goes in `shared/`. `theme/` is app-wide like `shared/`: anything may import it.
 - Widgets may import from their own features and from `shared/`.
 - Current widgets:
-  - `widgets/app-titlebar` composes `features/app-titlebar/window-controls`. It's a Zen-style peek (studied from Zen's source, see `docs/design/decisions.md`): it overlays the top of the window, opens from a 4px strip at the top edge, grows its height over 150ms ease-in-out and never moves the page. The website is a native webview above the UI, so the bar is cut out of it with `useContentCutout` and Rust cuts it out of the page. No shadow. It holds only the window controls.
+  - `widgets/app-titlebar` composes `features/app-titlebar/{quick-tabs,site-identity,window-controls}`. It's a Zen-style peek (studied from Zen's source, see `docs/design/decisions.md`): it overlays the top of the window, opens from a 4px strip at the top edge, grows its height over 150ms ease-in-out and never moves the page. The website is a native webview above the UI, so the bar is cut out of it with `useContentCutout` and Rust cuts it out of the page. No shadow. Left: the shown tab's folder's other tabs as icons (outside a folder, the Swatches); middle: the site's host with a lock (open lock for HTTP, a warning for certificate problems), only the registrable domain emphasised (`shared/site.ts`, `splitHost`); right: the window controls. Clicking the domain opens the site info panel inside the bar (the bar grows, so it's cut out with it; it keeps the bar open until Esc, a press elsewhere or the UI losing focus): connection status and "Clear This Site's Data…" (asks once, in place).
   - `widgets/browser-view` composes `features/browser-view/content-slot` (the placeholder the content webview is placed over)
   - `widgets/app-sidebar` composes `features/app-sidebar/*` (see Sidebar below)
   - `widgets/command-palette` composes `features/command-palette/{search-field,results,footer}` (see Command palette below). Mounted in `AppLayout`.
@@ -187,6 +188,7 @@ Every app shortcut is in `shared/hotkeys.ts` (`HOTKEYS`: id, label, default keys
   - Alt+← / Alt+→ back / forward (`back` / `forward`), Esc stop loading (`stopLoading`, `whileLoading`)
   - F12 or Ctrl+Shift+I the page's DevTools (`devTools`)
   - Ctrl+Shift+C copy the page's link with a toast (`copyUrl`; the page keeps focus)
+  - Ctrl+D pin the shown tab (`pinTab`; Ezel's bookmark: a temp tab goes to the end of its space's pinned list, a kept one says so)
   - Ctrl+Shift+T reopen the last closed tab (`reopenClosedTab`; also in the sidebar's right-click menu)
   - Ctrl+Alt+S Squint lens, Ctrl+Alt+G Greyscale lens (`squint` / `greyscale`; also palette actions)
 - These also act while the UI has focus: Ctrl+R/F5 reload the page, not the UI, and F12 opens the page's DevTools (the UI's own DevTools: right-click › Inspect in a debug build).

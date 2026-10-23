@@ -152,6 +152,29 @@ pub fn copy_page_url(app: AppHandle) -> Result<String> {
   Err(AppError::new(ErrorCode::Unsupported, "copying from Rust works only on Windows for now"))
 }
 
+/// "Clear This Site's Data" (the site info panel): everything the shown page's site stored in
+/// Ezel (cookies, storage, caches), then the page reloads. Returns the site's host.
+#[tauri::command]
+#[specta::specta]
+pub fn clear_site_data(app: AppHandle) -> Result<String> {
+  let browser = browser(&app);
+  let id = (*browser.shown.lock().unwrap()).ok_or_else(|| AppError::new(ErrorCode::NoTabShown, "no tab is shown"))?;
+  let url = browser.model.lock().unwrap().tab(id)?.url.clone();
+  let (Some(origin), Some(host)) = (super::site::origin_of(&url), super::site::host_of(&url)) else {
+    return Err(AppError::invalid_input("this page isn't a website"));
+  };
+  #[cfg(windows)]
+  {
+    shown(&app)?.with_webview(move |pw| crate::webview2::clear_site_data(&pw, &origin))?;
+    Ok(host)
+  }
+  #[cfg(not(windows))]
+  {
+    let _ = (origin, host);
+    Err(AppError::new(ErrorCode::Unsupported, "clearing a site's data works only on Windows for now"))
+  }
+}
+
 /// The load meter: Ezel's memory in all and per loaded tab (approximate; see `browser::memory`).
 #[tauri::command]
 #[specta::specta]

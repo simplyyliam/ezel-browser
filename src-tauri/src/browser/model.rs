@@ -187,6 +187,11 @@ pub struct Live {
   /// `blob:` URL (`url_policy::is_allowed_from_page`). Never persisted: a restored tab, or one
   /// reloaded after unloading, gets the strict rule.
   pub opened_by_page: bool,
+  /// WebView2 couldn't verify the certificate of the page's address (cleared by each navigation).
+  pub cert_error: bool,
+  /// Where the page's latest navigation goes (its first load included): a certificate error
+  /// counts for the page only when it's for this host.
+  pub navigating_to: Option<String>,
 }
 
 pub type Result<T> = std::result::Result<T, AppError>;

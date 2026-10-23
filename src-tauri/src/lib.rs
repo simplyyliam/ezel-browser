@@ -49,6 +49,7 @@ pub fn specta_builder() -> tauri_specta::Builder<tauri::Wry> {
       stop_loading,
       open_devtools,
       copy_page_url,
+      clear_site_data,
       get_memory,
       toggle_page_layer,
       set_content_bounds,
@@ -327,6 +328,7 @@ mod tests {
     assert!(conf["app"]["security"].get("capabilities").is_none(), "capabilities come from the reviewed folder only");
 
     assert!(browser::tab_label(1).starts_with("tab-") && browser::tab_label(1) != UI_LABEL);
+    assert!(browser::popup_label(1).starts_with("popup-") && browser::popup_label(1) != UI_LABEL, "sign-in popups too");
 
     // Every command the UI can call (from the generated bindings) is declared in the app manifest.
     let manifest = include_str!("../build.rs");
@@ -363,7 +365,7 @@ mod tests {
     for event in ["page-changed", "tabs-changed", "tab-updated", "hotkey-pressed", "window-radius-changed", "update-status"] {
       assert!(ts.contains(&format!("\"{event}\"")), "{event} event missing");
     }
-    for ty in ["PageLayer", "MemoryReport", "TabMemory", "AppError", "ErrorCode", "Id", "Tab", "Folder", "Space", "SpaceItem", "Swatch", "TabsState", "TabLocation", "PageChanged", "WindowRadius", "UpdateStatus"] {
+    for ty in ["PageSecurity", "PageLayer", "MemoryReport", "TabMemory", "AppError", "ErrorCode", "Id", "Tab", "Folder", "Space", "SpaceItem", "Swatch", "TabsState", "TabLocation", "PageChanged", "WindowRadius", "UpdateStatus"] {
       assert!(ts.contains(&format!("export type {ty} =")), "{ty} type missing");
     }
   }
