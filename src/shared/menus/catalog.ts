@@ -78,7 +78,7 @@ export const MENU_CATALOG = {
       [
         item({ id: "newTab", label: "New Tab", origin: "browser", status: "built", uses: "open_tab" }),
         item({ id: "reopenClosed", label: "Reopen Closed Tab", origin: "browser", status: "built", when: "a closed tab to reopen (closedCount > 0)", uses: "reopen_closed_tab", note: "Not on tab rows: it restores another tab, not the one right-clicked" }),
-        item({ id: "newFolder", label: "New Folder", origin: "ezel", status: "needs-feature", uses: "create_folder" }),
+        item({ id: "newFolder", label: "New Folder", origin: "ezel", status: "built", uses: "create_folder", note: "At the end of the shown space's pinned list; its name opens as a field" }),
       ],
       [item({ id: "editTheme", label: "Edit Theme…", origin: "ezel", status: "needs-feature", note: "Theme editor (theme/ setTokens)" })],
     ],
@@ -105,7 +105,8 @@ export const MENU_CATALOG = {
         item({ id: "unpin", label: "Unpin Tab", origin: "browser", status: "built", when: "a pinned or folder tab", uses: "move_tab" }),
         item({ id: "moveTab", label: "Move Tab", origin: "browser", status: "built", submenu: ["Move to Start", "Move to End"], when: "temp or top-level pinned", uses: "move_tab" }),
         item({ id: "moveToSpace", label: "Move to Space", origin: "ezel", status: "built", submenu: ["<other spaces>"], when: "2+ spaces, not a swatch", uses: "move_tab" }),
-        item({ id: "moveToFolder", label: "Move to Folder", origin: "ezel", status: "needs-feature", submenu: ["<folders>", "New Folder…"] }),
+        item({ id: "newFolderWithTab", label: "New Folder with Tab", origin: "ezel", status: "built", when: "a list row", uses: "create_folder_with_tab", note: "The folder takes the tab's place; its name opens as a field" }),
+        item({ id: "moveToFolder", label: "Move to Folder", origin: "ezel", status: "built", submenu: ["<the space's other folders>"], when: "the space has another folder", uses: "move_tab" }),
         item({ id: "unload", label: "Unload Tab", origin: "browser", status: "built", when: "loaded", uses: "unload_tab" }),
       ],
       [
@@ -114,7 +115,6 @@ export const MENU_CATALOG = {
       ],
     ],
     notHere: [
-      { label: "New Folder", lives: "sidebar" },
       { label: "Reopen Closed Tab", lives: "sidebar (it acts on the closed-tab history, not this tab)" },
       { label: "Bookmark / Share / Send to Device", lives: "nowhere yet: no such features" },
     ],
@@ -150,16 +150,18 @@ export const MENU_CATALOG = {
     scope: "That folder (its tabs as a group)",
     groups: [
       [
-        item({ id: "rename", label: "Rename Folder…", origin: "ezel", status: "planned", uses: "rename_folder", note: "Inline, like a space's name" }),
-        item({ id: "newTabInFolder", label: "New Tab in Folder", origin: "ezel", status: "planned", uses: "open_tab + move_tab" }),
+        item({ id: "rename", label: "Rename Folder…", origin: "ezel", status: "built", uses: "rename_folder", note: "Inline, like a space's name" }),
+        item({ id: "newTabInFolder", label: "New Tab in Folder", origin: "ezel", status: "built", uses: "open_tab + move_tab", note: "Opens its name field, empty" }),
       ],
       [
-        item({ id: "unload", label: "Unload Folder", origin: "ezel", status: "planned", when: "a loaded tab inside", uses: "unload_folder" }),
-        item({ id: "moveToSpace", label: "Move to Space", origin: "ezel", status: "planned", submenu: ["<other spaces>"], uses: "move_folder" }),
+        item({ id: "collapse", label: "Collapse Folder", origin: "ezel", status: "built", when: "open", uses: "set_folder_collapsed" }),
+        item({ id: "expand", label: "Expand Folder", origin: "ezel", status: "built", when: "collapsed", uses: "set_folder_collapsed" }),
+        item({ id: "unload", label: "Unload Folder", origin: "ezel", status: "built", when: "a loaded tab inside", uses: "unload_folder" }),
+        item({ id: "moveToSpace", label: "Move to Space", origin: "ezel", status: "built", submenu: ["<other spaces>"], when: "2+ spaces", uses: "move_folder" }),
       ],
       [
-        item({ id: "unpack", label: "Unpack Folder", origin: "ezel", status: "planned", uses: "delete_folder(keepTabs: true)", note: "Tabs stay pinned where it was" }),
-        item({ id: "delete", label: "Delete Folder…", origin: "ezel", status: "planned", destructive: true, uses: "delete_folder(keepTabs: false)", note: "Alert: its tabs go too" }),
+        item({ id: "unpack", label: "Unpack Folder", origin: "ezel", status: "built", when: "it holds tabs", uses: "delete_folder(keepTabs: true)", note: "Tabs stay pinned where it was" }),
+        item({ id: "delete", label: "Delete Folder…", origin: "ezel", status: "built", destructive: true, uses: "delete_folder(keepTabs: false)", note: "Alert when it holds tabs: they go too (onto the closed-tab stack)" }),
       ],
     ],
   },
@@ -205,7 +207,7 @@ export const MENU_CATALOG = {
     groups: [
       [
         item({ id: "newTab", label: "New Tab", origin: "browser", status: "built", uses: "open_tab" }),
-        item({ id: "newFolder", label: "New Folder", origin: "ezel", status: "needs-feature", uses: "create_folder" }),
+        item({ id: "newFolder", label: "New Folder", origin: "ezel", status: "built", uses: "create_folder" }),
         item({ id: "newSpace", label: "New Space", origin: "ezel", status: "built", uses: "create_space" }),
       ],
     ],

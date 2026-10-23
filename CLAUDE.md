@@ -94,7 +94,7 @@ Tab commands (ids are numbers; every change also emits `tabs-changed`):
 - `move_tab(id, to)`: pin/unpin, swatch, folder, reorder, other space. `to`: `{kind:"swatch", slot}` (occupied: swap) | `{kind:"pinned", spaceId, folderId: id | null, index: number | null}` (null = end) | `{kind:"temp", spaceId, index: number | null}` (null = top). Pinned/swatch tabs remember a `pinnedUrl`; temp tabs forget it.
 - `set_tab_muted(id, muted)`: WebView2 `IsMuted`. Stored on the tab (`muted`, persisted) and re-applied whenever its webview is created, so unloading never un-mutes it. Windows only for now.
 - `reset_tab(id)`: back to its pinned URL; `update_pinned_url(id)`: current URL becomes the pinned URL; `clear_temp_tabs(spaceId)`: trash-all.
-- Folders: `create_folder(spaceId, name, index?)` → id, `rename_folder(id, name)`, `set_folder_collapsed(id, collapsed)`, `move_folder(id, spaceId, index?)`, `delete_folder(id, keepTabs)` (`keepTabs`: unpack), `unload_folder(id)`.
+- Folders: `create_folder(spaceId, name, index?)` → id, `create_folder_with_tab(tabId, name)` → id ("New Folder with Tab": a top-level pinned tab is replaced by the folder; a temp tab's or swatch's folder goes at the end of the pinned list; a tab in a folder gets one right after it: no nesting), `rename_folder(id, name)` (names: trimmed, 1–60 chars, one line, else `invalid_input`), `set_folder_collapsed(id, collapsed)`, `move_folder(id, spaceId, index?)`, `delete_folder(id, keepTabs)` (`keepTabs`: unpack; otherwise its tabs go on the closed-tab stack), `unload_folder(id)`.
 - Spaces: `create_space(name, icon)` → id, `update_space(id, name?, icon?)`, `move_space(id, index)`, `delete_space(id)` (not the last one), `switch_space(id)` (shows the tab it showed last).
 
 Window APIs (`@tauri-apps/api/window`): `minimize`, `toggleMaximize`, `close`, `startDragging`, `isMaximized`, `isFullscreen`, `cursorPosition`, `innerPosition`, `innerSize`, `scaleFactor` (the last four let the titlebar peek follow the cursor above the window).
@@ -151,6 +151,7 @@ Built from `docs/design/sidebar-1.png` (a 1.5x export) with shadcn's `Sidebar` (
 
 ### Tab drag and drop
 Zen's behaviour, rebuilt on dnd-kit (HTML5 drag events are swallowed by Tauri on Windows); study and rules in `docs/design/drag-and-drop.md`.
+- Folders take drops: the middle of a folder's row drops into it, its edges beside it, and between its open tabs (`folderRow`, `folderTabs`, `FOLDER_TAB_ROW` in `shared/tab-dnd.ts`; target `{ kind: "folder", folderId, gap | null }`).
 - `DndContext` lives in `widgets/app-sidebar` (`use-tab-drag.ts`: sensors, target resolution, space switching, cancelling; `tab-drag-preview.tsx`: the pointer-following preview). Features only register draggables/drop zones through `shared/tab-dnd.ts` (`useTabDraggable`, `useTabDropZone`, `DROP_ROW`) and draw the indicator the widget passes them (`DraggableTabItem`, `DropIndicator`).
 - A drop calls `commands.moveTab` (`shared/bindings`); the dragged tab stays hidden/dimmed where it was until the next state arrives. No optimistic copy.
 - The pointer leaving the sidebar card cancels the drag (the website webview above the UI eats pointer events); on `mouseleave` the real cursor position decides. Never cancel on focus changes: new tab webviews take focus.
@@ -202,4 +203,4 @@ Every app shortcut is in `shared/hotkeys.ts` (`HOTKEYS`: id, label, default keys
 Read `docs/design/decisions.md` before UI work: motion language, the titlebar peek study, the scrollbar spec and the sizing scale.
 
 ## Current scope
-MVP only. The sidebar renders the real tabs/folders/spaces backend state (persisted by Rust). Not built yet: drag-and-drop into folders, creating folders, item context menus, downloads.
+MVP only. The sidebar renders the real tabs/folders/spaces backend state (persisted by Rust).

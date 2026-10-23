@@ -271,6 +271,13 @@ pub async fn create_folder(app: AppHandle, space_id: TsId, name: String, index: 
   edit(&app, |m| m.create_folder(space_id.0, name, index.map(|i| i as usize))).map(TsId)
 }
 
+/// "New Folder with Tab": a folder holding the tab, where the tab was (see the model).
+#[tauri::command]
+#[specta::specta]
+pub async fn create_folder_with_tab(app: AppHandle, tab_id: TsId, name: String) -> Result<TsId> {
+  edit(&app, |m| m.create_folder_with_tab(tab_id.0, name)).map(TsId)
+}
+
 #[tauri::command]
 #[specta::specta]
 pub async fn rename_folder(app: AppHandle, id: TsId, name: String) -> Result<()> {

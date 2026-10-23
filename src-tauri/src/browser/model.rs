@@ -288,6 +288,21 @@ pub fn is_dev_url(url: &str) -> bool {
   host == "localhost" || host == "127.0.0.1" || host == "[::1]" || host.ends_with(".localhost")
 }
 
+/// Longest folder name, in characters (the sidebar shows about 25).
+pub const MAX_FOLDER_NAME: usize = 60;
+
+/// A folder name as typed: trimmed, not empty, at most [`MAX_FOLDER_NAME`] characters.
+fn folder_name(name: String) -> Result<String> {
+  let name = name.trim();
+  if name.is_empty() {
+    return Err(AppError::invalid_input("a folder needs a name"));
+  }
+  if name.chars().count() > MAX_FOLDER_NAME || name.chars().any(char::is_control) {
+    return Err(AppError::invalid_input("folder names are one line of at most 60 characters"));
+  }
+  Ok(name.to_string())
+}
+
 /// Inserts at `index`, clamped to the end.
 fn insert_at<T>(list: &mut Vec<T>, index: usize, item: T) {
   list.insert(index.min(list.len()), item);
@@ -700,6 +715,7 @@ impl Model {
 
   /// Creates an empty folder in the space's pinned list (`index: None` = the end).
   pub fn create_folder(&mut self, space_id: Id, name: String, index: Option<usize>) -> Result<Id> {
+    let name = folder_name(name)?;
     self.space(space_id)?;
     let id = self.alloc_id();
     let folder = Pinned::Folder(Folder { id, name, collapsed: false, tabs: vec![] });
@@ -707,7 +723,28 @@ impl Model {
     Ok(id)
   }
 
+  /// "New Folder with Tab": a new folder holding the tab, where the tab was. A top-level pinned tab
+  /// is replaced by the folder; a temp tab's folder goes at the end of its space's pinned list
+  /// (the tab becomes pinned); a tab already in a folder gets one right after that folder (folders
+  /// don't nest); a swatch leaves the grid for a folder at the end of the active space.
+  pub fn create_folder_with_tab(&mut self, tab_id: Id, name: String) -> Result<Id> {
+    let from = self.locate(tab_id).ok_or_else(|| AppError::not_found(format!("tab {tab_id} not found")))?;
+    let (space_id, index) = match from {
+      TabLocation::Pinned { space_id, folder_id: None, index } => (space_id, index),
+      TabLocation::Pinned { space_id, folder_id: Some(folder), .. } => {
+        let at = self.space(space_id)?.pinned.iter().position(|p| matches!(p, Pinned::Folder(f) if f.id == folder));
+        (space_id, at.map(|i| i + 1))
+      }
+      TabLocation::Temp { space_id, .. } => (space_id, None),
+      TabLocation::Swatch { .. } => (self.session.active_space, None),
+    };
+    let folder = self.create_folder(space_id, name, index)?;
+    self.move_tab(tab_id, TabLocation::Pinned { space_id, folder_id: Some(folder), index: None })?;
+    Ok(folder)
+  }
+
   pub fn rename_folder(&mut self, id: Id, name: String) -> Result<()> {
+    let name = folder_name(name)?;
     self.folder_mut(id)?.1.name = name;
     Ok(())
   }
@@ -734,6 +771,10 @@ impl Model {
       return Ok(vec![]);
     }
     let mut effects = self.deselect(&folder.tabs, now);
+    // Each can come back with Ctrl+Shift+T (the folder is gone: to the end of the pinned list).
+    for (i, tab) in folder.tabs.iter().enumerate() {
+      self.remember_closed(*tab, TabLocation::Pinned { space_id, folder_id: Some(id), index: Some(i) });
+    }
     for tab in folder.tabs {
       self.session.tabs.remove(&tab);
       if self.live.remove(&tab).is_some() {
@@ -1110,6 +1151,88 @@ mod tests {
     m.delete_folder(folder, false, 2).unwrap();
     assert!(m.session.tabs.is_empty());
     assert_eq!(m.active_tab(), None);
+    // Its tab can be reopened: at the end of the pinned list, since the folder is gone.
+    let (back, _) = m.reopen_closed_tab(3).unwrap().unwrap();
+    assert_eq!(m.locate(back), Some(TabLocation::Pinned { space_id: s, folder_id: None, index: Some(0) }));
+  }
+
+  #[test]
+  fn a_new_folder_takes_the_tabs_place() {
+    let mut m = model();
+    let s = space(&m);
+    let a = m.active_tab().unwrap();
+    let (b, _) = m.open_tab("https://b.test/".into(), 1);
+    m.move_tab(a, TabLocation::Pinned { space_id: s, folder_id: None, index: None }).unwrap();
+    m.move_tab(b, TabLocation::Pinned { space_id: s, folder_id: None, index: None }).unwrap();
+
+    // A top-level pinned tab: the folder replaces it at its index.
+    let f = m.create_folder_with_tab(a, "Refs".into()).unwrap();
+    assert_eq!(m.active_space().pinned[0], Pinned::Folder(Folder { id: f, name: "Refs".into(), collapsed: false, tabs: vec![a] }));
+    assert_eq!(m.active_space().pinned[1], Pinned::Tab { id: b });
+
+    // A tab already in a folder: the new folder goes right after that one (no nesting).
+    let g = m.create_folder_with_tab(a, "Deeper".into()).unwrap();
+    assert!(matches!(&m.active_space().pinned[0], Pinned::Folder(x) if x.id == f && x.tabs.is_empty()));
+    assert!(matches!(&m.active_space().pinned[1], Pinned::Folder(x) if x.id == g && x.tabs == vec![a]));
+    assert_eq!(m.active_space().pinned[2], Pinned::Tab { id: b });
+  }
+
+  #[test]
+  fn a_temp_or_swatch_tab_gets_a_folder_at_the_end_and_is_pinned() {
+    let mut m = model();
+    let s = space(&m);
+    let temp = m.active_tab().unwrap();
+    let f = m.create_folder_with_tab(temp, "From temp".into()).unwrap();
+    assert!(m.active_space().temp.is_empty());
+    assert_eq!(m.locate(temp), Some(TabLocation::Pinned { space_id: s, folder_id: Some(f), index: Some(0) }));
+    assert_eq!(m.tab(temp).unwrap().pinned_url.as_deref(), Some(HOME), "now pinned");
+
+    let (swatch, _) = m.open_tab("https://sw.test/".into(), 1);
+    m.move_tab(swatch, TabLocation::Swatch { slot: 2 }).unwrap();
+    let g = m.create_folder_with_tab(swatch, "From swatch".into()).unwrap();
+    assert_eq!(m.session.swatches[2], None);
+    assert_eq!(m.active_space().pinned.len(), 2);
+    assert_eq!(m.locate(swatch), Some(TabLocation::Pinned { space_id: s, folder_id: Some(g), index: Some(0) }));
+  }
+
+  #[test]
+  fn folder_names_are_checked() {
+    let mut m = model();
+    let s = space(&m);
+    let tab = m.active_tab().unwrap();
+    assert_eq!(m.create_folder(s, "  Work  ".into(), None).map(|id| m.folder_mut(id).unwrap().1.name.clone()).unwrap(), "Work");
+    for bad in ["", "   ", "a
+b", &"x".repeat(MAX_FOLDER_NAME + 1)] {
+      assert_eq!(m.create_folder(s, bad.into(), None).unwrap_err().code, ErrorCode::InvalidInput, "{bad:?}");
+      assert_eq!(m.create_folder_with_tab(tab, bad.into()).unwrap_err().code, ErrorCode::InvalidInput, "{bad:?}");
+    }
+    assert!(m.locate(tab).is_some_and(|l| matches!(l, TabLocation::Temp { .. })), "a refused name moves nothing");
+    let f = m.create_folder(s, "F".into(), None).unwrap();
+    assert!(m.rename_folder(f, " ".into()).is_err());
+    m.rename_folder(f, "Renamed".into()).unwrap();
+    assert_eq!(m.folder_mut(f).unwrap().1.name, "Renamed");
+    assert_eq!(m.create_folder_with_tab(999, "X".into()).unwrap_err().code, ErrorCode::NotFound);
+    assert_eq!(m.rename_folder(999, "X".into()).unwrap_err().code, ErrorCode::NotFound);
+  }
+
+  #[test]
+  fn tabs_move_into_out_of_and_within_folders() {
+    let mut m = model();
+    let s = space(&m);
+    let a = m.active_tab().unwrap();
+    let (b, _) = m.open_tab("https://b.test/".into(), 1);
+    let (c, _) = m.open_tab("https://c.test/".into(), 2);
+    let f = m.create_folder(s, "F".into(), None).unwrap();
+    for id in [a, b, c] {
+      m.move_tab(id, TabLocation::Pinned { space_id: s, folder_id: Some(f), index: None }).unwrap();
+    }
+    m.move_tab(c, TabLocation::Pinned { space_id: s, folder_id: Some(f), index: Some(0) }).unwrap();
+    assert!(matches!(&m.active_space().pinned[0], Pinned::Folder(x) if x.tabs == vec![c, a, b]));
+    m.move_tab(a, TabLocation::Temp { space_id: s, index: None }).unwrap();
+    assert!(matches!(&m.active_space().pinned[0], Pinned::Folder(x) if x.tabs == vec![c, b]));
+    assert_eq!(m.tab(a).unwrap().pinned_url, None, "out of the folder into temp: unpinned");
+    let missing = TabLocation::Pinned { space_id: s, folder_id: Some(4242), index: None };
+    assert_eq!(m.move_tab(b, missing).unwrap_err().code, ErrorCode::NotFound);
   }
 
   #[test]

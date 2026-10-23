@@ -14,19 +14,21 @@ import { menuLabel } from "@/shared"
 // making things in the shown space. Item-level menus (tab, swatch, space) come with those items;
 // New Space lives in the spaces list and the + menu. Items whose feature isn't built yet are left
 // out, not shown dead (HIG context-menus.md).
-// TODO: "New Folder" (with drag-into-folder) and "Edit Theme…" once they exist.
+// TODO: "Edit Theme…" once the theme editor exists.
 
 type SidebarContextMenuProps = {
   /** The area that opens the menu on right-click. */
   children: ReactNode
   onNewTab: () => void
+  /** A folder at the end of the shown space's pinned list, its name ready to type. */
+  onNewFolder: () => void
   /** Closed tabs Reopen Closed Tab can bring back; 0 hides the item. */
   closedCount: number
   onReopenClosedTab: () => void
   className?: string
 }
 
-export function SidebarContextMenu({ children, onNewTab, closedCount, onReopenClosedTab, className }: SidebarContextMenuProps) {
+export function SidebarContextMenu({ children, onNewTab, onNewFolder, closedCount, onReopenClosedTab, className }: SidebarContextMenuProps) {
   const { open, setOpen } = useSidebar()
 
   return (
@@ -42,6 +44,7 @@ export function SidebarContextMenu({ children, onNewTab, closedCount, onReopenCl
         {closedCount > 0 && (
           <ContextMenuItem onClick={onReopenClosedTab}>{menuLabel("sidebar", "reopenClosed")}</ContextMenuItem>
         )}
+        <ContextMenuItem onClick={onNewFolder}>{menuLabel("sidebar", "newFolder")}</ContextMenuItem>
       </ContextMenuContent>
     </ContextMenu>
   )

@@ -11,7 +11,7 @@ One menu per kind of thing, scoped to that thing. The closest target wins: right
 |---|---|---|
 | Sidebar background | The sidebar itself and creating things in it: layout toggles, new tab/folder/space, theme | built (`features/app-sidebar/context-menu`) |
 | Tab row | That tab: new tab below, duplicate, reload, copy link, change URL, Swatches, pin, unload, move, close | built (see Tab menu) |
-| Folder row | That folder: rename, change icon, new subfolder, unload, move to another space, unpack/delete | with real folders |
+| Folder row | That folder: rename, new tab in it, collapse/expand, unload, move to another space, unpack/delete | built (v0.3.0, `features/app-sidebar/folders`) |
 | Space (switcher) | That space: rename, change icon, theme, unload, delete; manage/create spaces | with real spaces |
 | Swatch | That swatch's tab: the tab menu, with "Remove from Swatches" and no "Change URL…" | built (see Tab menu) |
 | "+" button | Create: space, folder, tab | bottom-actions dropdown |
@@ -40,4 +40,4 @@ Zen's tab menu is Firefox's tab menu plus Zen's own items (Move to Folder, Add S
 | Arrange | Unload Tab, Move Tab ▸ Move to Start / Move to End | Unload only when loaded; Move on temp and top-level pinned tabs |
 | Close | Close Tab, Close Multiple Tabs ▸ Close Tabs Above / Below / Other Tabs | the submenu on temp tabs only |
 
-Labels in Title Case, like the sidebar menu and Firefox/Zen. Reopen Closed Tab lives in the sidebar menu (after New Tab, shown while there's a closed tab), not here: it brings back another tab, not the one right-clicked. Left out until the backend has it: Reload for a background tab. Left out until the feature exists: Move to Folder, Bookmark, Share, Move to New Window.
+Labels in Title Case, like the sidebar menu and Firefox/Zen. Reopen Closed Tab lives in the sidebar menu (after New Tab, shown while there's a closed tab), not here: it brings back another tab, not the one right-clicked. Left out until the backend has it: Reload for a background tab. Folders (v0.3.0): New Folder with Tab (the folder takes the tab's place, its name opens as a field) and Move to Folder ▸ (the space's other folders) sit with the other placing items. Left out until the feature exists: Bookmark, Share, Move to New Window.

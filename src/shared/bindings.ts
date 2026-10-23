@@ -71,6 +71,8 @@ export const commands = {
 	/**  Trash-all: removes the space's temp tabs; pinned tabs and swatches stay. */
 	clearTempTabs: (spaceId: Id) => typedError<null, AppError>(__TAURI_INVOKE("clear_temp_tabs", { spaceId })),
 	createFolder: (spaceId: Id, name: string, index: number | null) => typedError<Id, AppError>(__TAURI_INVOKE("create_folder", { spaceId, name, index })),
+	/**  "New Folder with Tab": a folder holding the tab, where the tab was (see the model). */
+	createFolderWithTab: (tabId: Id, name: string) => typedError<Id, AppError>(__TAURI_INVOKE("create_folder_with_tab", { tabId, name })),
 	renameFolder: (id: Id, name: string) => typedError<null, AppError>(__TAURI_INVOKE("rename_folder", { id, name })),
 	setFolderCollapsed: (id: Id, collapsed: boolean) => typedError<null, AppError>(__TAURI_INVOKE("set_folder_collapsed", { id, collapsed })),
 	moveFolder: (id: Id, spaceId: Id, index: number | null) => typedError<null, AppError>(__TAURI_INVOKE("move_folder", { id, spaceId, index })),

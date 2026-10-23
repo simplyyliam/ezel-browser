@@ -10,7 +10,7 @@ import {
 } from "@/components/ui/sidebar"
 import { BottomActions } from "@/features/app-sidebar/bottom-actions"
 import { SidebarContextMenu } from "@/features/app-sidebar/context-menu"
-import { Folders } from "@/features/app-sidebar/folders"
+import { Folders, type FolderActions } from "@/features/app-sidebar/folders"
 import { Navigation } from "@/features/app-sidebar/navigation"
 import { SpaceSwitcher } from "@/features/app-sidebar/space-switcher"
 import { Swatches } from "@/features/app-sidebar/swatches"
@@ -67,6 +67,9 @@ async function navigate(input: string) {
 const setFolderCollapsed = (id: Id, collapsed: boolean) =>
   unwrap("set folder collapsed", commands.setFolderCollapsed(id, collapsed))
 
+/** What a new folder is called until it's renamed (it opens with its name as a field). */
+const NEW_FOLDER_NAME = "New Folder"
+
 /**
  * The left sidebar: shadcn's floating card, positioned against the area below the titlebar
  * (absolute, not shadcn's viewport-fixed default). Open (Ctrl+B) it's docked beside the page.
@@ -106,6 +109,38 @@ export function AppSidebar() {
 
   /** New Tab asks where to go first (the command palette), so no blank page is ever opened. */
   const newTab = () => openCommandPalette("new-tab")
+
+  // Folders (features/app-sidebar/folders): commands only; a new folder's name opens as a field.
+  const [renamingFolderId, setRenamingFolderId] = useState<Id | null>(null)
+
+  /** New Folder (sidebar menu, + menu): at the end of the shown space's pinned list. */
+  async function newFolder() {
+    if (!space) return
+    const id = await unwrap("create folder", commands.createFolder(space.id, NEW_FOLDER_NAME, null))
+    if (id !== null) setRenamingFolderId(id)
+  }
+
+  const folderActions: FolderActions = {
+    setCollapsed: setFolderCollapsed,
+    startRename: setRenamingFolderId,
+    finishRename: (id, name) => {
+      setRenamingFolderId(null)
+      const folder = space?.items.find((item) => item.kind === "folder" && item.folder.id === id)
+      if (name && folder?.kind === "folder" && name !== folder.folder.name) unwrap("rename folder", commands.renameFolder(id, name))
+    },
+    newTabIn: async (id) => {
+      if (!space) return
+      const tabId = await unwrap("open tab", commands.openTab(null))
+      if (tabId === null) return
+      await unwrap("open folder", commands.setFolderCollapsed(id, false))
+      await unwrap("place new tab", commands.moveTab(tabId, { kind: "pinned", spaceId: space.id, folderId: id, index: null }))
+      startNewTab(tabId)
+    },
+    unload: (id) => unwrap("unload folder", commands.unloadFolder(id)),
+    moveToSpace: (id, spaceId) => unwrap("move folder", commands.moveFolder(id, spaceId, null)),
+    unpack: (id) => unwrap("unpack folder", commands.deleteFolder(id, true)),
+    remove: (id) => unwrap("delete folder", commands.deleteFolder(id, false)),
+  }
 
   // Spaces (features/app-sidebar/space-switcher): commands only; the list and titles follow `tabs-changed`.
   const [spaceListOpen, setSpaceListOpen] = useState(false)
@@ -158,7 +193,9 @@ export function AppSidebar() {
     onClose: closeTab,
     onSetMuted: setTabMuted,
     menuFor: (tabId) =>
-      tabs && space ? tabMenu(tabId, { tabs, activeSpaceId: space.id, onEdit: editTab, onOpened: startNewTab }) : [],
+      tabs && space
+        ? tabMenu(tabId, { tabs, activeSpaceId: space.id, onEdit: editTab, onOpened: startNewTab, onFolderCreated: setRenamingFolderId })
+        : [],
     editing,
     onEdit: editTab,
     onEditDone: finishEdit,
@@ -204,6 +241,7 @@ export function AppSidebar() {
       {/* Right-clicking empty sidebar space opens the sidebar's menu (catalog area "sidebar"). */}
       <SidebarContextMenu
         onNewTab={newTab}
+        onNewFolder={newFolder}
         closedCount={tabs?.closedCount ?? 0}
         onReopenClosedTab={reopenClosedTab}
         className="flex min-h-0 flex-1 flex-col"
@@ -244,9 +282,13 @@ export function AppSidebar() {
               <Folders
                 key={space.id}
                 items={space.items}
+                spaces={tabs.spaces}
+                spaceId={space.id}
                 actions={rowActions}
-                onSetFolderCollapsed={setFolderCollapsed}
+                folderActions={folderActions}
+                renamingFolderId={renamingFolderId}
                 dropGap={dropTarget?.kind === "pinned" ? dropTarget.gap : null}
+                dropFolder={dropTarget?.kind === "folder" ? dropTarget : null}
               />
               <TempTabs
                 tabs={space.tempTabs}
@@ -284,6 +326,7 @@ export function AppSidebar() {
           onTrashAll={() => space && clearTempTabs(space.id)}
           onAddSpace={newSpace}
           onAddTab={newTab}
+          onAddFolder={newFolder}
           load={load}
         />
       </SidebarFooter>
