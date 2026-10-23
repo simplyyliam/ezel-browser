@@ -330,7 +330,7 @@ pub fn apply(plan: &ImportPlan, model: &mut super::model::Model, now: u64) -> Re
       summary.tabs += 1;
     }
   }
-  // Essentials past the 8 Swatches: pinned at the start of the first imported space, in order.
+  // Essentials past the Swatches (SWATCH_SLOTS): pinned at the start of the first imported space, in order.
   if let Some(space_id) = first_space.or(Some(model.session.active_space)) {
     for (i, tab) in overflow.into_iter().enumerate() {
       model.add_tab(tab.url.clone(), tab.title.clone(), tab.favicon.clone(), TabLocation::Pinned { space_id, folder_id: None, index: Some(i) }, now)?;
@@ -489,13 +489,13 @@ mod tests {
     let before = m.session.spaces.len();
     let mut plan = data().plan(&["{w1}".into(), "{w2}".into()], true).unwrap();
     // More Essentials than Swatches: the rest are pinned.
-    for i in 0..8 {
+    for i in 0..super::super::model::SWATCH_SLOTS {
       plan.essentials.push(ZenTab { url: format!("https://e{i}.test/"), title: None, favicon: None, space: None, essential: true, pinned: true, folder: None });
     }
     let summary = apply(&plan, &mut m, 1).unwrap();
     assert_eq!(summary.spaces, 2);
     assert_eq!(m.session.spaces.len(), before + 2);
-    assert!(m.session.swatches.iter().all(Option::is_some), "8 Swatches filled");
+    assert!(m.session.swatches.iter().all(Option::is_some), "every Swatch filled");
     let work = &m.session.spaces[before];
     assert_eq!(work.name, "Work");
     // 2 overflowing Essentials first, then Figma, then the two folders.

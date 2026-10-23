@@ -19,7 +19,7 @@ pub struct TabsState {
   pub active_space_id: Id,
   #[specta(type = Option<TsId>)]
   pub active_tab_id: Option<Id>,
-  /// Always `SWATCH_SLOTS` (8) long.
+  /// Always `SWATCH_SLOTS` (12) long.
   pub swatches: Vec<Swatch>,
   pub spaces: Vec<SpaceView>,
   /// How many closed tabs "Reopen Closed Tab" can bring back (0 hides it).

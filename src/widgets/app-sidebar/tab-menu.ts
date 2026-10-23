@@ -33,8 +33,6 @@ function locate(tabs: TabsState, tabId: Id): { tab: Tab; place: Place } | null {
 /** A tab by id, wherever it is. */
 export const findTab = (tabs: TabsState, tabId: Id) => locate(tabs, tabId)?.tab ?? null
 
-const SWATCH_SLOTS = 8
-
 type TabMenuContext = {
   tabs: TabsState
   activeSpaceId: Id
@@ -116,7 +114,7 @@ export function tabMenu(tabId: Id, { tabs, activeSpaceId, onEdit, onOpened, onFo
             ? [
                 {
                   label: menuLabel("tab", "addToSwatches"),
-                  hint: `${swatchCount} / ${SWATCH_SLOTS}`,
+                  hint: `${swatchCount} / ${tabs.swatches.length}`,
                   // After the last swatch: a list to the user, though the backend has slots.
                   onSelect: run("add to swatches", () => insertSwatch(tab.id, swatchCount, tabs.swatches)),
                 },
