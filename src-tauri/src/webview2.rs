@@ -12,7 +12,7 @@ use crate::{
 use webview2_com::{
   take_pwstr, AcceleratorKeyPressedEventHandler, BytesReceivedChangedEventHandler, CallDevToolsProtocolMethodCompletedHandler,
   ContainsFullScreenElementChangedEventHandler, ContextMenuRequestedEventHandler, DownloadStartingEventHandler, NavigationCompletedEventHandler,
-  ProcessFailedEventHandler, StateChangedEventHandler,
+  ProcessFailedEventHandler, StateChangedEventHandler, StatusBarTextChangedEventHandler,
   FaviconChangedEventHandler, FindActiveMatchIndexChangedEventHandler, FindMatchCountChangedEventHandler, FindStartCompletedHandler,
   IsDocumentPlayingAudioChangedEventHandler,
   GetProcessExtendedInfosCompletedHandler, PermissionRequestedEventHandler, ServerCertificateErrorDetectedEventHandler, TrySuspendCompletedHandler,
@@ -32,7 +32,7 @@ use webview2_com::{
     ICoreWebView2Environment15, ICoreWebView2Find, ICoreWebView2FrameInfo2, ICoreWebView2PermissionRequestedEventArgs,
     ICoreWebView2PermissionRequestedEventArgs3, COREWEBVIEW2_PERMISSION_KIND_CAMERA, COREWEBVIEW2_PERMISSION_KIND_CLIPBOARD_READ,
     COREWEBVIEW2_PERMISSION_KIND_GEOLOCATION, COREWEBVIEW2_PERMISSION_KIND_MICROPHONE, COREWEBVIEW2_PERMISSION_STATE_ALLOW,
-    ICoreWebView2_11, ICoreWebView2_28,
+    ICoreWebView2_11, ICoreWebView2_12, ICoreWebView2_28,
     COREWEBVIEW2_CONTEXT_MENU_TARGET_KIND, COREWEBVIEW2_CONTEXT_MENU_TARGET_KIND_IMAGE,
     ICoreWebView2ProcessExtendedInfoCollection, ICoreWebView2Settings4, ICoreWebView2_14, ICoreWebView2_15, ICoreWebView2_19, ICoreWebView2_2,
     ICoreWebView2_20, ICoreWebView2_3, ICoreWebView2_8,
@@ -664,6 +664,32 @@ pub fn set_low_memory(pw: &PlatformWebview, low: bool) {
   // SAFETY: main thread, live webview.
   unsafe {
     let _ = core.SetMemoryUsageTargetLevel(level);
+  }
+}
+
+/// Ezel draws the hovered link's address itself (the link status pill): WebView2's own status
+/// bubble is turned off, and `f` gets its text whenever it changes (empty: nothing to show).
+pub fn on_status_text(pw: &PlatformWebview, f: impl Fn(String) + 'static) {
+  let Some(core) = core(pw) else { return };
+  // SAFETY: main thread, live webview.
+  unsafe {
+    if let Ok(settings) = core.Settings() {
+      let _ = settings.SetIsStatusBarEnabled(false);
+    }
+  }
+  let Ok(core) = core.cast::<ICoreWebView2_12>() else { return };
+  let handler = StatusBarTextChangedEventHandler::create(Box::new(move |sender, _| {
+    let Some(sender) = sender.and_then(|s| s.cast::<ICoreWebView2_12>().ok()) else { return Ok(()) };
+    let mut text = PWSTR::null();
+    // SAFETY: WebView2 calls this on the main thread; take_pwstr frees the string.
+    unsafe { sender.StatusBarText(&mut text)? };
+    f(take_pwstr(text));
+    Ok(())
+  }));
+  let mut token = 0i64;
+  // SAFETY: main thread, live webview.
+  unsafe {
+    let _ = core.add_StatusBarTextChanged(&handler, &mut token);
   }
 }
 

@@ -90,6 +90,17 @@ pub struct FindChanged {
   pub count: u32,
 }
 
+/// Payload of "link-status": the shown page's status text (a hovered link's address), or "" for
+/// none. Shown as text only, at most [`MAX_STATUS`] characters.
+#[derive(Clone, Debug, Serialize, Type, Event)]
+#[tauri_specta(event_name = "link-status")]
+pub struct LinkStatus {
+  pub text: String,
+}
+
+/// Longest status text passed on (a link's address can be huge; the pill shows one line).
+const MAX_STATUS: usize = 300;
+
 /// A page's right-click menu waiting for a choice (`choose_page_menu_item`).
 pub struct OpenMenu {
   pub id: u32,
@@ -406,6 +417,8 @@ fn show(app: &AppHandle, next: Option<Id>) {
   // Another tab: the window leaves (or re-enters) fullscreen with it, and the other tabs'
   // permission prompts are declined this once (they can only be asked while on screen).
   apply_fullscreen(app);
+  // A link hovered in the previous tab isn't under the pointer any more.
+  emit_to_ui(app, &LinkStatus { text: String::new() });
   let stale: Vec<u32> = browser(app).asking.lock().unwrap().iter().filter(|(_, (tab, _, _))| Some(*tab) != next).map(|(id, _)| *id).collect();
   for ask in stale {
     let _ = answer_permission(app, ask, None);
@@ -831,6 +844,12 @@ fn watch_platform_events(webview: &Webview, id: Id) {
         model.set_favicon(id, favicon);
         browser.store.save(&model.session);
         emit_tab(&a, &model, id);
+      });
+      let a = app.clone();
+      webview2::on_status_text(&pw, move |text| {
+        if *browser(&a).shown.lock().unwrap() == Some(id) {
+          emit_to_ui(&a, &LinkStatus { text: text.chars().take(MAX_STATUS).collect() });
+        }
       });
       let a = app.clone();
       webview2::on_navigation_failed(&pw, move |error| {

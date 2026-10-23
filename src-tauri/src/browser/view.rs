@@ -24,6 +24,20 @@ pub struct TabsState {
   pub spaces: Vec<SpaceView>,
   /// How many closed tabs "Reopen Closed Tab" can bring back (0 hides it).
   pub closed_count: u32,
+  /// The last few closed tabs, newest first (the palette's chips); `reopen_recent_tab(n)` takes
+  /// the n-th.
+  pub recently_closed: Vec<ClosedTabView>,
+}
+
+/// Most closed tabs the palette offers.
+pub const RECENTLY_CLOSED_SHOWN: usize = 5;
+
+#[derive(Clone, Serialize, Type)]
+#[serde(rename = "ClosedTab", rename_all = "camelCase")]
+pub struct ClosedTabView {
+  pub url: String,
+  pub title: Option<String>,
+  pub favicon: Option<String>,
 }
 
 /// One cell of the Swatches grid; `null` = empty cell.
@@ -113,6 +127,13 @@ impl TabsState {
         })
         .collect(),
       closed_count: s.closed.len() as u32,
+      recently_closed: s
+        .closed
+        .iter()
+        .rev()
+        .take(RECENTLY_CLOSED_SHOWN)
+        .map(|c| ClosedTabView { url: c.url.clone(), title: c.title.clone(), favicon: c.favicon.clone() })
+        .collect(),
     }
   }
 }

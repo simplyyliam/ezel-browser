@@ -492,6 +492,13 @@ pub async fn reopen_closed_tab(app: AppHandle) -> Result<Option<TsId>> {
   })
 }
 
+/// Reopens the `n`-th most recently closed tab (0 = the newest), where it was, and selects it.
+#[tauri::command]
+#[specta::specta]
+pub async fn reopen_recent_tab(app: AppHandle, n: u32) -> Result<TsId> {
+  update(&app, |m, now| m.reopen_recent(n as usize, now)).map(TsId)
+}
+
 /// Removes any tab, pinned or not.
 #[tauri::command]
 #[specta::specta]

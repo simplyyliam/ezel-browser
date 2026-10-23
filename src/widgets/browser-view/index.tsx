@@ -2,6 +2,7 @@ import { useState } from "react"
 import { ContentSlot } from "@/features/browser-view/content-slot"
 import { ErrorPage } from "@/features/browser-view/error-page"
 import { FindBar } from "@/features/browser-view/find-bar"
+import { LinkStatus } from "@/features/browser-view/link-status"
 import { PageMenu } from "@/features/browser-view/page-menu"
 import {
   findInPage,
@@ -12,6 +13,7 @@ import {
   unwrap,
   useFindResults,
   useHotkey,
+  useLinkStatus,
   usePage,
   useTabs,
   type Id,
@@ -24,6 +26,7 @@ export function BrowserView() {
   const { menu, close } = usePageMenu()
   const tabs = useTabs()
   const page = usePage()
+  const linkStatus = useLinkStatus()
   const activeTabId = tabs?.activeTabId ?? null
   // Find belongs to the tab it was opened on: showing another tab closes it.
   const [find, setFind] = useState<{ tabId: Id; focusKey: number } | null>(null)
@@ -65,6 +68,8 @@ export function BrowserView() {
           }}
         />
       )}
+      {/* A hovered link's address; never over Ezel's error page (there's no page to hover). */}
+      {linkStatus && !page.error && <LinkStatus text={linkStatus} />}
       {/* Keyed per right-click: each one is a fresh menu. */}
       {menu && <PageMenu key={menu.id} menu={menu} onClose={close} />}
     </div>
