@@ -50,6 +50,9 @@ pub fn specta_builder() -> tauri_specta::Builder<tauri::Wry> {
       stop_loading,
       open_devtools,
       copy_page_url,
+      find_start,
+      find_next,
+      find_stop,
       clear_site_data,
       get_memory,
       toggle_page_layer,
@@ -95,6 +98,7 @@ pub fn specta_builder() -> tauri_specta::Builder<tauri::Wry> {
       window_radius::WindowRadius,
       updater::UpdateStatus,
       browser::page_menu::PageMenu,
+      browser::FindChanged,
     ])
 }
 

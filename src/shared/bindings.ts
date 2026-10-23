@@ -37,6 +37,15 @@ export const commands = {
 	 */
 	copyPageUrl: () => typedError<string, AppError>(__TAURI_INVOKE("copy_page_url")),
 	/**
+	 *  Find in page (Ctrl+F): highlights every match of `query` in the shown tab and makes the first
+	 *  one active; results come as "find-changed". An empty query ends the session.
+	 */
+	findStart: (query: string) => typedError<null, AppError>(__TAURI_INVOKE("find_start", { query })),
+	/**  The next match (Enter), or the previous one (`backward`, Shift+Enter). */
+	findNext: (backward: boolean) => typedError<null, AppError>(__TAURI_INVOKE("find_next", { backward })),
+	/**  Closes find in page: highlights go. `refocus`: the page gets keyboard focus back (Esc). */
+	findStop: (refocus: boolean) => typedError<null, AppError>(__TAURI_INVOKE("find_stop", { refocus })),
+	/**
 	 *  "Clear This Site's Data" (the site info panel): everything the shown page's site stored in
 	 *  Ezel (cookies, storage, caches), then the page reloads. Returns the site's host.
 	 */
@@ -119,6 +128,7 @@ export const commands = {
 
 /** Events */
 export const events = {
+	findChanged: makeEvent<FindChanged>("find-changed"),
 	hotkeyPressed: makeEvent<HotkeyPressed>("hotkey-pressed"),
 	pageChanged: makeEvent<PageChanged>("page-changed"),
 	pageMenu: makeEvent<PageMenu>("page-menu"),
@@ -164,6 +174,12 @@ export type ErrorCode =
  *  already running). Try again later; nothing is wrong.
  */
 "unavailable";
+
+/**  Payload of "find-changed": the shown tab's find results. `active` is 1-based, 0 for none. */
+export type FindChanged = {
+	active: number,
+	count: number,
+};
 
 export type Folder = {
 	id: Id,

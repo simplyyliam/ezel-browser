@@ -71,6 +71,15 @@ pub struct Browser {
   store: store::Store,
 }
 
+/// Payload of "find-changed": the shown tab's find results. `active` is 1-based, 0 for none.
+#[derive(Clone, Copy, Debug, Default, Serialize, Type, Event)]
+#[serde(rename_all = "camelCase")]
+#[tauri_specta(event_name = "find-changed")]
+pub struct FindChanged {
+  pub active: u32,
+  pub count: u32,
+}
+
 /// A page's right-click menu waiting for a choice (`choose_page_menu_item`).
 pub struct OpenMenu {
   pub id: u32,
@@ -633,6 +642,12 @@ fn watch_platform_events(webview: &Webview, id: Id) {
       webview2::on_certificate_error(&pw, move |request| certificate_error(&a, id, &request));
       let a = app.clone();
       webview2::on_context_menu(&pw, move |request| page_menu_requested(&a, id, request));
+      let a = app.clone();
+      webview2::on_find_changed(&pw, move |active, count| {
+        if *browser(&a).shown.lock().unwrap() == Some(id) {
+          emit_to_ui(&a, &FindChanged { active: active.max(0) as u32, count: count.max(0) as u32 });
+        }
+      });
       webview2::quiet_defaults(&pw);
       webview2::forward_shortcuts(&pw, move |key| crate::hotkeys::handle(&app, key));
     });

@@ -75,6 +75,8 @@ export const HOTKEYS = {
   /** Lenses (Rust's page layers): the squint test (blur) and greyscale, on the shown tab. */
   squint: { label: "Squint", keys: { ctrl: true, alt: true, key: "s" }, focusUi: false },
   greyscale: { label: "Greyscale", keys: { ctrl: true, alt: true, key: "g" }, focusUi: false },
+  /** Find in page: a small bar in the page's corner, its field focused. */
+  find: { label: "Find in Page", keys: { ctrl: true, key: "f" }, focusUi: true },
   /** Chrome's bookmark key: Ezel's bookmarks are pinned tabs, so it pins the shown tab. */
   pinTab: { label: "Pin Tab", keys: { ctrl: true, key: "d" }, focusUi: false },
   /** Arc's and Zen's Ctrl+Shift+C: the page keeps focus, a toast confirms. */
