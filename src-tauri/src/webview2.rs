@@ -6,7 +6,7 @@ use tauri::webview::PlatformWebview;
 use std::cell::RefCell;
 
 use crate::{
-  browser::{page_menu::MenuTarget, site::PageError},
+  browser::{page_menu::MenuTarget, permissions::SitePermission, site::PageError},
   hotkeys::KeyPress,
 };
 use webview2_com::{
@@ -29,7 +29,9 @@ use webview2_com::{
     COREWEBVIEW2_WEB_ERROR_STATUS_CONNECTION_RESET, COREWEBVIEW2_WEB_ERROR_STATUS_DISCONNECTED,
     COREWEBVIEW2_WEB_ERROR_STATUS_HOST_NAME_NOT_RESOLVED, COREWEBVIEW2_WEB_ERROR_STATUS_SERVER_UNREACHABLE,
     COREWEBVIEW2_WEB_ERROR_STATUS_TIMEOUT,
-    ICoreWebView2Environment15, ICoreWebView2Find, ICoreWebView2FrameInfo2, ICoreWebView2PermissionRequestedEventArgs3,
+    ICoreWebView2Environment15, ICoreWebView2Find, ICoreWebView2FrameInfo2, ICoreWebView2PermissionRequestedEventArgs,
+    ICoreWebView2PermissionRequestedEventArgs3, COREWEBVIEW2_PERMISSION_KIND_CAMERA, COREWEBVIEW2_PERMISSION_KIND_CLIPBOARD_READ,
+    COREWEBVIEW2_PERMISSION_KIND_GEOLOCATION, COREWEBVIEW2_PERMISSION_KIND_MICROPHONE, COREWEBVIEW2_PERMISSION_STATE_ALLOW,
     ICoreWebView2_11, ICoreWebView2_28,
     COREWEBVIEW2_CONTEXT_MENU_TARGET_KIND, COREWEBVIEW2_CONTEXT_MENU_TARGET_KIND_IMAGE,
     ICoreWebView2ProcessExtendedInfoCollection, ICoreWebView2Settings4, ICoreWebView2_14, ICoreWebView2_15, ICoreWebView2_19, ICoreWebView2_2,
@@ -428,19 +430,67 @@ pub fn open_devtools(pw: &PlatformWebview) {
   }
 }
 
-/// What Ezel answers a website's permission request with, without asking: `None` leaves it to
-/// WebView2 (its own prompt). Notifications are denied until there's a permissions UI (calm: no
-/// "allow notifications?" prompts).
+/// How a permission request is answered.
+pub enum PermissionAnswer {
+  Allow,
+  Deny,
+  /// Ezel's prompt asks; WebView2 waits until [`answer_permission`] with this id.
+  Ask(u32),
+}
+
+/// The kinds Ezel's own prompt handles.
+fn site_permission(kind: COREWEBVIEW2_PERMISSION_KIND) -> Option<SitePermission> {
+  Some(match kind {
+    COREWEBVIEW2_PERMISSION_KIND_CAMERA => SitePermission::Camera,
+    COREWEBVIEW2_PERMISSION_KIND_MICROPHONE => SitePermission::Microphone,
+    COREWEBVIEW2_PERMISSION_KIND_GEOLOCATION => SitePermission::Location,
+    COREWEBVIEW2_PERMISSION_KIND_CLIPBOARD_READ => SitePermission::Clipboard,
+    _ => return None,
+  })
+}
+
+/// What Ezel answers without asking anyone: notifications are always declined (calm: no "allow
+/// notifications?" prompts). `None`: not decided here.
 fn quiet_permission(kind: COREWEBVIEW2_PERMISSION_KIND) -> Option<COREWEBVIEW2_PERMISSION_STATE> {
   (kind == COREWEBVIEW2_PERMISSION_KIND_NOTIFICATIONS).then_some(COREWEBVIEW2_PERMISSION_STATE_DENY)
 }
 
-/// Quiet defaults for a tab (docs/design/decisions.md, "Quiet defaults"): no password saving (the
-/// "Save password?" bubble) and notification requests denied without a prompt, and not remembered
-/// in the profile so a later permissions UI starts clean. General autofill is off through the
-/// builder (`general_autofill_enabled`); autoplay with sound through the browser arguments.
+thread_local! {
+  /// Requests waiting for the user's answer: their args and deferral (main thread only).
+  static PENDING_PERMISSIONS: RefCell<std::collections::HashMap<u32, (ICoreWebView2PermissionRequestedEventArgs, ICoreWebView2Deferral)>> =
+    RefCell::new(Default::default());
+}
+
+/// Sets the answer on a request: never saved in WebView2's profile (Ezel remembers, so it can list
+/// and revoke).
+unsafe fn set_permission(args: &ICoreWebView2PermissionRequestedEventArgs, allow: bool) {
+  // SAFETY: main thread, live args (the caller's).
+  unsafe {
+    if let Ok(args3) = args.cast::<ICoreWebView2PermissionRequestedEventArgs3>() {
+      let _ = args3.SetSavesInProfile(false);
+    }
+    let _ = args.SetState(if allow { COREWEBVIEW2_PERMISSION_STATE_ALLOW } else { COREWEBVIEW2_PERMISSION_STATE_DENY });
+  }
+}
+
+/// Answers a request Ezel's prompt asked about (main thread). A no-op if it was already answered.
+pub fn answer_permission(id: u32, allow: bool) {
+  let Some((args, deferral)) = PENDING_PERMISSIONS.with(|p| p.borrow_mut().remove(&id)) else { return };
+  // SAFETY: main thread; the args and deferral were kept alive until now.
+  unsafe {
+    set_permission(&args, allow);
+    let _ = deferral.Complete();
+  }
+}
+
+/// Quiet defaults for a tab or popup (docs/design/decisions.md, "Quiet defaults"): no password
+/// saving (the "Save password?" bubble), notifications declined without a prompt. General
+/// autofill is off through the builder (`general_autofill_enabled`); autoplay with sound through
+/// the browser arguments. `ask`: Ezel's own prompt for camera, microphone, location and the
+/// clipboard (tabs); without it (popups) those keep WebView2's prompt. `ask` gets the requesting
+/// address and kind.
 // TODO: turn password saving back on with the passwords UI.
-pub fn quiet_defaults(pw: &PlatformWebview) {
+pub fn quiet_defaults(pw: &PlatformWebview, ask: Option<Box<dyn Fn(String, SitePermission) -> PermissionAnswer>>) {
   let Some(core) = core(pw) else { return };
   // SAFETY: main thread, live webview.
   unsafe {
@@ -449,9 +499,10 @@ pub fn quiet_defaults(pw: &PlatformWebview) {
       let _ = settings.SetIsGeneralAutofillEnabled(false);
     }
   }
-  let handler = PermissionRequestedEventHandler::create(Box::new(|_, args| {
+  let handler = PermissionRequestedEventHandler::create(Box::new(move |_, args| {
     let Some(args) = args else { return Ok(()) };
-    // SAFETY: WebView2 calls this on the main thread with live event args.
+    // SAFETY: WebView2 calls this on the main thread with live event args; take_pwstr frees the
+    // string; a deferred request's args are kept in PENDING_PERMISSIONS until answered.
     unsafe {
       let mut kind = COREWEBVIEW2_PERMISSION_KIND::default();
       args.PermissionKind(&mut kind)?;
@@ -460,6 +511,18 @@ pub fn quiet_defaults(pw: &PlatformWebview) {
           let _ = args3.SetSavesInProfile(false);
         }
         args.SetState(state)?;
+        return Ok(());
+      }
+      let (Some(ask), Some(permission)) = (ask.as_ref(), site_permission(kind)) else { return Ok(()) };
+      let mut uri = PWSTR::null();
+      args.Uri(&mut uri)?;
+      match ask(take_pwstr(uri), permission) {
+        PermissionAnswer::Allow => set_permission(&args, true),
+        PermissionAnswer::Deny => set_permission(&args, false),
+        PermissionAnswer::Ask(id) => {
+          let deferral = args.GetDeferral()?;
+          PENDING_PERMISSIONS.with(|p| p.borrow_mut().insert(id, (args.clone(), deferral)));
+        }
       }
     }
     Ok(())
@@ -775,9 +838,6 @@ pub fn forward_shortcuts(pw: &PlatformWebview, on_key: impl Fn(KeyPress) -> bool
 #[cfg(test)]
 mod tests {
   use super::*;
-  use webview2_com::Microsoft::Web::WebView2::Win32::{
-    COREWEBVIEW2_PERMISSION_KIND_CAMERA, COREWEBVIEW2_PERMISSION_KIND_CLIPBOARD_READ, COREWEBVIEW2_PERMISSION_KIND_GEOLOCATION,
-  };
 
   #[test]
   fn only_known_failures_get_ezels_page() {
@@ -798,10 +858,20 @@ mod tests {
   }
 
   #[test]
-  fn notifications_are_denied_and_everything_else_left_to_webview2() {
+  fn notifications_are_denied_and_the_four_kinds_go_to_ezels_prompt() {
+    use webview2_com::Microsoft::Web::WebView2::Win32::{COREWEBVIEW2_PERMISSION_KIND_MIDI_SYSTEM_EXCLUSIVE_MESSAGES, COREWEBVIEW2_PERMISSION_KIND_OTHER_SENSORS};
     assert_eq!(quiet_permission(COREWEBVIEW2_PERMISSION_KIND_NOTIFICATIONS), Some(COREWEBVIEW2_PERMISSION_STATE_DENY));
+    assert_eq!(site_permission(COREWEBVIEW2_PERMISSION_KIND_NOTIFICATIONS), None);
     for kind in [COREWEBVIEW2_PERMISSION_KIND_CAMERA, COREWEBVIEW2_PERMISSION_KIND_GEOLOCATION, COREWEBVIEW2_PERMISSION_KIND_CLIPBOARD_READ] {
       assert_eq!(quiet_permission(kind), None);
+    }
+    assert_eq!(site_permission(COREWEBVIEW2_PERMISSION_KIND_CAMERA), Some(SitePermission::Camera));
+    assert_eq!(site_permission(COREWEBVIEW2_PERMISSION_KIND_MICROPHONE), Some(SitePermission::Microphone));
+    assert_eq!(site_permission(COREWEBVIEW2_PERMISSION_KIND_GEOLOCATION), Some(SitePermission::Location));
+    assert_eq!(site_permission(COREWEBVIEW2_PERMISSION_KIND_CLIPBOARD_READ), Some(SitePermission::Clipboard));
+    // Anything else keeps WebView2's own handling.
+    for kind in [COREWEBVIEW2_PERMISSION_KIND_MIDI_SYSTEM_EXCLUSIVE_MESSAGES, COREWEBVIEW2_PERMISSION_KIND_OTHER_SENSORS] {
+      assert_eq!(site_permission(kind), None);
     }
   }
 }

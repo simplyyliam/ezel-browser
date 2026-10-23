@@ -16,6 +16,7 @@ pub mod layers;
 pub mod memory;
 mod model;
 pub mod page_menu;
+pub mod permissions;
 #[cfg(feature = "perf")]
 mod perf;
 mod popup;
@@ -71,6 +72,12 @@ pub struct Browser {
   menu: Mutex<Option<OpenMenu>>,
   /// This session's downloads (memory only).
   downloads: Mutex<downloads::Downloads>,
+  /// Remembered site permissions (`<app data>/ezel/permissions.json`), and Ezel's prompts waiting
+  /// for an answer: id → (tab, origin, kind).
+  permissions: Mutex<permissions::Permissions>,
+  asking: Mutex<std::collections::HashMap<u32, (Id, String, permissions::SitePermission)>>,
+  /// Ezel's own folder in app data (the session's, the permissions').
+  data_dir: std::path::PathBuf,
   store: store::Store,
 }
 
@@ -246,6 +253,9 @@ pub fn init(app: &AppHandle) -> tauri::Result<()> {
     unpainted: Mutex::new(HashSet::new()),
     menu: Mutex::new(None),
     downloads: Mutex::new(downloads::Downloads::default()),
+    permissions: Mutex::new(permissions::load(&dir)),
+    asking: Mutex::new(Default::default()),
+    data_dir: dir.clone(),
     store: store::Store::new(dir),
   });
   if let Err(e) = update(app, |m, now| Ok(((), m.restore(now)))) {
@@ -393,8 +403,13 @@ fn show(app: &AppHandle, next: Option<Id>) {
     },
     None => emit_page(app, PageChanged::default()),
   }
-  // Another tab: the window leaves (or re-enters) fullscreen with it.
+  // Another tab: the window leaves (or re-enters) fullscreen with it, and the other tabs'
+  // permission prompts are declined this once (they can only be asked while on screen).
   apply_fullscreen(app);
+  let stale: Vec<u32> = browser(app).asking.lock().unwrap().iter().filter(|(_, (tab, _, _))| Some(*tab) != next).map(|(id, _)| *id).collect();
+  for ask in stale {
+    let _ = answer_permission(app, ask, None);
+  }
   if let Some(previous) = previous.filter(|p| Some(*p) != next) {
     if let Some(webview) = tab_webview(app, previous) {
       let _ = webview.hide();
@@ -518,6 +533,76 @@ fn certificate_error(app: &AppHandle, id: Id, request: &str) {
   if *browser(app).shown.lock().unwrap() == Some(id) {
     emit_page(app, page);
   }
+}
+
+/// Payload of "permission-asked": Ezel's prompt in the titlebar peek, for the shown tab's site.
+#[derive(Clone, Debug, Serialize, Type, Event)]
+#[serde(rename_all = "camelCase")]
+#[tauri_specta(event_name = "permission-asked")]
+pub struct PermissionAsked {
+  pub id: u32,
+  #[specta(type = TsIdOf)]
+  pub tab_id: Id,
+  /// The requesting site's host (an embedded frame's own, if it asks).
+  pub host: String,
+  pub permission: permissions::SitePermission,
+}
+
+/// `Id` in the bindings (see `model::TsId`).
+type TsIdOf = model::TsId;
+
+/// A site asks for camera, microphone, location or the clipboard. A remembered answer stands; a
+/// tab that isn't on screen is refused (it can't be asked); otherwise Ezel's prompt asks.
+#[cfg(windows)]
+fn permission_requested(app: &AppHandle, id: Id, uri: &str, permission: permissions::SitePermission) -> crate::webview2::PermissionAnswer {
+  use crate::webview2::PermissionAnswer;
+  let (Some(origin), Some(host)) = (site::origin_of(uri), site::host_of(uri)) else { return PermissionAnswer::Deny };
+  let browser = browser(app);
+  match browser.permissions.lock().unwrap().get(&origin, permission) {
+    Some(permissions::Decision::Allow) => return PermissionAnswer::Allow,
+    Some(permissions::Decision::Deny) => return PermissionAnswer::Deny,
+    None => {}
+  }
+  if *browser.shown.lock().unwrap() != Some(id) {
+    return PermissionAnswer::Deny;
+  }
+  static NEXT: std::sync::atomic::AtomicU32 = std::sync::atomic::AtomicU32::new(1);
+  let ask = NEXT.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+  browser.asking.lock().unwrap().insert(ask, (id, origin, permission));
+  emit_to_ui(app, &PermissionAsked { id: ask, tab_id: id, host, permission });
+  PermissionAnswer::Ask(ask)
+}
+
+/// Answers Ezel's prompt `ask`: `Some(allow)` is remembered for the site; `None` (dismissed, the
+/// tab changed) declines this once.
+pub fn answer_permission(app: &AppHandle, ask: u32, allow: Option<bool>) -> Result<(), AppError> {
+  let browser = browser(app);
+  let Some((_, origin, permission)) = browser.asking.lock().unwrap().remove(&ask) else { return Ok(()) };
+  if let Some(allow) = allow {
+    let mut saved = browser.permissions.lock().unwrap();
+    saved.set(&origin, permission, if allow { permissions::Decision::Allow } else { permissions::Decision::Deny });
+    if permissions::save(&browser.data_dir, &saved).is_err() {
+      log::error!("permissions: failed to save");
+    }
+  }
+  #[cfg(windows)]
+  app.run_on_main_thread(move || crate::webview2::answer_permission(ask, allow == Some(true)))?;
+  Ok(())
+}
+
+/// Every remembered answer, by site.
+pub fn site_permissions(app: &AppHandle) -> Vec<permissions::SitePermissions> {
+  browser(app).permissions.lock().unwrap().list()
+}
+
+/// Forgets one remembered answer: the site asks again next time.
+pub fn revoke_site_permission(app: &AppHandle, origin: &str, permission: permissions::SitePermission) -> Result<(), AppError> {
+  let browser = browser(app);
+  let mut saved = browser.permissions.lock().unwrap();
+  if saved.revoke(origin, permission) {
+    permissions::save(&browser.data_dir, &saved).map_err(|e| AppError::internal(format!("permissions: {}", e.kind())))?;
+  }
+  Ok(())
 }
 
 /// A download began in any tab: it joins Ezel's list.
@@ -790,7 +875,8 @@ fn watch_platform_events(webview: &Webview, id: Id) {
           emit_to_ui(&a, &FindChanged { active: active.max(0) as u32, count: count.max(0) as u32 });
         }
       });
-      webview2::quiet_defaults(&pw);
+      let a = app.clone();
+      webview2::quiet_defaults(&pw, Some(Box::new(move |uri, kind| permission_requested(&a, id, &uri, kind))));
       webview2::forward_shortcuts(&pw, move |key| crate::hotkeys::handle(&app, key));
     });
   }

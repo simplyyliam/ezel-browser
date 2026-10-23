@@ -50,6 +50,9 @@ pub fn specta_builder() -> tauri_specta::Builder<tauri::Wry> {
       stop_loading,
       open_devtools,
       copy_page_url,
+      answer_permission,
+      get_site_permissions,
+      revoke_site_permission,
       get_downloads,
       open_download,
       show_download_in_folder,
@@ -104,6 +107,7 @@ pub fn specta_builder() -> tauri_specta::Builder<tauri::Wry> {
       updater::UpdateStatus,
       browser::page_menu::PageMenu,
       browser::FindChanged,
+      browser::PermissionAsked,
       browser::downloads::DownloadsState,
     ])
 }

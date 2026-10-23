@@ -134,6 +134,33 @@ pub async fn choose_page_menu_item(app: AppHandle, id: u32, action: Option<PageM
   Ok(())
 }
 
+// ---- Site permissions ----
+
+/// Ezel's permission prompt was answered: `allow` true/false is remembered for the site, `null`
+/// (dismissed) declines once.
+#[tauri::command]
+#[specta::specta]
+pub fn answer_permission(app: AppHandle, id: u32, allow: Option<bool>) -> Result<()> {
+  super::answer_permission(&app, id, allow)
+}
+
+/// Every site's remembered permissions (the site panel and the permissions list).
+#[tauri::command]
+#[specta::specta]
+pub fn get_site_permissions(app: AppHandle) -> Result<Vec<super::permissions::SitePermissions>> {
+  Ok(super::site_permissions(&app))
+}
+
+/// Forgets a site's answer for one permission: it asks again next time.
+#[tauri::command]
+#[specta::specta]
+pub fn revoke_site_permission(app: AppHandle, origin: String, permission: super::permissions::SitePermission) -> Result<()> {
+  if origin.len() > 2048 {
+    return Err(AppError::invalid_input("that's not a site"));
+  }
+  super::revoke_site_permission(&app, &origin, permission)
+}
+
 // ---- Downloads ----
 
 /// This session's downloads, newest first (also "downloads-changed").

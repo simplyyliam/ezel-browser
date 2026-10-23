@@ -76,7 +76,8 @@ pub fn open(app: &AppHandle, url: &Url, features: NewWindowFeatures) -> NewWindo
   {
     let closing = window.clone();
     let _ = window.with_webview(move |pw| {
-      crate::webview2::quiet_defaults(&pw);
+      // Its own prompts for camera and the like stay WebView2's: Ezel's prompt lives in the tab's peek.
+      crate::webview2::quiet_defaults(&pw, None);
       // `window.close()` from the page (a finished sign-in): wry only drops the webview's own
       // container, which would leave an empty window behind. Close the whole window, after the
       // event returns (WebView2 doesn't allow reentrant calls from its handlers).

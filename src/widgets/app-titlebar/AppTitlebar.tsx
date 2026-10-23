@@ -1,17 +1,22 @@
 import { useEffect, useRef, useState } from "react";
 import { cn } from "@/lib/utils";
 import { QuickTabs } from "@/features/app-titlebar/quick-tabs";
-import { SiteButton, SiteInfoPanel } from "@/features/app-titlebar/site-identity";
+import { PermissionCard, SiteButton, SiteInfoPanel } from "@/features/app-titlebar/site-identity";
 import { WindowControls } from "@/features/app-titlebar/window-controls";
 import {
   getCursorPosition,
   getWindowClientRect,
+  openSitePermissions,
+  originOf,
   reportError,
+  revokeSitePermission,
   showToast,
   siteHost,
   unwrap,
   useContentCutout,
   usePage,
+  usePermissionAsks,
+  useSitePermissions,
   useTabs,
   type Id,
   type Tab,
@@ -73,7 +78,13 @@ export const AppTitlebar = () => {
   // The site info panel, for the host it was opened on: another site closes it.
   const [panelHost, setPanelHost] = useState<string | null>(null);
   const panelOpen = panelHost !== null && panelHost === host;
-  const shown = open || panelOpen;
+  // A site asking for a permission opens the bar by itself (only the shown tab's asks show; Rust
+  // declines the others' when the tab changes).
+  const { asks, answer } = usePermissionAsks(tabs?.activeTabId ?? null);
+  const ask = asks[0] ?? null;
+  const origin = originOf(page.url);
+  const sitePermissions = useSitePermissions(panelOpen).find((s) => s.origin === origin) ?? null;
+  const shown = open || panelOpen || ask !== null;
 
   const closePanel = () => {
     setPanelHost(null);
@@ -240,6 +251,7 @@ export const AppTitlebar = () => {
                 <WindowControls />
               </div>
             </div>
+            {ask && <PermissionCard key={ask.id} ask={ask} onAnswer={(allow) => answer(ask.id, allow)} />}
             {panelOpen && host && (
               <SiteInfoPanel
                 host={host}
@@ -247,6 +259,12 @@ export const AppTitlebar = () => {
                 onClearData={() => {
                   closePanel();
                   clearSiteData();
+                }}
+                permissions={sitePermissions}
+                onRevoke={(permission) => origin && revokeSitePermission(origin, permission)}
+                onManageAll={() => {
+                  closePanel();
+                  openSitePermissions();
                 }}
               />
             )}

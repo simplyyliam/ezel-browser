@@ -36,6 +36,15 @@ export const commands = {
 	 *  shortcut leaves focus in the website, where the UI's clipboard API can't write.
 	 */
 	copyPageUrl: () => typedError<string, AppError>(__TAURI_INVOKE("copy_page_url")),
+	/**
+	 *  Ezel's permission prompt was answered: `allow` true/false is remembered for the site, `null`
+	 *  (dismissed) declines once.
+	 */
+	answerPermission: (id: number, allow: boolean | null) => typedError<null, AppError>(__TAURI_INVOKE("answer_permission", { id, allow })),
+	/**  Every site's remembered permissions (the site panel and the permissions list). */
+	getSitePermissions: () => typedError<SitePermissions[], AppError>(__TAURI_INVOKE("get_site_permissions")),
+	/**  Forgets a site's answer for one permission: it asks again next time. */
+	revokeSitePermission: (origin: string, permission: SitePermission) => typedError<null, AppError>(__TAURI_INVOKE("revoke_site_permission", { origin, permission })),
 	/**  This session's downloads, newest first (also "downloads-changed"). */
 	getDownloads: () => typedError<DownloadsState, AppError>(__TAURI_INVOKE("get_downloads")),
 	/**  Opens a finished download with its default app (Windows asks first for files from the web). */
@@ -143,6 +152,7 @@ export const events = {
 	hotkeyPressed: makeEvent<HotkeyPressed>("hotkey-pressed"),
 	pageChanged: makeEvent<PageChanged>("page-changed"),
 	pageMenu: makeEvent<PageMenu>("page-menu"),
+	permissionAsked: makeEvent<PermissionAsked>("permission-asked"),
 	tabUpdated: makeEvent<Tab>("tab-updated"),
 	tabsChanged: makeEvent<TabsState>("tabs-changed"),
 	updateStatus: makeEvent<UpdateStatus>("update-status"),
@@ -155,6 +165,8 @@ export type AppError = {
 	code: ErrorCode,
 	message: string,
 };
+
+export type Decision = "allow" | "deny";
 
 /**  A download as the UI shows it. */
 export type Download = {
@@ -328,8 +340,30 @@ export type PageSecurity =
 /**  HTTPS whose certificate couldn't be verified (WebView2 shows its warning page). */
 "certificateError";
 
+/**  Payload of "permission-asked": Ezel's prompt in the titlebar peek, for the shown tab's site. */
+export type PermissionAsked = {
+	id: number,
+	tabId: Id,
+	/**  The requesting site's host (an embedded frame's own, if it asks). */
+	host: string,
+	permission: SitePermission,
+};
+
 /**  Logical px. */
 export type Px = number;
+
+/**  What a site can ask for through Ezel's prompt. */
+export type SitePermission = "camera" | "microphone" | "location" | 
+/**  Reading the clipboard (writing needs no permission). */
+"clipboard";
+
+/**  One site's remembered answers, for the site panel and the permissions list. */
+export type SitePermissions = {
+	origin: string,
+	/**  Its host, for showing. */
+	host: string,
+	permissions: ([SitePermission, Decision])[],
+};
 
 export type Space = {
 	id: Id,
