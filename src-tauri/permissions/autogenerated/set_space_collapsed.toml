@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-set-space-collapsed"
+description = "Enables the set_space_collapsed command without any pre-configured scope."
+commands.allow = ["set_space_collapsed"]
+
+[[permission]]
+identifier = "deny-set-space-collapsed"
+description = "Denies the set_space_collapsed command without any pre-configured scope."
+commands.deny = ["set_space_collapsed"]

@@ -52,6 +52,8 @@ pub struct SpaceView {
   pub id: Id,
   pub name: String,
   pub icon: String,
+  /// Its pinned list is folded away under its title.
+  pub collapsed: bool,
   pub items: Vec<SpaceItem>,
   pub temp_tabs: Vec<TabView>,
 }
@@ -113,6 +115,7 @@ impl TabsState {
           id: space.id,
           name: space.name.clone(),
           icon: space.icon.clone(),
+          collapsed: space.collapsed,
           items: space
             .pinned
             .iter()

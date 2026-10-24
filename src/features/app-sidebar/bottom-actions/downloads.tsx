@@ -12,7 +12,7 @@ export type DownloadActions = {
 }
 
 const icon =
-  "flex size-6 shrink-0 cursor-pointer items-center justify-center rounded-md text-muted-foreground outline-none transition-colors duration-150 hover:bg-accent hover:text-accent-foreground focus-visible:ring-2 focus-visible:ring-ring motion-reduce:transition-none [&_svg]:size-3.5"
+  "flex size-6 shrink-0 cursor-pointer items-center justify-center rounded-md text-muted-foreground outline-none transition-colors duration-(--motion-base) hover:bg-accent hover:text-accent-foreground focus-visible:ring-2 focus-visible:ring-ring motion-reduce:transition-none [&_svg]:size-3.5"
 
 function status(download: Download) {
   const { state, receivedBytes, totalBytes } = download
@@ -87,7 +87,7 @@ function DownloadRow({ download, actions }: { download: Download; actions: Downl
           // between readings rather than jumping.
           <span aria-hidden className="h-1 overflow-hidden rounded-full bg-muted">
             <span
-              className="block h-full rounded-full bg-foreground/60 transition-[width] duration-200 ease-out motion-reduce:transition-none"
+              className="block h-full rounded-full bg-foreground/60 transition-[width] duration-(--motion-base) ease-ezel-out motion-reduce:transition-none"
               style={{ width: `${Math.round(progress * 100)}%` }}
             />
           </span>

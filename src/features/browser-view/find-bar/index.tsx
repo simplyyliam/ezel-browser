@@ -15,7 +15,7 @@ type FindBarProps = {
 }
 
 const button =
-  "flex size-6 shrink-0 cursor-pointer items-center justify-center rounded-md text-muted-foreground outline-none transition-colors duration-150 hover:bg-muted hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-40 motion-reduce:transition-none [&_svg]:size-3.5"
+  "flex size-6 shrink-0 cursor-pointer items-center justify-center rounded-[calc(var(--radius-xl)-0.25rem)] text-muted-foreground outline-none transition-colors duration-(--motion-base) hover:bg-muted hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-40 motion-reduce:transition-none [&_svg]:size-3.5"
 
 /**
  * Find in page (Ctrl+F): a small bar inside the page's top-right corner, cut out of the website

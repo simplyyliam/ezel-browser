@@ -7,7 +7,7 @@ use tauri::{AppHandle, Url};
 
 use super::{
   browser, edit, layers::PageLayer, page_menu::{self, PageMenuAction}, page_of, shown_webview, tab_webview, update, url_policy,
-  model::{TabLocation, TsId},
+  model::{self, TabLocation, TsId},
   view::TabsState,
   PageChanged, SEARCH_URL,
 };
@@ -450,6 +450,36 @@ pub fn clear_site_data(app: AppHandle) -> Result<String> {
   }
 }
 
+/// A picture of the shown page as it looks now (JPEG, base64; see `webview2::capture_page`): the
+/// site info panel draws it in the page's place while it's open. `unavailable` when none comes.
+#[tauri::command]
+#[specta::specta]
+pub async fn capture_page(app: AppHandle) -> Result<String> {
+  let webview = shown(&app)?;
+  #[cfg(windows)]
+  {
+    // Async (off the main thread), so waiting for the main thread's answer is fine.
+    let (tx, rx) = std::sync::mpsc::channel();
+    webview.with_webview(move |pw| {
+      crate::webview2::capture_page(&pw, move |data| {
+        let _ = tx.send(data);
+      })
+    })?;
+    match tauri::async_runtime::spawn_blocking(move || rx.recv_timeout(std::time::Duration::from_secs(2))).await {
+      Ok(Ok(Some(jpeg))) => {
+        use base64::Engine;
+        Ok(base64::engine::general_purpose::STANDARD.encode(jpeg))
+      }
+      _ => Err(AppError::new(ErrorCode::Unavailable, "couldn't capture the page")),
+    }
+  }
+  #[cfg(not(windows))]
+  {
+    let _ = webview;
+    Err(AppError::new(ErrorCode::Unsupported, "capturing the page works only on Windows for now"))
+  }
+}
+
 /// The load meter: Ezel's memory in all and per loaded tab (approximate; see `browser::memory`).
 #[tauri::command]
 #[specta::specta]
@@ -632,13 +662,23 @@ pub async fn unload_folder(app: AppHandle, id: TsId) -> Result<()> {
 #[tauri::command]
 #[specta::specta]
 pub async fn create_space(app: AppHandle, name: String, icon: String) -> Result<TsId> {
+  let (name, icon) = (model::space_name(name)?, model::space_icon(icon)?);
   edit(&app, |m| Ok(m.create_space(name, icon))).map(TsId)
 }
 
 #[tauri::command]
 #[specta::specta]
 pub async fn update_space(app: AppHandle, id: TsId, name: Option<String>, icon: Option<String>) -> Result<()> {
+  let name = name.map(model::space_name).transpose()?;
+  let icon = icon.map(model::space_icon).transpose()?;
   edit(&app, |m| m.update_space(id.0, name, icon))
+}
+
+/// Folds a space's pinned list away under its title, or opens it.
+#[tauri::command]
+#[specta::specta]
+pub async fn set_space_collapsed(app: AppHandle, id: TsId, collapsed: bool) -> Result<()> {
+  edit(&app, |m| m.set_space_collapsed(id.0, collapsed))
 }
 
 #[tauri::command]

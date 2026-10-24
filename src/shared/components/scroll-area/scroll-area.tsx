@@ -10,6 +10,7 @@ import {
   useVelocity,
 } from "motion/react";
 import { cn } from "@/lib/utils";
+import { ENTER, EXIT } from "../../motion";
 
 // Spec and reasoning: docs/design/decisions.md, "Scrollbar".
 
@@ -23,7 +24,12 @@ const FULL_STRETCH_SPEED = 2400;
 /** Most extra length while scrolling, as a share of the resting length. */
 const MAX_STRETCH = 1;
 /** How long the thumb lingers after scrolling stops. */
-const HIDE_AFTER = 900;
+const HIDE_AFTER = 600;
+/**
+ * How long the pointer rests on the right edge before the thumb shows. Rows' close buttons sit
+ * there, so passing over the edge on the way to one doesn't flash the scrollbar.
+ */
+const HOVER_REVEAL = 400;
 /** Edge fade (px) shown where more content is hidden past that edge. */
 const FADE = 16;
 /** Slightly under-damped: when scrolling stops the thumb snaps back a hair past its resting length, like an elastic. */
@@ -44,7 +50,7 @@ interface ScrollAreaProps {
 
 /**
  * Native vertical scrolling (wheel, keyboard, touch all stay native) with the scrollbar replaced by
- * a small trackless pill. It appears only while scrolling, hovering the right edge or dragging, and
+ * a small, faint trackless pill. It appears only while scrolling, resting on the right edge or dragging, and
  * stretches with scroll speed, springing back when scrolling stops.
  */
 export const ScrollArea = ({ children, className, viewportClassName }: ScrollAreaProps) => {
@@ -58,6 +64,8 @@ export const ScrollArea = ({ children, className, viewportClassName }: ScrollAre
   const [overflows, setOverflows] = useState(false);
   const [scrolling, setScrolling] = useState(false);
   const [hovered, setHovered] = useState(false);
+  const hoverTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+  useEffect(() => () => clearTimeout(hoverTimer.current), []);
   const [dragging, setDragging] = useState(false);
 
   // Read live by the stretch transform: no stretch while dragging (the thumb should feel held) or with reduced motion.
@@ -192,8 +200,14 @@ export const ScrollArea = ({ children, className, viewportClassName }: ScrollAre
         <div
           aria-hidden
           className="absolute inset-y-0 right-0 w-2.5"
-          onPointerEnter={() => setHovered(true)}
-          onPointerLeave={() => setHovered(false)}
+          onPointerEnter={() => {
+            clearTimeout(hoverTimer.current);
+            hoverTimer.current = setTimeout(() => setHovered(true), HOVER_REVEAL);
+          }}
+          onPointerLeave={() => {
+            clearTimeout(hoverTimer.current);
+            setHovered(false);
+          }}
           onWheel={(e) => viewportRef.current?.scrollBy({ top: e.deltaY })}
         >
           <motion.div
@@ -202,10 +216,10 @@ export const ScrollArea = ({ children, className, viewportClassName }: ScrollAre
             initial={false}
             animate={{ opacity: visible ? 1 : 0 }}
             // Quick to appear, slower to leave.
-            transition={{ duration: visible ? 0.12 : 0.3, ease: "easeOut" }}
+            transition={visible ? ENTER : EXIT}
             className={cn(
-              "absolute top-0 right-[3px] rounded-full bg-foreground/25 transition-[width,background-color] duration-150 ease-out",
-              active ? "w-1.5 bg-foreground/40" : "w-1",
+              "absolute top-0 right-[3px] rounded-full bg-foreground/15 transition-[width,background-color] duration-(--motion-base) ease-ezel-out",
+              active ? "w-1.5 bg-foreground/30" : "w-1",
               !visible && "pointer-events-none",
             )}
           />

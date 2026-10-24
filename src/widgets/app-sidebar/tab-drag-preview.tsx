@@ -100,7 +100,7 @@ export function TabDragPreview({ drag, shape, returning, canReturn, onReturned, 
         { transform: node.style.transform, width: node.style.width, height: node.style.height },
         { transform: `translate(${left}px, ${top}px)`, width: `${width}px`, height: `${height}px` },
       ],
-      { duration: DURATION, easing: "ease-in-out", fill: "forwards" },
+      { duration: DURATION, easing: "cubic-bezier(0.4, 0, 0.2, 1)", fill: "forwards" },
     )
     animation.onfinish = onReturned
     return () => animation.cancel()
@@ -115,7 +115,7 @@ export function TabDragPreview({ drag, shape, returning, canReturn, onReturned, 
         "pointer-events-none fixed top-0 left-0 z-50 flex items-center overflow-hidden bg-sidebar-accent text-sm text-sidebar-accent-foreground ring-1 ring-sidebar-border",
         swatch ? "justify-center rounded-[9px]" : "gap-2 rounded-md px-2",
         // The size change between row and tile. Under reduced motion it applies at once.
-        !reduceMotion && "transition-[width,height,border-radius] duration-150 ease-in-out",
+        !reduceMotion && "transition-[width,height,border-radius] duration-(--motion-base) ease-ezel-in-out",
       )}
     >
       <Favicon src={drag.tab.favicon} />

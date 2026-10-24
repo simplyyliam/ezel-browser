@@ -74,3 +74,28 @@ export const SPACE_ICON_NAMES = Object.keys(SPACE_ICONS)
 
 /** Icons handed to new spaces in turn (the default space is `house`). */
 export const NEW_SPACE_ICONS = SPACE_ICON_NAMES.filter((name) => name !== "house")
+
+/**
+ * Emoji offered in the icon picker, beside the icons (any other emoji can be typed or pasted).
+ * Making things first, then the rest of a life.
+ */
+export const SPACE_EMOJI = [
+  "🎨", "🖌️", "✏️", "📐", "🧩", "🖼️", "📷", "🎬",
+  "✨", "🌈", "💡", "🔥", "🎯", "🧪", "💻", "📝",
+  "💼", "📚", "🎓", "🏠", "🛒", "✈️", "☕", "🌿",
+  "🎵", "❤️", "⭐", "🚀", "🌙", "🍕", "⚽", "🎮",
+]
+
+/** A space icon that's an emoji rather than an icon name (names are plain ASCII). */
+export const isEmojiIcon = (icon: string) => /[^\x00-\x7F]/.test(icon)
+
+/**
+ * The first emoji of typed text, as Rust accepts it (`model::space_icon`): one grapheme, not
+ * ASCII, no letters, digits or spaces, at most 32 bytes. Null when the text isn't an emoji.
+ */
+export function emojiIcon(text: string): string | null {
+  const first = [...new Intl.Segmenter(undefined, { granularity: "grapheme" }).segment(text.trim())][0]?.segment
+  if (!first || !isEmojiIcon(first)) return null
+  if (/[\p{L}\p{N}\s\p{Cc}]/u.test(first.replace(/[⃣️‍]/g, ""))) return null
+  return new TextEncoder().encode(first).length <= 32 ? first : null
+}

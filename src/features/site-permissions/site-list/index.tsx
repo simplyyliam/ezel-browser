@@ -25,7 +25,7 @@ export function SiteList({ sites, onRevoke }: SiteListProps) {
         {sites.map((site) => {
           const { prefix, domain } = splitHost(site.host)
           return (
-            <li key={site.origin} className="rounded-xl px-2 py-1.5">
+            <li key={site.origin} className="rounded-lg px-2 py-1.5">
               <p className="truncate text-sm">
                 <span className="text-muted-foreground">{prefix}</span>
                 <span className="font-medium text-foreground">{domain}</span>

@@ -28,7 +28,7 @@ export const MENU_RULES = [
   "Title Case labels, verb first, no articles; … when more input follows: a field, a picker or a confirmation (menus.md › Labels).",
   "Toggles change their label with the state (Pin Tab / Unpin Tab, Mute Tab / Unmute Tab) (menus.md › Toggled items).",
   "Uncommon, irreversible destruction (Delete Space…, Delete Folder…) asks first in an alert: title names the thing, Cancel plus a verb button, never OK. Common or undoable removal doesn't ask (alerts.md › Best practices, Buttons).",
-  "Everything in a context menu is also reachable in the main interface (context-menus.md), e.g. the space pop-up and the + menu.",
+  "Everything in a context menu is also reachable in the main interface (context-menus.md), e.g. the footer's space icons and the + menu.",
   "The website is a native webview drawn above the UI: menus open inside the sidebar where possible (side/align); usePopupCutouts keeps the rest visible.",
 ] as const
 
@@ -82,7 +82,7 @@ export const MENU_CATALOG = {
       ],
       [item({ id: "editTheme", label: "Edit Theme…", origin: "ezel", status: "needs-feature", note: "Theme editor (theme/ setTokens)" })],
     ],
-    notHere: [{ label: "New Space", lives: "spaces (pop-up) and add (pull-down)" }],
+    notHere: [{ label: "New Space", lives: "add (pull-down)" }],
   },
 
   tab: {
@@ -168,15 +168,17 @@ export const MENU_CATALOG = {
 
   space: {
     kind: "context",
-    trigger: "Right-click the space title (the spaces pop-up button)",
+    trigger: "Right-click the space's title row, or its icon in the footer",
     scope: "The shown space",
     groups: [
       [
         item({ id: "rename", label: "Rename Space…", origin: "ezel", status: "built", uses: "update_space", note: "Inline: the title becomes a plain field" }),
-        item({ id: "changeIcon", label: "Change Icon…", origin: "ezel", status: "built", uses: "update_space", note: "Icon grid popover" }),
+        item({ id: "changeIcon", label: "Change Icon…", origin: "ezel", status: "built", uses: "update_space", note: "Emoji (searchable, the system's) or icons, in a popover under the title" }),
+        item({ id: "collapse", label: "Collapse Space", origin: "ezel", status: "built", when: "open", uses: "set_space_collapsed", note: "Its pinned list folds away under the title (a click on the title does the same)" }),
+        item({ id: "expand", label: "Expand Space", origin: "ezel", status: "built", when: "collapsed", uses: "set_space_collapsed" }),
       ],
       [
-        item({ id: "moveUp", label: "Move Up", origin: "ezel", status: "built", when: "not first", uses: "move_space" }),
+        item({ id: "moveUp", label: "Move Up", origin: "ezel", status: "built", when: "not first", uses: "move_space", note: "Up the list; left among the footer's icons" }),
         item({ id: "moveDown", label: "Move Down", origin: "ezel", status: "built", when: "not last", uses: "move_space" }),
         item({ id: "unload", label: "Unload Space", origin: "ezel", status: "built", when: "a loaded tab other than the shown one", uses: "unload_tab", note: "Keeps the page you're looking at" }),
       ],
@@ -185,18 +187,8 @@ export const MENU_CATALOG = {
       ],
     ],
     notHere: [
-      { label: "New Space, switching", lives: "spaces (pop-up)" },
-      { label: "Clear Temporary Tabs", lives: "the trash button" },
-    ],
-  },
-
-  spaces: {
-    kind: "pop-up",
-    trigger: "Click the space title",
-    scope: "Which space is shown",
-    groups: [
-      [item({ id: "space", label: "<each space>", origin: "ezel", status: "built", uses: "switch_space", note: "Icon, name, its first pinned favicons; check on the shown one" })],
-      [item({ id: "newSpace", label: "New Space", origin: "ezel", status: "built", uses: "create_space + switch_space", note: "Then its title is renamed inline" })],
+      { label: "New Space, switching", lives: "the + menu; the footer's space icons and swipe" },
+      { label: "Clear Temporary Tabs", lives: "the temp tabs' header (Clear)" },
     ],
   },
 

@@ -107,10 +107,9 @@ function SwatchCell({ tab, active, onSelect, menuFor }: SwatchCellProps) {
           className={cn(
             swatchSize,
             "justify-center bg-sidebar-foreground/5 p-0 hover:bg-sidebar-foreground/8 data-active:bg-sidebar-foreground/12",
-            !tab.isLoaded && "[&_img]:opacity-50",
           )}
         >
-          <Favicon src={tab.favicon} />
+          <Favicon src={tab.favicon} sleepy={!tab.isLoaded} />
         </SidebarMenuButton>
       </TabContextMenu>
     </div>

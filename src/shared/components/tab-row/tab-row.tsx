@@ -13,6 +13,8 @@ interface TabRowProps {
   onSelect?: () => void;
   /** Shows a close button while the row is hovered or focused. */
   onClose?: () => void;
+  /** The close button removes the tab (an unloaded pinned tab) rather than closing it: it says so. */
+  closeRemoves?: boolean;
   /** While the tab plays sound or is muted, a speaker button toggles its mute. */
   onToggleMute?: () => void;
   /**
@@ -48,6 +50,7 @@ export const TabRow = ({
   active = false,
   onSelect,
   onClose,
+  closeRemoves = false,
   onToggleMute,
   editValue = null,
   onEdit,
@@ -64,7 +67,8 @@ export const TabRow = ({
       <span className="sr-only">Loading</span>
     </span>
   ) : (
-    <Favicon src={tab.favicon} />
+    // Unloaded: greyscale and dimmed until the row is hovered (sleepy tabs).
+    <Favicon src={tab.favicon} sleepy={!tab.isLoaded && !active && !editing} />
   );
 
   return (
@@ -80,7 +84,7 @@ export const TabRow = ({
         onClick={editing ? undefined : onSelect}
         onDoubleClick={editing ? undefined : onEdit}
         className={cn(
-          !tab.isLoaded && !active && !editing && "text-sidebar-foreground/45 [&_img]:opacity-50",
+          !tab.isLoaded && !active && !editing && "text-sidebar-foreground/45",
           // Room for the speaker and, on hover, the close button beside it.
           speaker && "group-hover/tab:pr-14 group-focus-within/tab:pr-14",
           className,
@@ -91,7 +95,10 @@ export const TabRow = ({
           <AddressField initial={editValue} onDone={(input) => onEditDone?.(input)} />
         ) : (
           <>
-            <span className="min-w-0 truncate">{label}</span>
+            {/* A long title fades out at the end instead of ending in "…" (shadcn truncates the last span). */}
+            <span className="min-w-0 flex-1 overflow-hidden whitespace-nowrap text-clip! mask-[linear-gradient(to_right,#000_calc(100%-1.25rem),transparent)]">
+              {label}
+            </span>
             {tab.isDev && <DevBadge />}
           </>
         )}
@@ -106,7 +113,7 @@ export const TabRow = ({
           // A press here isn't the start of a tab drag.
           onPointerDown={(event) => event.stopPropagation()}
           className={cn(
-            "transition-[right] duration-150 ease-out group-hover/tab:right-7 group-focus-within/tab:right-7 motion-reduce:transition-none [&>svg]:size-3.5",
+            "transition-[right,scale] duration-(--motion-base) ease-ezel-out group-hover/tab:right-7 group-hover/tab:delay-(--hover-reveal) group-focus-within/tab:right-7 motion-reduce:transition-none [&>svg]:size-3.5",
             tab.isMuted ? "text-sidebar-foreground/50" : "text-sidebar-foreground/80",
           )}
         >
@@ -116,10 +123,13 @@ export const TabRow = ({
       {onClose && !editing && (
         // Hover is tracked on the row itself (peer) or this tab's own item (`group/tab`), never the
         // menu item: in a folder that's the whole folder, so its hover would reveal every tab's button.
+        // It appears after a short pause (--hover-reveal), so moving down the list doesn't flash a
+        // button on every row it passes; it leaves at once. The speaker steps aside in step with it.
         <SidebarMenuAction
-          aria-label={`Close ${label}`}
+          aria-label={`${closeRemoves ? "Remove" : "Close"} ${label}`}
+          title={closeRemoves ? "Remove" : "Close"}
           onClick={onClose}
-          className="opacity-0 peer-hover/menu-button:opacity-100 group-hover/tab:opacity-100 hover:opacity-100 focus-visible:opacity-100 [&>svg]:size-3.5"
+          className="opacity-0 transition-[opacity,scale] duration-(--motion-fast) ease-ezel-out peer-hover/menu-button:opacity-100 peer-hover/menu-button:delay-(--hover-reveal) group-hover/tab:opacity-100 group-hover/tab:delay-(--hover-reveal) hover:opacity-100 hover:delay-0 focus-visible:opacity-100 focus-visible:delay-0 motion-reduce:transition-none [&>svg]:size-3.5"
         >
           <X aria-hidden />
         </SidebarMenuAction>

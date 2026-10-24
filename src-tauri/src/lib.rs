@@ -64,6 +64,7 @@ pub fn specta_builder() -> tauri_specta::Builder<tauri::Wry> {
       find_next,
       find_stop,
       clear_site_data,
+      capture_page,
       get_memory,
       toggle_page_layer,
       set_content_bounds,
@@ -94,6 +95,7 @@ pub fn specta_builder() -> tauri_specta::Builder<tauri::Wry> {
       unload_folder,
       create_space,
       update_space,
+      set_space_collapsed,
       move_space,
       delete_space,
       switch_space,
@@ -111,7 +113,6 @@ pub fn specta_builder() -> tauri_specta::Builder<tauri::Wry> {
       browser::page_menu::PageMenu,
       browser::FindChanged,
       browser::PermissionAsked,
-      browser::LinkStatus,
       browser::downloads::DownloadsState,
     ])
 }
@@ -247,6 +248,15 @@ fn build_window(app: &AppHandle) -> tauri::Result<()> {
 
   let w = window.clone();
   window.on_window_event(move |event| {
+    // Minimizing reports a 0x0 client area. The UI keeps its last real size instead: laid out at
+    // 0x0, every size the UI measures (the sidebar, the page's bounds, open popups) collapsed and
+    // was rebuilt on restore, and things measured in between came out wrong (a menu opened as an
+    // empty sliver). Restoring arrives as a resize back to the real size.
+    if let WindowEvent::Resized(size) = event {
+      if size.width == 0 || size.height == 0 || w.is_minimized().unwrap_or(false) {
+        return;
+      }
+    }
     if matches!(event, WindowEvent::Resized(_) | WindowEvent::ScaleFactorChanged { .. }) {
       apply_layout(&w);
     }

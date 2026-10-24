@@ -1,5 +1,6 @@
 export { WindowFrame } from "./window-frame/window-frame";
 export { Toaster } from "./toast/toast";
+export { Pill } from "./pill/pill";
 export { Favicon } from "./favicon/favicon";
 export { TabRow, tabLabel } from "./tab-row/tab-row";
 export { ScrollArea } from "./scroll-area/scroll-area";
@@ -10,4 +11,5 @@ export type { TabRowActions } from "./tab-row/draggable-tab-item";
 export { TabContextMenu, ContextMenuEntries } from "./tab-context-menu/tab-context-menu";
 export type { MenuGroups, MenuEntry } from "./tab-context-menu/tab-context-menu";
 export { NameField } from "./name-field/name-field";
-export { SidebarMenuPopup, SidebarMenuSubPopup } from "./sidebar-menu-popup/sidebar-menu-popup";
+export { SidebarMenuPopup, SidebarMenuSubPopup, routeContextMenu } from "./sidebar-menu-popup/sidebar-menu-popup";
+export { SpaceIcon } from "./space-icon/space-icon";

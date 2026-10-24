@@ -1,7 +1,7 @@
-import { createElement } from "react"
 import { Check } from "lucide-react"
 import { cn } from "@/lib/utils"
-import { spaceIcon, type ZenImportPreview } from "@/shared"
+import { type ZenImportPreview } from "@/shared"
+import { SpaceIcon } from "@/shared/components"
 import { ScrollArea } from "@/shared/components"
 
 type SpacePickerProps = {
@@ -31,7 +31,7 @@ function Row({ checked, onToggle, icon, title, detail }: { checked: boolean; onT
         role="checkbox"
         aria-checked={checked}
         onClick={onToggle}
-        className="flex w-full cursor-pointer items-center gap-2.5 rounded-xl px-2 py-1.5 text-left outline-none transition-colors duration-150 hover:bg-muted focus-visible:ring-2 focus-visible:ring-ring motion-reduce:transition-none"
+        className="flex w-full cursor-pointer items-center gap-2.5 rounded-lg px-2 py-1.5 text-left outline-none transition-colors duration-(--motion-base) hover:bg-muted focus-visible:ring-2 focus-visible:ring-ring motion-reduce:transition-none"
       >
         <span
           aria-hidden
@@ -42,7 +42,7 @@ function Row({ checked, onToggle, icon, title, detail }: { checked: boolean; onT
         >
           {checked && <Check className="size-3" strokeWidth={3} />}
         </span>
-        {createElement(spaceIcon(icon), { "aria-hidden": true, className: "size-4 shrink-0 text-muted-foreground" })}
+        <SpaceIcon icon={icon} className="text-muted-foreground" />
         <span className="min-w-0 flex-1">
           <span className="block truncate text-sm text-foreground">{title}</span>
           <span className="block text-xs text-muted-foreground">{detail}</span>

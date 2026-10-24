@@ -1,9 +1,15 @@
 import { useEffect, useRef, useState } from "react";
 import { cn } from "@/lib/utils";
-import { QuickTabs } from "@/features/app-titlebar/quick-tabs";
-import { PermissionCard, SiteButton, SiteInfoPanel } from "@/features/app-titlebar/site-identity";
+import { Dialog as DialogPrimitive } from "@base-ui/react/dialog";
+import { Dialog, DialogOverlay, DialogPortal } from "@/components/ui/dialog";
+import {
+  PermissionCard,
+  SiteButton,
+  SiteInfoPanel,
+} from "@/features/app-titlebar/site-identity";
 import { WindowControls } from "@/features/app-titlebar/window-controls";
 import {
+  coverPage,
   getCursorPosition,
   getWindowClientRect,
   openSitePermissions,
@@ -12,15 +18,13 @@ import {
   revokeSitePermission,
   showToast,
   siteHost,
-  unwrap,
+  uncoverPage,
   useContentCutout,
   usePage,
+  usePageCover,
   usePermissionAsks,
   useSitePermissions,
   useTabs,
-  type Id,
-  type Tab,
-  type TabsState,
 } from "@/shared";
 import { commands } from "@/shared/bindings";
 
@@ -39,29 +43,18 @@ const EDGE_TOLERANCE = 10;
 /** Fallback when the cursor can't be read outside the window. Zen: toolbar-hide-after-hover.duration. */
 const HIDE_AFTER_EXIT = 1000;
 
-const nextFrame = () => new Promise((resolve) => requestAnimationFrame(resolve));
-
-/**
- * The tabs the peek offers next to the shown one: the other tabs of its folder, or outside a
- * folder the Swatches (without the shown one).
- */
-function nearbyTabs(tabs: TabsState | null): Tab[] {
-  if (!tabs || tabs.activeTabId === null) return [];
-  const active = tabs.activeTabId;
-  for (const space of tabs.spaces) {
-    for (const item of space.items) {
-      if (item.kind === "folder" && item.folder.tabs.some((tab) => tab.id === active)) {
-        return item.folder.tabs.filter((tab) => tab.id !== active);
-      }
-    }
-  }
-  return tabs.swatches.filter((tab): tab is Tab => tab !== null && tab.id !== active);
-}
+const nextFrame = () =>
+  new Promise((resolve) => requestAnimationFrame(resolve));
 
 async function clearSiteData() {
   try {
     const result = await commands.clearSiteData();
-    if (result.status === "ok") showToast({ title: "Site data cleared", detail: result.data, tone: "done" });
+    if (result.status === "ok")
+      showToast({
+        title: "Site data cleared",
+        detail: result.data,
+        tone: "done",
+      });
     else reportError("clear site data", result.error);
   } catch (error) {
     reportError("clear site data", error);
@@ -83,33 +76,20 @@ export const AppTitlebar = () => {
   const { asks, answer } = usePermissionAsks(tabs?.activeTabId ?? null);
   const ask = asks[0] ?? null;
   const origin = originOf(page.url);
-  const sitePermissions = useSitePermissions(panelOpen).find((s) => s.origin === origin) ?? null;
-  const shown = open || panelOpen || ask !== null;
+  const sitePermissions =
+    useSitePermissions(panelOpen).find((s) => s.origin === origin) ?? null;
+  // The panel doesn't hold the bar open: the bar leaves with the pointer, the panel stays.
+  const shown = open || ask !== null;
 
-  const closePanel = () => {
-    setPanelHost(null);
-    // The bar stays only while the pointer is on it.
-    if (!zoneRef.current?.matches(":hover")) setOpen(false);
+  const closePanel = () => setPanelHost(null);
+  // The page is swapped for its picture first (shared/page-cover), so the panel is plain UI over
+  // it: smooth corners, its own fade, nothing cut out of the website. Without a picture the page
+  // stays and the panel is cut out of it like any popup (in one piece).
+  const overCover = usePageCover()?.covered ?? false;
+  const openPanel = async (forHost: string) => {
+    await coverPage();
+    setPanelHost(forHost);
   };
-
-  // The panel closes on Esc, a press anywhere else, and the UI losing focus (a click on the page).
-  useEffect(() => {
-    if (!panelOpen) return;
-    const onKey = (event: KeyboardEvent) => event.key === "Escape" && closePanel();
-    const onPress = (event: PointerEvent) => {
-      if (!zoneRef.current?.contains(event.target as Node)) closePanel();
-    };
-    window.addEventListener("keydown", onKey);
-    window.addEventListener("pointerdown", onPress, true);
-    window.addEventListener("blur", closePanel);
-    return () => {
-      window.removeEventListener("keydown", onKey);
-      window.removeEventListener("pointerdown", onPress, true);
-      window.removeEventListener("blur", closePanel);
-    };
-  });
-
-  const selectTab = (id: Id) => unwrap("activate tab", commands.activateTab(id));
 
   useEffect(() => {
     const zone = zoneRef.current;
@@ -160,7 +140,8 @@ export const AppTitlebar = () => {
           if (inWindow) {
             // Back inside: stay open only if the pointer came back onto the bar.
             stopTracking();
-            if (!nearBar((x - win.x) / win.scale, (y - win.y) / win.scale)) close();
+            if (!nearBar((x - win.x) / win.scale, (y - win.y) / win.scale))
+              close();
             return;
           }
           if (!withinX || y < win.y - maxOffset || y > win.y) {
@@ -221,29 +202,32 @@ export const AppTitlebar = () => {
       <div
         // Zen animates the toolbar's height; 0fr -> 1fr is the CSS way to animate to its natural height.
         className={cn(
-          "grid transition-[grid-template-rows] duration-150 ease-in-out motion-reduce:transition-none",
+          "grid transition-[grid-template-rows] duration-(--motion-base) ease-ezel-in-out motion-reduce:transition-none",
           shown ? "grid-rows-[1fr]" : "grid-rows-[0fr]",
         )}
       >
         <div ref={barRef} className="min-h-1 overflow-hidden bg-background">
           <div
             className={cn(
-              "transition-opacity duration-150 ease-in-out motion-reduce:transition-none",
+              "transition-opacity duration-(--motion-base) ease-ezel-in-out motion-reduce:transition-none",
               shown ? "opacity-100" : "opacity-0",
             )}
           >
-            {/* Nearby tabs, the site, the window controls. Empty space in the row drags the window. */}
-            <div data-tauri-drag-region className="grid w-full select-none grid-cols-[1fr_auto_1fr] items-center">
-              <div data-tauri-drag-region className="flex min-w-0 items-center">
-                <QuickTabs tabs={nearbyTabs(tabs)} onSelect={selectTab} />
-              </div>
+            {/* The site in the middle, the window controls on the right. Empty space drags the window. */}
+            <div
+              data-tauri-drag-region
+              className="grid w-full select-none grid-cols-[1fr_auto_1fr] items-center"
+            >
+              <div data-tauri-drag-region />
               <div className="flex min-w-0 max-w-[50vw] justify-center">
                 {host && (
                   <SiteButton
                     host={host}
                     security={page.security}
                     open={panelOpen}
-                    onToggle={() => (panelOpen ? closePanel() : setPanelHost(host))}
+                    onToggle={() =>
+                      panelOpen ? closePanel() : openPanel(host)
+                    }
                   />
                 )}
               </div>
@@ -251,8 +235,34 @@ export const AppTitlebar = () => {
                 <WindowControls />
               </div>
             </div>
-            {ask && <PermissionCard key={ask.id} ask={ask} onAnswer={(allow) => answer(ask.id, allow)} />}
-            {panelOpen && host && (
+            {ask && (
+              <PermissionCard
+                key={ask.id}
+                ask={ask}
+                onAnswer={(allow) => answer(ask.id, allow)}
+              />
+            )}
+          </div>
+        </div>
+      </div>
+      {/* The site info panel: just under where the address sits, top-centre, and it stays when the
+          bar hides. Esc, a click outside or the UI losing focus closes it; the page comes back
+          once it has faded. */}
+      <Dialog
+        open={panelOpen}
+        onOpenChange={(next) => !next && closePanel()}
+        onOpenChangeComplete={(next) => !next && uncoverPage()}
+      >
+        <DialogPortal>
+          {/* No dimming: only the panel shows. The backdrop just catches a click outside. */}
+          <DialogOverlay className="bg-transparent supports-backdrop-filter:backdrop-blur-none" />
+          <DialogPrimitive.Popup
+            data-slot="dialog-content"
+            data-over-cover={overCover || undefined}
+            aria-label={host ? `About ${host}` : "Site information"}
+            className="fixed top-10 left-1/2 z-50 w-72 max-w-[calc(100%-1rem)] origin-top -translate-x-1/2 rounded-2xl bg-popover text-popover-foreground shadow-xl ring-1 ring-foreground/5 duration-100 outline-none dark:ring-foreground/10 data-open:animate-in data-open:fade-in-0 data-open:zoom-in-95 data-closed:animate-out data-closed:fade-out-0 data-closed:zoom-out-95"
+          >
+            {host && (
               <SiteInfoPanel
                 host={host}
                 security={page.security}
@@ -261,16 +271,18 @@ export const AppTitlebar = () => {
                   clearSiteData();
                 }}
                 permissions={sitePermissions}
-                onRevoke={(permission) => origin && revokeSitePermission(origin, permission)}
+                onRevoke={(permission) =>
+                  origin && revokeSitePermission(origin, permission)
+                }
                 onManageAll={() => {
                   closePanel();
                   openSitePermissions();
                 }}
               />
             )}
-          </div>
-        </div>
-      </div>
+          </DialogPrimitive.Popup>
+        </DialogPortal>
+      </Dialog>
     </div>
   );
 };

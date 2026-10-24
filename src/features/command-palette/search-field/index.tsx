@@ -1,7 +1,7 @@
 import { useLayoutEffect, useRef, useState, type KeyboardEvent, type ReactNode, type RefObject } from "react"
 import { Command as CommandPrimitive } from "cmdk"
 import { AnimatePresence, motion, useReducedMotion } from "motion/react"
-import { INSTANT } from "@/shared"
+import { DURATION, EASE_OUT, ENTER, INSTANT } from "@/shared"
 
 type SearchFieldProps = {
   value: string
@@ -71,7 +71,7 @@ export function SearchField({
             initial={ICON_OUT}
             animate={ICON_IN}
             exit={ICON_OUT}
-            transition={reduceMotion ? INSTANT : { duration: 0.16, ease: [0.2, 0, 0, 1] }}
+            transition={reduceMotion ? INSTANT : { duration: DURATION.base, ease: EASE_OUT }}
             className="absolute inset-0 grid place-items-center"
           >
             {icon.node}
@@ -104,7 +104,7 @@ export function SearchField({
               key={value + completion}
               initial={reduceMotion ? false : { opacity: 0 }}
               animate={{ opacity: 1 }}
-              transition={{ duration: 0.12 }}
+              transition={ENTER}
               // A selection-like tint, so it reads as "this will be filled in".
               className="rounded-[3px] bg-primary/15 text-foreground/45"
             >
