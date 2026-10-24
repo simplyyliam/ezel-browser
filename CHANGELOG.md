@@ -2,6 +2,45 @@
 
 All notable changes to Ezel. Versions follow [Semantic Versioning](https://semver.org/); while Ezel is 0.x, a minor version brings new features and a patch version only fixes.
 
+## [0.3.1] - 2026-10-24
+
+A polish release: spaces that fold and live in the footer, livelier tabs, and right-click menus you can count on.
+
+### Added
+- **Fold a space.** Click the space's title above its pinned tabs to fold them away, and again to bring them back. Ezel remembers it per space.
+- **Your spaces in the footer**, as small icons between Downloads and +, like Arc and Zen. The one you're in sits on a soft pill that glides when you switch; hover for the name, right-click for the space's menu, or hold a dragged tab on an icon to take it there. A two-finger swipe sideways over the sidebar switches too.
+- **Emoji as space icons.** "Change Icon…" now opens on emoji (searchable, in Windows' own colour emoji), with the icons a tab away. Emoji from Zen spaces come over on import.
+- **Clear is always in sight**: while you have temporary tabs, a small "Tabs · 5" header with Clear sits right above them. Ctrl+Shift+T still brings them back one by one.
+
+### Changed
+- **Tabs feel alive.** New tabs pop in, closed ones shrink away, folders spring open, long titles fade out instead of ending in "…", the × appears after a short hover, and sleeping tabs rest dimmed with grey icons until you hover them. Keyboard focus shows a soft outline everywhere.
+- **The sidebar scrolls in parts**: the Swatches and the space's title stay put, and the pinned and temporary tabs each scroll on their own, with a scrollbar that fades away when you're not scrolling.
+- **The site panel opens under the address** at the top of the window and stays when the titlebar hides; it no longer stretches the whole titlebar. When the titlebar peeks, the page's top corners round underneath it.
+- **Link previews are the browser's own**: hover a link and its address shows at the page's bottom corner, moving aside when your pointer comes near.
+- The titlebar is simpler: the quick-tab icons are gone, and spaces are switched from the footer instead of a list under the space's name. The memory readout ("Ezel is carrying…") left the sidebar; it will come back as a setting.
+- Sites without an icon show a faint globe instead of a grey circle, and rounded edges over the page are cut more evenly.
+
+### Fixed
+- **Right-click menus are dependable.** They could open the wrong menu, an empty sliver or nothing at all, especially after minimizing and restoring the window, and the sidebar's menu could open on top of a tab's.
+- **Pinned tabs can be dragged and unpinned again.** A pinned tab you've unloaded can now be removed with its ×.
+- The collapsed sidebar no longer leaves a thin line down the page's left edge, and the sidebar no longer falls apart in a very narrow window.
+- Emoji space icons sit in the middle of their space instead of low and to the side.
+
+### Known issues
+- **The installer isn't code-signed**, so Windows SmartScreen shows a warning when you run it: choose "More info", then "Run anyway".
+- **Tabs and sign-ins from 0.1.0 don't carry over**, because Ezel's data moved to its own folder. The old data stays in `%APPDATA%\com.tauri.dev` and `%LOCALAPPDATA%\com.tauri.dev`, and you can delete it.
+- **Windows only for now.** On macOS and Linux, most of Ezel's features (menus, find, downloads, permissions, error pages, updates) don't work yet.
+- **Still to come**: zoom, history, print, a private window, importing from Arc, Chrome or Edge, and a settings page.
+- **Background tabs pause after 30 seconds**, so a chat or timer in a tab you're not looking at won't update until you open it. A site can only ask for a permission while its tab is on screen.
+- **Passwords and autofill are off on purpose** until Ezel has its own passwords screen (passwords saved earlier still fill in), and websites' notification requests are always declined.
+- **Rough edges**: with the sidebar collapsed, a confirmation that appears over the page has slightly stepped corners; while the site panel is open the page behind it is a still picture; find in page needs a recent WebView2; the downloads list is cleared when Ezel closes; on keyboards with AltGr (for example Polish or German), the lens shortcuts Ctrl+Alt+S and Ctrl+Alt+G can stop you typing the character on those keys.
+
+### Privacy
+- Ezel checks GitHub for updates when it starts and once a day, and downloads new versions from there. Nothing else about you is sent.
+- Site permissions you choose are kept on your computer, in Ezel's own folder. The picture of the page behind the site panel stays in memory and is never saved.
+- SmartScreen checks the sites you visit and the files you download with Microsoft, as in Edge.
+- The command palette's suggestions and site icons come from Google: searches go to Google, and Google's icon service sees the sites you type.
+
 ## [0.3.0] - 2026-10-23
 
 Everyday and safe: folders, full right-click menus, find, downloads and error pages, and you can always see which site you're on.
