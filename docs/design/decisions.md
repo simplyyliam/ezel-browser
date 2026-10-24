@@ -5,11 +5,54 @@ Project-level decisions live in `/decisions.md`.
 
 ## Principles
 - **Calm by default.** Chrome (scrollbars, the titlebar) stays out of sight until it's needed, then gets out of the way again.
-- **One motion language.** UI transitions use the titlebar peek's timing: 150ms ease-in-out (`PEEK_TRANSITION` in `src/shared/motion.ts`). Physical feedback (things that follow the user's input, like scroll stretch) uses springs instead.
+- **One motion language.** Every animation picks from the motion tokens (below). UI transitions use the titlebar peek's timing: 150ms ease-in-out (`PEEK_TRANSITION` in `src/shared/motion.ts`). Physical feedback (things that follow the user's input, like scroll stretch) uses springs instead.
 - **Fast in, slower out.** Things appear quickly (about 120ms) so they feel responsive, and leave more slowly (about 300ms) so they don't flicker.
 - **Reduced motion is respected.** With `prefers-reduced-motion`, nothing moves or stretches. State changes apply instantly; plain opacity fades are fine.
 - **No shadows on window chrome.** The titlebar and sidebar sit flat on the frame.
 - **Nothing floats past the sidebar's right edge.** The native website webview is drawn over all UI.
+
+## Motion tokens (v0.3.1 polish)
+One set of durations, easings and springs for every animation, so every detail moves like the same app. JS: `src/shared/motion.ts`; CSS: `src/index.css` (`--motion-*` durations, `ease-ezel-*` easings). Keep the two in step; never write a raw duration or curve in a component.
+
+| Token | Value | For |
+|---|---|---|
+| `fast` / `--motion-fast` | 120ms | things appearing (fast in) |
+| `base` / `--motion-base` | 150ms | the titlebar peek, state changes, hover fades |
+| `slow` / `--motion-slow` | 300ms | things leaving (slower out) |
+| `EASE_OUT` / `ease-ezel-out` | cubic-bezier(0.23, 1, 0.32, 1) | enters and exits |
+| `EASE_IN_OUT` / `ease-ezel-in-out` | cubic-bezier(0.4, 0, 0.2, 1) | moving from one place to another |
+| `ease-ezel-spring` | cubic-bezier(0.34, 1.56, 0.64, 1) | press feedback (CSS) |
+| `SPRING` | spring, 0.35s, bounce 0.15 | answering the hand: a folder unfolding, the toast landing |
+| `FOLLOW` | stiff spring, no visible bounce | a highlight tracking the arrow keys |
+| `--hover-reveal` | 150ms | how long a hover rests before a row shows its controls |
+
+Shortcuts: `ENTER` (fast, ease-out), `EXIT` (slow, ease-out), `PEEK_TRANSITION`, and `INSTANT` under reduced motion. Kept as they are: Zen's studied sidebar peek (`ease-zen-peek`, 0.25s / 0.15s) and the shadcn popups' own 100ms.
+
+Details built on them (v0.3.1): tab rows pop in from 90% on `SPRING` while their space opens and close in reverse (`DraggableTabItem` in its list's `AnimatePresence initial={false}`; a tab that moved elsewhere leaves at once, `isTabOpen`), folders unfold on `SPRING` and fold on the peek's ease while their icon opens with them, favicons seen for the first time fade in over a placeholder dot, unloaded tabs' favicons rest greyscale and wake on hover, long titles fade out at the end instead of "…", and the close button waits `--hover-reveal` before showing.
+
+## Spaces: a small title that folds, icons in the footer (v0.3.1)
+Spaces fold now, and switching is one click. Two takes were rejected on the way, and the reasons are the rules: a rail of big chips with its own "+" (the weakest version of Zen's and Arc's docks, and a second "+" beside the Add menu); Clear hidden in the New Tab row (nobody would find it); then dots on the title and a favicon strip under a folded space (noise, not minimal). What stayed:
+
+    [icon] Name ›              the title: one button that folds the space
+    ...pinned tabs...
+    Tabs · 5            Clear
+    ...temp tabs...
+    ⤓        😀 💼 📚 ✈️        +     the footer: spaces in the middle
+
+- **The title is one button that folds the space** (a 28px row, 13px name, 16px icon box on the tab rows' columns: icon over their favicons, name over their titles; HIG disclosure-controls.md). A small chevron after the name shows on hover and stays while folded. Folded, nothing shows under the title. A tab held on a folded title opens it. The pop-up list of spaces it used to be is gone: switching is the footer's job, one place for it. New Space lives only in the + menu.
+- **Emoji sit in the middle of their box**: emoji fonts draw low and spill right of their text box (Segoe UI Emoji especially), so `SpaceIcon` measures each emoji's ink once (canvas `measureText`) and moves it by the difference.
+- **The spaces are small icons in the middle of the footer** (`features/app-sidebar/space-dock`), where Zen and Arc keep theirs, so nobody looks for them: 14px icons in 22px targets, the others at 55% until hovered, the shown one on a soft pill that glides to the next (`FOLLOW`, motion's shared layout) however the space changed. Name on hover, the space menu on right-click, a tab held on an icon switches there. Two fingers sideways over the sidebar switch too (`use-space-swipe.ts`: one switch per gesture).
+- **Emoji icons**: Change Icon… opens on Emoji (searchable, every emoji Windows draws, Unicode's groups, `unicode-emoji-json` loaded on first open) or Icons, in 26px cells. Emoji are set in the system's colour emoji font (`font-emoji`): Inter has its own flat glyphs for some (❤ ✈ ☕), which is why they looked off. Rust takes a lucide name or one emoji (`model::space_icon`); Zen's emoji come over on import.
+- **Clear is always in sight**: while there are temp tabs, the line above them becomes a small header, "Tabs · 5" and Clear (11px, 50% ink: a label, not a row), right next to what it empties. No alert (alerts.md: not for a common, undoable action); a toast names Ctrl+Shift+T.
+- **A site without a favicon** shows a faint globe, never a filled grey disc (it read as a hole).
+- **The load meter left the sidebar** (it was noise there); its code stays (`bottom-actions/load-meter.tsx`, `use-load-meter.ts`) for a Settings toggle later.
+- **Later, a setting**: sidebar styles (where spaces show, the load meter) belong to the future Settings page.
+
+## Arc as the bar (v0.3.1)
+Ezel should feel modern, premium, playful and clean, the way Arc does; nothing static or stale.
+- **Icons gesture on hover** (index.css, keyed on lucide's classes): back nudges left, forward right, reload turns, + and × turn a quarter, download dips, search leans in, link tilts. One small spring, pointer hover only, never under reduced motion.
+- **The shown tab is a lit card**: a hairline highlight on its top edge and a soft shadow under it (white with a hairline in light mode), so it reads as lifted, not as a grey fill.
+- **The footer's space pill glides** when spaces change: one small moment of play, nothing else moves at rest.
 
 ## Titlebar peek (2026-10-18)
 Studied Zen's source (`src/zen/compact-mode/toolbar.inc.css`, `src/zen/common/styles/zen-browser-container.css`, `zen-theme.css`):
@@ -20,7 +63,7 @@ Studied Zen's source (`src/zen/compact-mode/toolbar.inc.css`, `src/zen/common/st
 Ours copies that exactly:
 - 4px edge strip (the frame padding), height grows via `grid-template-rows: 0fr → 1fr`, 150ms ease-in-out, contents fade with the same timing.
 - No shadow; the bar uses the window background.
-- The website is a native webview above the UI, so the frontend reports the bar's rect every frame and Rust cuts it out of the webview's clip region (`set_content_cutout`). The page never reflows or moves.
+- The website is a native webview above the UI, so the frontend reports the bar's rect every frame and Rust cuts it out of the webview's clip region (`set_content_cutout`). The page never reflows or moves. A hole across the page's whole top isn't cut flat: the page starts below the bar with its own top corners (v0.3.1), so it reads as a card under the bar.
 
 ## Sidebar peek (2026-10-18)
 Studied Zen's compact mode (`src/zen/compact-mode/sidebar.inc.css`, `ZenCompactMode.mjs`, `prefs/zen/compact-mode.yaml`, `zen-theme.css`):
@@ -39,11 +82,11 @@ Ours:
 - Open (Ctrl+B / trigger) docks it beside the page, like turning compact mode off. Docked it switches to shadcn's flat `variant="sidebar"`: no border, ring, shadow, radius or padding; the window frame's 4px is the only gap. The card look is only for floating over the page.
 
 ## Scrollbar (2026-10-18)
-**App scroll areas** (`shared/components/scroll-area`, used for the sidebar body):
+**App scroll areas** (`shared/components/scroll-area`). In the sidebar (v0.3.1), the Swatches and the space's title stay fixed; the space's pinned list and its temp tabs scroll each on their own, sharing the height in proportion to their length.
 - Native scrolling stays: wheel, keyboard, touch and momentum behave exactly as the OS does. Only the visual scrollbar is replaced.
 - No track and no background. The thumb is a small pill: resting length is proportional but clamped to 20–44px, so it reads as a position marker, not a bar.
-- Width 4px, 6px while hovered or dragged. `foreground/25`, `/40` when active.
-- Hidden at rest. It shows while scrolling, while the pointer is in the 10px right-edge zone, and while dragging. It lingers 900ms after scrolling stops, then fades out (120ms in, 300ms out).
+- Width 4px, 6px while hovered or dragged. `foreground/15`, `/30` when active: faint, a position marker that never draws the eye (v0.3.1; was /25 and /40).
+- Hidden at rest. It shows while scrolling, while dragging, and once the pointer has rested 400ms in the 10px right-edge zone (rows' close buttons sit there: passing over it doesn't flash the bar). It lingers 600ms after scrolling stops, then fades out (120ms in, 300ms out).
 - **Elastic:** its length stretches with scroll speed, up to 2× at 2400px/s. The leading edge tracks the real position and the trailing edge lags behind, like a pulled elastic. The stretch runs through a slightly under-damped spring (stiffness 520, damping 26, mass 0.6), so when scrolling stops it snaps back a hair past rest and settles.
 - No stretch while dragging (the thumb should feel held) or with reduced motion.
 - Edges fade (16px mask) only where more content is hidden; the fade grows in over the first 16px of scroll, so it never pops.
@@ -123,9 +166,9 @@ Ezel's "Calm" principle (docs/Ezel-Product-Vision.md, 3.8): no prompts begging f
 
 Reviewed with the apple-design skill (HIG: `privacy.md`, `feedback.md`, `progress-indicators.md`, `context-menus.md`, `writing.md`, `branding.md`). Zen and Arc put a site's identity in a URL bar, Chrome in an omnibox chip. Ezel has no bar, so it gives the site one quiet place to speak: the **titlebar peek**, like the label beside a canvas on an easel. That's the signature; everything around it stays plain.
 
-- **Identity**: the host, only the registrable domain strong, with the lock. Clicking it opens the site panel *inside* the peek (it grows), never a floating popover.
+- **Identity**: the host, only the registrable domain strong, with the lock. Clicking it opens the site panel as a dialog just under the address, top-centre; it stays when the bar hides (v0.3.1; it used to grow the whole bar, a full-width black band). The page is swapped for a picture of itself while it's open (`capture_page`, `shared/page-cover.ts`), so the dialog is plain UI: smooth corners and its own fade, nothing cut out of the website. The bar's quick tabs (the folder's other tabs, or the Swatches) are gone (v0.3.1): noise next to the one thing the bar says.
 - **Permissions** (HIG `privacy.md`: ask in context, say who asks and why, no pre-alert): a request drops the peek open by itself with one card under the domain: "**maps.example.com** wants to use your location", Allow / Don't Allow (Don't Allow first, neither default). The page can't draw over it, and the asking domain is the one the peek already shows. Remembered choices live in the same site panel.
 - **Errors and crashes** (HIG `writing.md`: what happened, what to do, no blame): Ezel's own calm page, an empty canvas with one plain sentence and one action (Try Again / Reload). Same layout for offline, not found, certificate and crash; only the words change.
-- **Link status**: the address of a hovered link, quiet, in a pill at the page's bottom-left, only the domain strong (the same rule as the peek).
+- **Link status**: WebView2's own bubble (v0.3.1). Ezel drew its own pill for a while, but anything Ezel draws over the page shows through a hole cut in the website, whose edges are whole pixels and which can't follow motion: it looked jagged and boxed. The page draws its own bubble smoothly, anchored to the bottom corner, and it moves aside when the pointer comes near it.
 - **Progress** (HIG `progress-indicators.md`): determinate when the size is known, a spinner otherwise, never a bar standing still. Feedback for what matters only (`feedback.md`): finished and failed downloads get a toast, a start just a still dot on the button.
 - **Menus** hide what can't run now instead of dimming it (`context-menus.md`), the page menu included.
