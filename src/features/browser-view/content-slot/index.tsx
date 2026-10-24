@@ -1,6 +1,6 @@
 import { useEffect, useRef } from "react"
 import { cn } from "@/lib/utils"
-import { unwrap, useWindowRadius } from "@/shared"
+import { dropCover, unwrap, usePageCover, useWindowRadius } from "@/shared"
 import { commands } from "@/shared/bindings"
 
 const setContentBounds = (x: number, y: number, width: number, height: number) =>
@@ -96,6 +96,27 @@ export function ContentSlot({ className }: ContentSlotProps) {
 
   useEffect(() => scheduleRef.current?.(), [radius])
 
+  // The page's picture in its place (shared/page-cover): the page hides once the picture is on
+  // screen, and comes back before the picture goes, so the swap never shows.
+  const cover = usePageCover()
+  useEffect(() => {
+    if (cover && !cover.covered) setContentVisible(true).then(() => requestAnimationFrame(dropCover))
+  }, [cover])
+
   // The slot marks where the page is (usePopupCutouts asks whether a popup reaches over it).
-  return <div ref={ref} data-slot="content-slot" className={cn("w-full flex-1", className)} />
+  return (
+    <div ref={ref} data-slot="content-slot" className={cn("relative w-full flex-1 overflow-hidden", className)}>
+      {cover && (
+        <img
+          src={cover.image}
+          alt=""
+          aria-hidden
+          draggable={false}
+          // Decoded and drawn by now: the real page can go.
+          onLoad={() => cover.covered && setContentVisible(false)}
+          className="pointer-events-none absolute inset-0 size-full select-none"
+        />
+      )}
+    </div>
+  )
 }

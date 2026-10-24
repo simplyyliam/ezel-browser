@@ -8,7 +8,7 @@ import {
 } from "@/components/ui/context-menu"
 import { useSidebar } from "@/components/ui/sidebar"
 import { menuLabel } from "@/shared"
-import { SidebarMenuPopup } from "@/shared/components"
+import { routeContextMenu, SidebarMenuPopup } from "@/shared/components"
 
 // The sidebar's own menu (catalog area "sidebar", shared/menus/catalog.ts): the sidebar itself and
 // making things in the shown space. Item-level menus (tab, swatch, space) come with those items;
@@ -33,7 +33,14 @@ export function SidebarContextMenu({ children, onNewTab, onNewFolder, closedCoun
 
   return (
     <ContextMenu>
-      <ContextMenuTrigger className={className}>{children}</ContextMenuTrigger>
+      <ContextMenuTrigger
+        className={className}
+        // Only right-clicks on the sidebar itself: one in a popup opened from inside it (a tab's
+        // menu, the space list) bubbled here through the portal and opened this menu on top.
+        onContextMenu={routeContextMenu}
+      >
+        {children}
+      </ContextMenuTrigger>
       <SidebarMenuPopup>
         {/* Compact mode = the collapsed sidebar that peeks from the left edge; off = docked. */}
         <ContextMenuCheckboxItem checked={!open} onCheckedChange={(compact) => setOpen(!compact)}>

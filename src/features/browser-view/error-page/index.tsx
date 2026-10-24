@@ -1,7 +1,7 @@
 import { Clock, PlugZap, SearchX, ShieldAlert, Unplug, WifiOff, type LucideIcon } from "lucide-react"
 import { motion, useReducedMotion } from "motion/react"
 import { cn } from "@/lib/utils"
-import { splitHost, type PageError } from "@/shared"
+import { DURATION, EASE_OUT, splitHost, type PageError } from "@/shared"
 
 type ErrorPageProps = {
   error: PageError
@@ -39,7 +39,7 @@ function copyFor(error: PageError, site: string): Copy {
 }
 
 const buttonBase =
-  "rounded-lg px-3 py-1.5 text-sm font-medium outline-none transition-colors duration-150 focus-visible:ring-2 focus-visible:ring-ring motion-reduce:transition-none"
+  "rounded-lg px-3 py-1.5 text-sm font-medium outline-none transition-colors duration-(--motion-base) focus-visible:ring-2 focus-visible:ring-ring motion-reduce:transition-none"
 
 /**
  * Ezel's own page when a site can't be shown: an empty canvas on the easel, one plain sentence and
@@ -61,7 +61,7 @@ export function ErrorPage({ error, host, canGoBack, onTryAgain, onChangeAddress,
       <motion.div
         initial={reduced ? { opacity: 0 } : { opacity: 0, y: 4 }}
         animate={{ opacity: 1, y: 0 }}
-        transition={{ duration: 0.2, ease: "easeOut" }}
+        transition={{ duration: DURATION.base, ease: EASE_OUT }}
         className="flex max-w-sm flex-col items-center gap-4 text-center"
       >
         {/* The blank canvas: a frame with nothing painted yet, the problem's sign in its middle. */}

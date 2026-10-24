@@ -12,7 +12,7 @@ One menu per kind of thing, scoped to that thing. The closest target wins: right
 | Sidebar background | The sidebar itself and creating things in it: layout toggles, new tab/folder/space, theme | built (`features/app-sidebar/context-menu`) |
 | Tab row | That tab: new tab below, duplicate, reload, copy link, change URL, Swatches, pin, unload, move, close | built (see Tab menu) |
 | Folder row | That folder: rename, new tab in it, collapse/expand, unload, move to another space, unpack/delete | built (v0.3.0, `features/app-sidebar/folders`) |
-| Space (switcher) | That space: rename, change icon, move up/down, unload, delete | built. Delete Space… asks (unless it's empty) whether its tabs move to another space (default: the one shown next; a pop-up picks another) or close with it (v0.3.0) |
+| Space (its title row) | That space: rename, change icon (emoji or icons), collapse/expand, move up/down, unload, delete | built (v0.3.1). Delete Space… asks (unless it's empty) whether its tabs move to another space (default: the one shown next; a pop-up picks another) or close with it (v0.3.0) |
 | Swatch | That swatch's tab: the tab menu, with "Remove from Swatches" and no "Change URL…" | built (see Tab menu) |
 | "+" button | Create: space, folder, tab | bottom-actions dropdown |
 

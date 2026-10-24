@@ -1,4 +1,4 @@
-import { useCallback } from "react"
+import { useCallback, useRef } from "react"
 import { useDraggable, useDroppable } from "@dnd-kit/core"
 import type { Id, Tab } from "./types"
 
@@ -17,9 +17,9 @@ export type TabDropZone =
   | { kind: "swatches" }
   | { kind: "pinned" }
   | { kind: "temp" }
-  /** The space title: resting on it springs the spaces list open (macOS spring-loading). */
+  /** The shown space's title: resting on it opens a folded space (macOS spring-loading). */
   | { kind: "spaces" }
-  /** A space in that list: resting on it switches to it. Dropping on either does nothing. */
+  /** A space (its dot, or its row in the list): resting on it switches to it. Dropping on either does nothing. */
   | { kind: "space"; spaceId: Id }
 
 /**
@@ -64,11 +64,15 @@ const dragNodes = new Map<Id, HTMLElement>()
 export function useTabDraggable(tab: Tab, source: TabDragSource) {
   const data: TabDragData = { tab, source }
   const { setNodeRef: setDraggableRef, listeners } = useDraggable({ id: dragId(tab.id), data })
+  // The element this row registered: a row leaving its list (its exit animation) unmounts after
+  // the tab's row in its new place registered, and must not take that one's entry with it.
+  const own = useRef<HTMLElement | null>(null)
   const setNodeRef = useCallback(
     (node: HTMLElement | null) => {
       setDraggableRef(node)
       if (node) dragNodes.set(tab.id, node)
-      else dragNodes.delete(tab.id)
+      else if (dragNodes.get(tab.id) === own.current) dragNodes.delete(tab.id)
+      own.current = node
     },
     [tab.id, setDraggableRef],
   )

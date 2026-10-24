@@ -172,10 +172,9 @@ fn apply_shape(webview: &Webview) {
     };
     let w = (width * scale).round() as i32;
     let h = (height * scale).round() as i32;
-    let max = w.min(h) / 2;
-    let radii = radii.map(|r| ((r * scale).round() as i32).clamp(0, max));
-    // The cutouts in the webview's own physical px: [left, top, right, bottom, radius].
-    let cutouts: Vec<[i32; 5]> = cutouts
+    let radii = radii.map(|r| r * scale);
+    // The cutouts in the webview's own physical px: ([left, top, right, bottom], radius).
+    let cutouts: Vec<([i32; 4], f64)> = cutouts
       .iter()
       .map(|c| {
         let [cx, cy, cw, ch] = c.rect;
@@ -183,19 +182,19 @@ fn apply_shape(webview: &Webview) {
         let top = ((cy - y) * scale).round() as i32;
         let right = left + (cw * scale).round() as i32;
         let bottom = top + (ch * scale).round() as i32;
-        [left, top, right, bottom, (c.radius * scale).round() as i32]
+        ([left, top, right, bottom], c.radius * scale)
       })
       // Holes that miss the page change nothing.
-      .filter(|[l, t, r, b, _]| *r > 0 && *b > 0 && *l < w && *t < h)
+      .filter(|([l, t, r, b], _)| *r > 0 && *b > 0 && *l < w && *t < h)
       .collect();
+    // A hole across the page's whole top (the titlebar peek) doesn't leave a flat cut: the page
+    // starts below it instead, with its own top corners, so it reads as a card under the bar.
+    let (top, cutouts) = page_top(w, cutouts);
 
     let _ = webview.with_webview(move |pw| {
       use windows::Win32::{
         Foundation::HWND,
-        Graphics::Gdi::{
-          CombineRgn, CreateEllipticRgn, CreateRectRgn, CreateRoundRectRgn, DeleteObject, SetWindowRgn, RGN_DIFF,
-          RGN_OR,
-        },
+        Graphics::Gdi::{CombineRgn, DeleteObject, SetWindowRgn, RGN_DIFF},
       };
       // SAFETY: called on the main thread with a live WebView2 controller. wry hosts each child
       // webview in its own container HWND (the controller's parent window); clipping it clips the page.
@@ -204,42 +203,16 @@ fn apply_shape(webview: &Webview) {
         if pw.controller().ParentWindow(&mut hwnd).is_err() {
           return;
         }
-        if radii.iter().all(|r| *r == 0) && cutouts.is_empty() {
+        if radii.iter().all(|r| *r < 0.5) && cutouts.is_empty() && top == 0 {
           SetWindowRgn(hwnd, None, true);
           return;
         }
-        // Full rect, minus an r×r square at each rounded corner, plus a quarter ellipse back in each square.
-        let region = CreateRectRgn(0, 0, w, h);
-        let [tl, tr, br, bl] = radii;
-        let corners = [
-          (tl, 0, 0),
-          (tr, w - tr, 0),
-          (br, w - br, h - br),
-          (bl, 0, h - bl),
-        ];
-        for (r, x, y) in corners {
-          if r == 0 {
-            continue;
+        let Some(region) = region_from_bands(&rounded_rect_bands([0, top, w, h], radii)) else { return };
+        for (rect, radius) in cutouts {
+          if let Some(hole) = region_from_bands(&rounded_rect_bands(rect, [radius; 4])) {
+            CombineRgn(Some(region), Some(region), Some(hole), RGN_DIFF);
+            let _ = DeleteObject(hole.into());
           }
-          let square = CreateRectRgn(x, y, x + r, y + r);
-          CombineRgn(Some(region), Some(region), Some(square), RGN_DIFF);
-          let _ = DeleteObject(square.into());
-          // The ellipse's box is the 2r×2r square anchored in this corner.
-          let ex = if x == 0 { 0 } else { w - 2 * r };
-          let ey = if y == 0 { 0 } else { h - 2 * r };
-          let ellipse = CreateEllipticRgn(ex, ey, ex + 2 * r + 1, ey + 2 * r + 1);
-          CombineRgn(Some(region), Some(region), Some(ellipse), RGN_OR);
-          let _ = DeleteObject(ellipse.into());
-        }
-        for [left, top, right, bottom, radius] in cutouts {
-          let hole = if radius > 0 {
-            // The last two args are the corner ellipse's width and height.
-            CreateRoundRectRgn(left, top, right + 1, bottom + 1, radius * 2, radius * 2)
-          } else {
-            CreateRectRgn(left, top, right, bottom)
-          };
-          CombineRgn(Some(region), Some(region), Some(hole), RGN_DIFF);
-          let _ = DeleteObject(hole.into());
         }
         // The system owns the region from here on.
         SetWindowRgn(hwnd, Some(region), true);
@@ -250,4 +223,137 @@ fn apply_shape(webview: &Webview) {
   // TODO: clip on macOS (layer cornerRadius) and Linux (WebKitGTK).
   #[cfg(not(windows))]
   let _ = webview;
+}
+
+/// Splits off the holes that span the page's whole width from its top edge: the page starts below
+/// the lowest of them (returned first) and the rest stay holes.
+fn page_top(w: i32, cutouts: Vec<([i32; 4], f64)>) -> (i32, Vec<([i32; 4], f64)>) {
+  let (across, rest): (Vec<_>, Vec<_>) = cutouts.into_iter().partition(|([l, t, r, _], _)| *l <= 0 && *t <= 0 && *r >= w);
+  (across.iter().map(|([_, _, _, b], _)| *b).max().unwrap_or(0).max(0), rest)
+}
+
+/// A rounded rectangle as horizontal bands of whole pixels ([left, top, right, bottom], physical
+/// px, top to bottom), for a window region. A pixel is in when its centre is inside the shape, the
+/// closest a region (no partial pixels, so no anti-aliasing) gets to what CSS draws. GDI's own
+/// `CreateRoundRectRgn` and `CreateEllipticRgn` are lopsided and a pixel off, which made every
+/// rounded corner and pill edge Ezel cuts look rougher than it had to. Radii are in CSS order
+/// (top-left, top-right, bottom-right, bottom-left), fractional, each at most half the shorter
+/// side (as CSS does).
+#[cfg_attr(not(windows), allow(dead_code))]
+fn rounded_rect_bands([left, top, right, bottom]: [i32; 4], radii: [f64; 4]) -> Vec<[i32; 4]> {
+  let (w, h) = (right - left, bottom - top);
+  if w <= 0 || h <= 0 {
+    return Vec::new();
+  }
+  let max = f64::from(w.min(h)) / 2.0;
+  let [tl, tr, br, bl] = radii.map(|r| r.clamp(0.0, max));
+  // How many pixels a corner of radius `r` takes off row `i`, counted from that corner's edge.
+  let inset = |r: f64, i: i32| -> i32 {
+    let dy = r - (f64::from(i) + 0.5);
+    if dy <= 0.0 {
+      return 0;
+    }
+    ((r - (r * r - dy * dy).sqrt()) - 0.5).ceil().max(0.0) as i32
+  };
+  let mut bands: Vec<[i32; 4]> = Vec::new();
+  for row in 0..h {
+    let from_bottom = h - 1 - row;
+    let l = inset(tl, row).max(inset(bl, from_bottom));
+    let r = inset(tr, row).max(inset(br, from_bottom));
+    if l + r >= w {
+      continue;
+    }
+    let (x0, x1, y) = (left + l, right - r, top + row);
+    match bands.last_mut() {
+      // Same span as the row above: grow that band.
+      Some(last) if last[0] == x0 && last[2] == x1 && last[3] == y => last[3] = y + 1,
+      _ => bands.push([x0, y, x1, y + 1]),
+    }
+  }
+  bands
+}
+
+/// A GDI region made of `bands` (from `rounded_rect_bands`), in one call. The caller owns it.
+#[cfg(windows)]
+unsafe fn region_from_bands(bands: &[[i32; 4]]) -> Option<windows::Win32::Graphics::Gdi::HRGN> {
+  use windows::Win32::Graphics::Gdi::{ExtCreateRegion, RDH_RECTANGLES, RGNDATA, RGNDATAHEADER};
+  if bands.is_empty() {
+    return None;
+  }
+  let header = std::mem::size_of::<RGNDATAHEADER>();
+  // RGNDATA is a header then its RECTs (4 i32s each); i32 storage keeps it aligned.
+  let mut data = vec![0i32; header / 4 + bands.len() * 4];
+  let bound = bands.iter().fold([i32::MAX, i32::MAX, i32::MIN, i32::MIN], |b, r| {
+    [b[0].min(r[0]), b[1].min(r[1]), b[2].max(r[2]), b[3].max(r[3])]
+  });
+  data[..8].copy_from_slice(&[
+    header as i32,
+    RDH_RECTANGLES as i32,
+    bands.len() as i32,
+    (bands.len() * 16) as i32,
+    bound[0],
+    bound[1],
+    bound[2],
+    bound[3],
+  ]);
+  for (i, band) in bands.iter().enumerate() {
+    let at = header / 4 + i * 4;
+    data[at..at + 4].copy_from_slice(band);
+  }
+  // SAFETY: `data` is a complete RGNDATA (header, then `nCount` RECTs) that outlives the call.
+  let hrgn = unsafe { ExtCreateRegion(None, (data.len() * 4) as u32, data.as_ptr().cast::<RGNDATA>()) };
+  (!hrgn.is_invalid()).then_some(hrgn)
+}
+
+#[cfg(test)]
+mod tests {
+  use super::{page_top, rounded_rect_bands};
+
+  #[test]
+  fn a_hole_across_the_top_moves_the_page_down() {
+    let (top, rest) = page_top(100, vec![([-1, -1, 101, 30], 0.0), ([10, 50, 30, 60], 4.0)]);
+    assert_eq!(top, 30);
+    assert_eq!(rest.len(), 1);
+    // A hole that doesn't span the width stays a hole.
+    let (top, rest) = page_top(100, vec![([0, 0, 60, 30], 0.0)]);
+    assert_eq!((top, rest.len()), (0, 1));
+  }
+
+  #[test]
+  fn square_corners_are_one_band() {
+    assert_eq!(rounded_rect_bands([2, 3, 12, 8], [0.0; 4]), vec![[2, 3, 12, 8]]);
+  }
+
+  #[test]
+  fn rounded_corners_are_symmetric() {
+    let bands = rounded_rect_bands([0, 0, 40, 40], [8.0; 4]);
+    let rows: Vec<(i32, i32)> =
+      (0..40).map(|y| bands.iter().find(|b| b[1] <= y && y < b[3]).map(|b| (b[0], b[2])).unwrap()).collect();
+    for y in 0..40 {
+      let (l, r) = rows[y as usize];
+      // Left/right and top/bottom mirror each other.
+      assert_eq!(l, 40 - r, "row {y}");
+      assert_eq!(rows[y as usize], rows[(39 - y) as usize], "row {y}");
+    }
+    // The corner bites in at the top and is gone by the radius.
+    assert!(rows[0].0 >= 2);
+    assert_eq!(rows[8], (0, 40));
+    // Bands are sorted and don't overlap (what ExtCreateRegion expects).
+    assert!(bands.windows(2).all(|p| p[0][3] <= p[1][1]));
+  }
+
+  #[test]
+  fn a_pill_is_round_at_both_ends() {
+    // 20px high with a huge radius: clamped to 10, so the ends are half circles.
+    let bands = rounded_rect_bands([0, 0, 100, 20], [999.0; 4]);
+    let first = bands.first().unwrap();
+    let middle = bands.iter().find(|b| b[1] <= 10 && 10 < b[3]).unwrap();
+    assert!(first[0] > 5 && first[2] < 95);
+    assert_eq!((middle[0], middle[2]), (0, 100));
+  }
+
+  #[test]
+  fn empty_rects_have_no_bands() {
+    assert!(rounded_rect_bands([5, 5, 5, 20], [4.0; 4]).is_empty());
+  }
 }

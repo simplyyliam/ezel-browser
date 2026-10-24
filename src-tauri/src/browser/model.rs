@@ -101,8 +101,11 @@ pub enum Pinned {
 pub struct Space {
   pub id: Id,
   pub name: String,
-  /// A lucide icon name; the UI maps it to a component.
+  /// A lucide icon name (the UI maps it to a component) or one emoji ([`space_icon`]).
   pub icon: String,
+  /// Its pinned list is folded away under the space's title. Added in v0.3.1: older files have none.
+  #[serde(default)]
+  pub collapsed: bool,
   pub pinned: Vec<Pinned>,
   /// Unpinned tabs (Arc's "Today"), newest first.
   pub temp: Vec<Id>,
@@ -254,6 +257,7 @@ impl Session {
         id: space,
         name: "Home".into(),
         icon: "house".into(),
+        collapsed: false,
         pinned: vec![],
         temp: vec![tab],
         active_tab: Some(tab),
@@ -343,6 +347,34 @@ fn folder_name(name: String) -> Result<String> {
     return Err(AppError::invalid_input("folder names are one line of at most 60 characters"));
   }
   Ok(name.to_string())
+}
+
+/// Longest space name, in characters (the UI's field takes 40).
+pub const MAX_SPACE_NAME: usize = 40;
+
+/// A space name as typed: trimmed, not empty, one line of at most [`MAX_SPACE_NAME`] characters.
+pub fn space_name(name: String) -> Result<String> {
+  let name = name.trim();
+  if name.is_empty() || name.chars().count() > MAX_SPACE_NAME || name.chars().any(char::is_control) {
+    return Err(AppError::invalid_input("space names are one line of 1 to 40 characters"));
+  }
+  Ok(name.to_string())
+}
+
+/// Longest emoji icon, in bytes: room for a family or flag sequence (joiners, skin tones).
+const MAX_EMOJI_ICON_BYTES: usize = 32;
+
+/// A space icon: a lucide name (`a`–`z`, digits, `-`, at most 40) or one emoji. Emoji are told
+/// apart by being non-ASCII; they may hold no letters or digits of ASCII, whitespace or controls,
+/// so a word or a line of text never passes as an "emoji". The UI draws it as text, never markup.
+pub fn space_icon(icon: String) -> Result<String> {
+  let ok = if icon.is_ascii() {
+    !icon.is_empty() && icon.len() <= 40 && icon.chars().all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '-')
+  } else {
+    icon.len() <= MAX_EMOJI_ICON_BYTES
+      && !icon.chars().any(|c| c.is_whitespace() || c.is_control() || c.is_ascii_alphanumeric() || c.is_alphabetic())
+  };
+  if ok { Ok(icon) } else { Err(AppError::invalid_input("a space icon is an icon name or one emoji")) }
 }
 
 /// Inserts at `index`, clamped to the end.
@@ -890,7 +922,7 @@ impl Model {
 
   pub fn create_space(&mut self, name: String, icon: String) -> Id {
     let id = self.alloc_id();
-    self.session.spaces.push(Space { id, name, icon, pinned: vec![], temp: vec![], active_tab: None });
+    self.session.spaces.push(Space { id, name, icon, collapsed: false, pinned: vec![], temp: vec![], active_tab: None });
     id
   }
 
@@ -902,6 +934,12 @@ impl Model {
     if let Some(icon) = icon {
       space.icon = icon;
     }
+    Ok(())
+  }
+
+  /// Folds the space's pinned list away under its title, or opens it again.
+  pub fn set_space_collapsed(&mut self, id: Id, collapsed: bool) -> Result<()> {
+    self.space_mut(id)?.collapsed = collapsed;
     Ok(())
   }
 
@@ -1348,6 +1386,33 @@ mod tests {
     assert_eq!(m.session.swatches[2], None);
     assert_eq!(m.active_space().pinned.len(), 2);
     assert_eq!(m.locate(swatch), Some(TabLocation::Pinned { space_id: s, folder_id: Some(g), index: Some(0) }));
+  }
+
+  #[test]
+  fn space_names_and_icons_are_checked() {
+    assert_eq!(space_name("  Work  ".into()).unwrap(), "Work");
+    for bad in ["", "  ", "a
+b", &"x".repeat(MAX_SPACE_NAME + 1)] {
+      assert_eq!(space_name(bad.into()).unwrap_err().code, ErrorCode::InvalidInput, "{bad:?}");
+    }
+    for good in ["house", "swatch-book", "🎨", "👩‍💻", "🏳️‍🌈", "🇳🇱", "✏️"] {
+      assert_eq!(space_icon(good.into()).unwrap(), good);
+    }
+    for bad in ["", "House", "a b", "<b>", "🎨 work", "é", "日本", "🎨
+", &"🎨".repeat(9), &"x".repeat(41)] {
+      assert_eq!(space_icon(bad.into()).unwrap_err().code, ErrorCode::InvalidInput, "{bad:?}");
+    }
+  }
+
+  #[test]
+  fn spaces_collapse_and_old_sessions_open() {
+    let mut m = model();
+    let s = space(&m);
+    m.set_space_collapsed(s, true).unwrap();
+    assert!(m.space(s).unwrap().collapsed);
+    assert_eq!(m.set_space_collapsed(999, true).unwrap_err().code, ErrorCode::NotFound);
+    let old: Space = serde_json::from_str(r#"{"id":1,"name":"Home","icon":"house","pinned":[],"temp":[],"activeTab":null}"#).unwrap();
+    assert!(!old.collapsed, "sessions from before v0.3.1 open every space");
   }
 
   #[test]

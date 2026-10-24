@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react"
+import { AnimatePresence, motion, useReducedMotion } from "motion/react"
 import { DndContext, DragOverlay } from "@dnd-kit/core"
 import {
   Sidebar,
@@ -12,7 +13,8 @@ import { BottomActions } from "@/features/app-sidebar/bottom-actions"
 import { SidebarContextMenu } from "@/features/app-sidebar/context-menu"
 import { Folders, type FolderActions } from "@/features/app-sidebar/folders"
 import { Navigation } from "@/features/app-sidebar/navigation"
-import { SpaceSwitcher } from "@/features/app-sidebar/space-switcher"
+import { SpaceDock } from "@/features/app-sidebar/space-dock"
+import { SpaceHeader } from "@/features/app-sidebar/space-header"
 import { Swatches } from "@/features/app-sidebar/swatches"
 import { TempTabs } from "@/features/app-sidebar/temp-tabs"
 import { UpdateNote } from "@/features/app-sidebar/update-note"
@@ -21,16 +23,20 @@ import {
   activeSpace,
   cancelDownload,
   clearDownloads,
+  hotkeyLabel,
+  INSTANT,
   installUpdate,
   NEW_SPACE_ICONS,
   openCommandPalette,
   openDownload,
+  PEEK_TRANSITION,
   PERF,
   perfMark,
   reopenClosedTab,
   reportError,
   showDownloadInFolder,
   showToast,
+  SPRING,
   unwrap,
   useContentCutout,
   useDownloads,
@@ -39,15 +45,15 @@ import {
   useReadyUpdate,
   useTabs,
   type Id,
-  type Space,
 } from "@/shared"
 import { commands } from "@/shared/bindings"
 import { ScrollArea, type TabRowActions } from "@/shared/components"
-import { useLoadMeter } from "./use-load-meter"
 import { useSidebarPeek } from "./use-sidebar-peek"
 import { TabDragPreview } from "./tab-drag-preview"
 import { useTabDrag } from "./use-tab-drag"
 import { findTab, showTab, tabMenu } from "./tab-menu"
+import { spaceMenu, tabsOf, type SpaceMenuActions } from "./space-menu"
+import { useSpaceSwipe } from "./use-space-swipe"
 
 /**
  * docs/design/sidebar-1.png scaled up for legibility (docs/design/decisions.md, "Sizing"):
@@ -57,8 +63,16 @@ export const SIDEBAR_WIDTH = "244px"
 
 const activateTab = (id: Id) => unwrap("activate tab", commands.activateTab(id))
 const closeTab = (id: Id) => unwrap("close tab", commands.closeTab(id))
+const removeTab = (id: Id) => unwrap("remove tab", commands.removeTab(id))
 const setTabMuted = (id: Id, muted: boolean) => unwrap(muted ? "mute tab" : "unmute tab", commands.setTabMuted(id, muted))
-const clearTempTabs = (spaceId: Id) => unwrap("clear temp tabs", commands.clearTempTabs(spaceId))
+/** Trash-all: the space's temp tabs go on the closed-tab stack; the toast says how to get them back. */
+async function clearTempTabs(spaceId: Id, count: number) {
+  const done = await unwrap("clear temp tabs", commands.clearTempTabs(spaceId))
+  if (done === null) return
+  showToast({ title: `Closed ${count} ${count === 1 ? "tab" : "tabs"}`, detail: `${hotkeyLabel("reopenClosedTab")} reopens` })
+}
+const setSpaceCollapsed = (id: Id, collapsed: boolean) =>
+  unwrap(collapsed ? "collapse space" : "expand space", commands.setSpaceCollapsed(id, collapsed))
 /** The tab name's address field. A local or code address (file:, javascript:…) is refused by Rust; say so. */
 async function navigate(input: string) {
   try {
@@ -162,8 +176,9 @@ export function AppSidebar() {
     remove: (id) => unwrap("delete folder", commands.deleteFolder(id, false)),
   }
 
-  // Spaces (features/app-sidebar/space-switcher): commands only; the list and titles follow `tabs-changed`.
-  const [spaceListOpen, setSpaceListOpen] = useState(false)
+  // Spaces (features/app-sidebar/space-header): commands only; the title row follows `tabs-changed`. The UI state: which space's title is a field, picks an icon, asks to go.
+  const [iconPickerSpaceId, setIconPickerSpaceId] = useState<Id | null>(null)
+  const [deletingSpaceId, setDeletingSpaceId] = useState<Id | null>(null)
 
   async function newSpace() {
     if (!tabs) return
@@ -190,12 +205,42 @@ export function AppSidebar() {
       if (tab.isLoaded && tab.id !== activeTabId) unwrap("unload space", commands.unloadTab(tab.id))
     }
   }
+
+  /**
+   * The space's menu (its title row). Renaming, picking an icon and the delete question happen at
+   * the title; for a space that isn't shown, they show it first.
+   */
+  const spaceActions: SpaceMenuActions = {
+    rename: async (id) => {
+      if (id !== space?.id) await switchToSpace(id)
+      setRenamingSpaceId(id)
+    },
+    changeIcon: async (id) => {
+      if (id !== space?.id) await switchToSpace(id)
+      setIconPickerSpaceId(id)
+    },
+    setCollapsed: setSpaceCollapsed,
+    move: moveSpace,
+    unload: unloadSpace,
+    delete: async (id) => {
+      const target = tabs?.spaces.find((s) => s.id === id)
+      if (!target) return
+      // An empty space has nothing to lose: no question then.
+      if (target.items.length === 0 && target.tempTabs.length === 0) return deleteSpace(id, null)
+      if (id !== space?.id) await switchToSpace(id)
+      setDeletingSpaceId(id)
+    },
+  }
+  const spaceMenuFor = (id: Id) => {
+    const target = tabs?.spaces.find((s) => s.id === id)
+    return target && tabs ? spaceMenu(target, tabs.spaces, activeTabId, spaceActions) : []
+  }
+  const reduceMotion = useReducedMotion()
+  const onSpaceSwipe = useSpaceSwipe(tabs?.spaces, space?.id)
   const { open, toggleSidebar } = useSidebar()
   // shadcn's Ctrl+B only hears keys while the UI has focus; this covers the website having it.
   useHotkey("toggleSidebar", toggleSidebar)
   const { peeking, edgeRef, sidebarRef, attachSidebar } = useSidebarPeek(!open)
-  // Read only while the sidebar can be seen: docked, or peeking over the page.
-  const load = useLoadMeter(open || peeking, tabs)
   // The sidebar shows above the page wherever they overlap; floating, that includes its 1px ring
   // (drawn just outside the card). Docked it sits beside the page, so the hole changes nothing.
   const getSidebarCard = useCallback(
@@ -204,7 +249,16 @@ export function AppSidebar() {
   )
   useContentCutout("sidebar", getSidebarCard, open ? 0 : 1)
   // Dragging tabs between Swatches, pinned and temp tabs (docs/design/drag-and-drop.md).
-  const tabDrag = useTabDrag({ tabs, space, getSidebar: getSidebarCard, onSpaceListOpen: setSpaceListOpen })
+  // A dragged tab resting on a folded space's title opens it (spring-loading).
+  const tabDrag = useTabDrag({
+    tabs,
+    space,
+    getSidebar: getSidebarCard,
+    onSpringOpenSpace: () => {
+      const { space } = latest.current
+      if (space?.collapsed) setSpaceCollapsed(space.id, false)
+    },
+  })
   const dropTarget = tabDrag.target
 
   // Built when the menu opens, from the state at that moment.
@@ -217,10 +271,18 @@ export function AppSidebar() {
     },
     [editTab, startNewTab],
   )
+  // A row's close button. A loaded pinned tab only unloads (back to its pinned URL); once it
+  // rests, the same button removes it (onto the closed-tab stack: Ctrl+Shift+T brings it back).
+  // Temp tabs are removed either way.
+  const closeRow = useCallback((tabId: Id) => {
+    const { tabs } = latest.current
+    const tab = tabs && findTab(tabs, tabId)
+    return tab && !tab.isLoaded ? removeTab(tabId) : closeTab(tabId)
+  }, [])
   const rowActions: TabRowActions = {
     activeTabId,
     onSelect: activateTab,
-    onClose: closeTab,
+    onClose: closeRow,
     onSetMuted: setTabMuted,
     menuFor,
     editing,
@@ -250,7 +312,10 @@ export function AppSidebar() {
           !open && "[&>[data-slot=sidebar-inner]]:rounded-frame!",
           // Peeking slides the collapsed card back in, over the page. Zen: in 0.25s on its spring curve, out 0.15s ease.
           peeking && "data-[side=left]:group-data-[collapsible=offcanvas]:left-0",
-          !open && (peeking ? "duration-250 ease-zen-peek" : "duration-150 ease-[ease]"),
+          // Hidden, the card goes a little further than its width: shadcn parks it exactly one width
+          // out, which leaves its ring and shadow (drawn outside its box) as a line down the page's edge.
+          !open && !peeking && "data-[side=left]:group-data-[collapsible=offcanvas]:left-[calc(var(--sidebar-width)*-1_-_0.75rem)]!",
+          !open && (peeking ? "duration-250 ease-zen-peek" : "duration-(--motion-base) ease-[ease]"),
           // Collapsed, the card is its own GPU layer: drawn once, then only moved while it slides.
           // Repainted every frame instead, it fell behind its hole after a launch or a restore,
           // and the hole showed Ezel's dark background ahead of it (a ghost).
@@ -275,10 +340,15 @@ export function AppSidebar() {
       >
       <SidebarContent className="gap-0 overflow-hidden">
         <DndContext {...tabDrag.context}>
-        <ScrollArea className="flex-1" viewportClassName="pt-2">
+        {/* Swatches and the space's title stay put; the space's pinned list and its temp tabs
+            scroll each on their own, sharing the height by how long each is (both shrink in
+            proportion). */}
+        {/* Two fingers sideways switch spaces (the footer's pill follows). */}
+        <div onWheel={onSpaceSwipe} className="flex min-h-0 flex-1 flex-col pt-2">
           {/* Empty until the backend's first snapshot (a few ms after mount). */}
           {tabs && space && (
             <>
+              <div className="shrink-0">
               <Swatches
                 swatches={tabDrag.swatches}
                 activeTabId={activeTabId}
@@ -287,45 +357,73 @@ export function AppSidebar() {
                 draggedTabId={tabDrag.draggedTabId}
                 insertIndex={tabDrag.swatchIndex}
               />
-              {/* The shown space's title: a pop-up button over its own tabs (see the feature for why). */}
-              <SpaceSwitcher
+              {/* The shown space's small title row, one button that folds it (see the feature for
+                  why). The footer's icons switch spaces. */}
+              <SpaceHeader
+                space={space}
                 spaces={tabs.spaces}
-                activeSpaceId={space.id}
-                shownTabId={activeTabId}
-                onSelect={switchToSpace}
-                onCreate={newSpace}
-                onRename={renameSpace}
-                onChangeIcon={changeSpaceIcon}
-                onMove={moveSpace}
-                onUnload={unloadSpace}
-                onDelete={deleteSpace}
-                renamingSpaceId={renamingSpaceId}
-                onRenamingChange={setRenamingSpaceId}
-                listOpen={spaceListOpen}
-                onListOpenChange={setSpaceListOpen}
-                dropSpaceId={tabDrag.dropSpaceId}
+                onToggleCollapsed={() => setSpaceCollapsed(space.id, !space.collapsed)}
+                menuFor={spaceMenuFor}
+                renaming={space.id === renamingSpaceId}
+                onRenameDone={(name) => {
+                  setRenamingSpaceId(null)
+                  if (name) renameSpace(space.id, name)
+                }}
+                iconPickerOpen={space.id === iconPickerSpaceId}
+                onIconPickerOpenChange={(open) => setIconPickerSpaceId(open ? space.id : null)}
+                onPickIcon={(icon) => {
+                  setIconPickerSpaceId(null)
+                  if (icon !== space.icon) changeSpaceIcon(space.id, icon)
+                }}
+                deleting={space.id === deletingSpaceId}
+                onDeletingChange={(open) => setDeletingSpaceId(open ? space.id : null)}
+                onDelete={(moveTo) => {
+                  setDeletingSpaceId(null)
+                  deleteSpace(space.id, moveTo)
+                }}
               />
+              </div>
               {/* Keyed by space: switching swaps the whole list instead of animating every folder. */}
-              <Folders
-                key={space.id}
-                items={space.items}
-                spaces={tabs.spaces}
-                spaceId={space.id}
-                actions={rowActions}
-                folderActions={folderActions}
-                renamingFolderId={renamingFolderId}
-                dropGap={dropTarget?.kind === "pinned" ? dropTarget.gap : null}
-                dropFolder={dropTarget?.kind === "folder" ? dropTarget : null}
-              />
+              <ScrollArea key={`pinned-${space.id}`}>
+                {/* Folded under the title: unfolds on a spring, folds on the peek's ease (as folders
+                    do). Folded, nothing shows: the title is the whole space. */}
+                <AnimatePresence initial={false}>
+                  {!(space.collapsed && space.items.length > 0) && (
+                    <motion.div
+                      key="pinned"
+                      initial={{ height: 0, opacity: 0 }}
+                      animate={{ height: "auto", opacity: 1, transition: reduceMotion ? INSTANT : SPRING }}
+                      exit={{ height: 0, opacity: 0, transition: reduceMotion ? INSTANT : PEEK_TRANSITION }}
+                      className="overflow-clip [overflow-clip-margin:2px]"
+                    >
+                      <Folders
+                        key={space.id}
+                        items={space.items}
+                        spaces={tabs.spaces}
+                        spaceId={space.id}
+                        actions={rowActions}
+                        folderActions={folderActions}
+                        renamingFolderId={renamingFolderId}
+                        dropGap={dropTarget?.kind === "pinned" ? dropTarget.gap : null}
+                        dropFolder={dropTarget?.kind === "folder" ? dropTarget : null}
+                      />
+                    </motion.div>
+                  )}
+                </AnimatePresence>
+              </ScrollArea>
+              {/* Keyed by space too (its own key: siblings sharing one keep every visited space mounted),
+                  so a switch shows the new list as it is instead of growing every row in. */}
               <TempTabs
+                key={`temp-${space.id}`}
                 tabs={space.tempTabs}
                 actions={rowActions}
                 onNewTab={newTab}
+                onClear={() => clearTempTabs(space.id, space.tempTabs.length)}
                 dropGap={dropTarget?.kind === "temp" ? dropTarget.gap : null}
               />
             </>
           )}
-        </ScrollArea>
+        </div>
         {/* Invisible: it gives dnd-kit a dragged rect that survives the source unmounting (a space
             switch hides list sources, the grid replaces a dragged swatch with its gap). Without
             it, dnd-kit stops finding drop zones. What the user sees is TabDragPreview. */}
@@ -349,22 +447,26 @@ export function AppSidebar() {
       <SidebarFooter>
         {readyUpdate && <UpdateNote version={readyUpdate} onRestart={installUpdate} />}
         <BottomActions
-          hasTempTabs={(space?.tempTabs.length ?? 0) > 0}
-          onTrashAll={() => space && clearTempTabs(space.id)}
           onAddSpace={newSpace}
           onAddTab={newTab}
           onAddFolder={newFolder}
           downloads={downloads}
           downloadActions={{ open: openDownload, showInFolder: showDownloadInFolder, cancel: cancelDownload, clear: clearDownloads }}
-          load={load}
+          center={
+            tabs &&
+            space && (
+              <SpaceDock
+                spaces={tabs.spaces}
+                activeSpaceId={space.id}
+                onSelect={switchToSpace}
+                menuFor={spaceMenuFor}
+                dropSpaceId={tabDrag.dropSpaceId}
+              />
+            )
+          }
         />
       </SidebarFooter>
     </Sidebar>
     </>
   )
-}
-
-/** Every tab a space holds: pinned, in folders, temp. */
-function tabsOf(space: Space) {
-  return [...space.items.flatMap((item) => (item.kind === "tab" ? [item.tab] : item.folder.tabs)), ...space.tempTabs]
 }

@@ -88,6 +88,12 @@ fn name(raw: &str, max: usize, fallback: &str) -> String {
 fn icon(raw: Option<String>) -> String {
   let fallback = "layers".to_string();
   let Some(raw) = raw else { return fallback };
+  // Zen spaces often carry an emoji: kept as it is (Ezel's icons take one, `model::space_icon`).
+  if let Ok(emoji) = super::model::space_icon(raw.trim().to_string()) {
+    if !emoji.is_ascii() {
+      return emoji;
+    }
+  }
   let file = raw.rsplit('/').next().unwrap_or("");
   match file.strip_suffix(".svg") {
     Some(stem) if !stem.is_empty() && stem.chars().all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '-') => stem.to_string(),
@@ -434,7 +440,7 @@ mod tests {
     let d = data();
     assert_eq!(d.spaces[0], ZenSpace { uuid: "{w1}".into(), name: "Work".into(), icon: "briefcase".into() });
     assert_eq!(d.spaces[1].name, "Home");
-    assert_eq!(d.spaces[1].icon, "layers", "emoji icons get Ezel's default");
+    assert_eq!(d.spaces[1].icon, "🏠", "emoji icons come over as they are");
     let urls: Vec<&str> = d.tabs.iter().map(|t| t.url.as_str()).collect();
     assert_eq!(urls, vec!["https://mail.test/", "https://cal.test/", "https://figma.test/b", "https://ref.test/", "https://deep.test/", "https://ref2.test/", "https://news.test/", "https://home.test/"]);
     assert_eq!(d.tabs[2].title.as_deref(), Some("Figma"), "the current history entry");

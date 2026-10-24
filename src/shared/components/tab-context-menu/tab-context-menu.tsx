@@ -8,7 +8,7 @@ import {
   ContextMenuSubTrigger,
   ContextMenuTrigger,
 } from "@/components/ui/context-menu";
-import { SidebarMenuPopup, SidebarMenuSubPopup } from "../sidebar-menu-popup/sidebar-menu-popup";
+import { routeContextMenu, SidebarMenuPopup, SidebarMenuSubPopup } from "../sidebar-menu-popup/sidebar-menu-popup";
 import type { Id } from "../../types";
 
 // Context menus built from data: the widget decides the items (it knows where things live and
@@ -81,11 +81,14 @@ interface TabContextMenuProps {
 
 /**
  * Right-clicking a tab opens its menu. It wins over the sidebar's own menu around it: Base UI's
- * trigger stops the event.
+ * trigger stops the event. While another menu is open, the click still reaches this tab
+ * (`routeContextMenu`).
  */
 export const TabContextMenu = ({ tabId, menuFor, children, className }: TabContextMenuProps) => (
   <ContextMenu>
-    <ContextMenuTrigger className={className}>{children}</ContextMenuTrigger>
+    <ContextMenuTrigger className={className} onContextMenu={routeContextMenu}>
+      {children}
+    </ContextMenuTrigger>
     <SidebarMenuPopup className="min-w-48">
       <ContextMenuEntries groups={menuFor(tabId)} />
     </SidebarMenuPopup>

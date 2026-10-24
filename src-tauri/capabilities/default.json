@@ -60,6 +60,7 @@
     "allow-unload-folder",
     "allow-create-space",
     "allow-update-space",
+    "allow-set-space-collapsed",
     "allow-move-space",
     "allow-delete-space",
     "allow-switch-space",

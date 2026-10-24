@@ -2,10 +2,15 @@ import { Check, type LucideIcon } from "lucide-react"
 import { motion } from "motion/react"
 import { CommandGroup, CommandItem, CommandShortcut } from "@/components/ui/command"
 import { cn } from "@/lib/utils"
-import { Favicon } from "@/shared/components"
+import { Favicon, SpaceIcon } from "@/shared/components"
+import { FOLLOW } from "@/shared"
 
 /** A row's leading icon: a site's favicon (null: the empty-circle placeholder) or a glyph. */
-export type RowIcon = { kind: "favicon"; src: string | null } | { kind: "glyph"; icon: LucideIcon }
+export type RowIcon =
+  | { kind: "favicon"; src: string | null }
+  | { kind: "glyph"; icon: LucideIcon }
+  /** A space's icon name or emoji. */
+  | { kind: "space"; icon: string }
 
 export type PaletteRow = {
   /** Unique, lowercase: it's also cmdk's value (the selection). */
@@ -58,14 +63,14 @@ function ResultRow({ row, selected, done, tokens, onRun }: ResultRowProps) {
       value={row.id}
       onSelect={() => onRun(row)}
       // The registry's selected fill is replaced by the gliding highlight below.
-      className="isolate h-10 gap-3 rounded-xl! px-3 py-0 font-normal data-selected:bg-transparent"
+      className="isolate h-10 gap-3 rounded-lg! px-3 py-0 font-normal data-selected:bg-transparent"
     >
       {selected && (
         <motion.span
           layoutId="palette-highlight"
           aria-hidden
-          className="absolute inset-0 -z-10 rounded-xl bg-muted"
-          transition={{ type: "spring", stiffness: 700, damping: 45, mass: 0.6 }}
+          className="absolute inset-0 -z-10 rounded-lg bg-muted"
+          transition={FOLLOW}
         />
       )}
       <RowIconView icon={row.icon} dimmed={row.dimmed} />
@@ -77,7 +82,7 @@ function ResultRow({ row, selected, done, tokens, onRun }: ResultRowProps) {
       </span>
       <CommandShortcut
         className={cn(
-          "flex items-center gap-1 tracking-normal opacity-0 transition-opacity duration-150 group-data-selected/command-item:opacity-100 motion-reduce:transition-none",
+          "flex items-center gap-1 tracking-normal opacity-0 transition-opacity duration-(--motion-base) group-data-selected/command-item:opacity-100 motion-reduce:transition-none",
           done && "text-foreground opacity-100",
         )}
       >
@@ -98,6 +103,13 @@ function ResultRow({ row, selected, done, tokens, onRun }: ResultRowProps) {
 }
 
 function RowIconView({ icon, dimmed }: { icon: RowIcon; dimmed?: boolean }) {
+  if (icon.kind === "space") {
+    return (
+      <span className="grid size-6 shrink-0 place-items-center rounded-md bg-muted text-muted-foreground group-data-selected/command-item:bg-background/70 group-data-selected/command-item:text-foreground">
+        <SpaceIcon icon={icon.icon} className="size-3.5 text-[0.8125rem]" />
+      </span>
+    )
+  }
   if (icon.kind === "glyph") {
     const Glyph = icon.icon
     return (
@@ -108,7 +120,7 @@ function RowIconView({ icon, dimmed }: { icon: RowIcon; dimmed?: boolean }) {
   }
   return (
     <span className="grid size-6 shrink-0 place-items-center">
-      <Favicon src={icon.src} className={cn("size-4", !icon.src && "bg-foreground/15", dimmed && "opacity-60")} />
+      <Favicon src={icon.src} className={cn("size-4", dimmed && "opacity-60")} />
     </span>
   )
 }
@@ -163,19 +175,19 @@ export function SwatchTiles({
           key={tile.id}
           value={tile.id}
           onSelect={() => onRun(tile)}
-          className="isolate h-auto w-16 flex-col gap-1 rounded-xl! px-1 pt-2 pb-1.5 data-selected:bg-transparent"
+          className="isolate h-auto w-16 flex-col gap-1 rounded-lg! px-1 pt-2 pb-1.5 data-selected:bg-transparent"
         >
           {tile.id === selectedId && (
             <motion.span
               layoutId="palette-highlight"
               aria-hidden
-              className="absolute inset-0 -z-10 rounded-xl bg-muted"
-              transition={{ type: "spring", stiffness: 700, damping: 45, mass: 0.6 }}
+              className="absolute inset-0 -z-10 rounded-lg bg-muted"
+              transition={FOLLOW}
             />
           )}
           <span
             className={cn(
-              "relative grid size-9 place-items-center rounded-[10px] bg-muted ring-1 ring-foreground/5 transition-transform duration-150 ease-out group-data-selected/command-item:scale-105 group-data-selected/command-item:bg-background/70 motion-reduce:transition-none",
+              "relative grid size-9 place-items-center rounded-[10px] bg-muted ring-1 ring-foreground/5 transition-transform duration-(--motion-base) ease-ezel-out group-data-selected/command-item:scale-105 group-data-selected/command-item:bg-background/70 motion-reduce:transition-none",
             )}
           >
             <Favicon src={tile.icon.kind === "favicon" ? tile.icon.src : null} className={cn("size-[18px]", tile.dimmed && "opacity-60")} />

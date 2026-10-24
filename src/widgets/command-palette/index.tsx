@@ -1,7 +1,6 @@
 import { useEffect, useRef, useState, type KeyboardEvent, type RefObject } from "react"
 import { Dialog as DialogPrimitive } from "@base-ui/react/dialog"
 import {
-  AppWindow,
   ArrowLeft,
   ArrowRight,
   Link,
@@ -11,7 +10,6 @@ import {
   ScanEye,
   Search,
   Trash2,
-  type LucideIcon,
   ShieldCheck,
   Import,
 } from "lucide-react"
@@ -33,7 +31,6 @@ import {
   openCommandPalette,
   openSitePermissions,
   openZenImport,
-  spaceIcon,
   unwrap,
   useCommandPalette,
   usePage,
@@ -88,7 +85,7 @@ export function CommandPalette() {
             // over the page it would be clipped (docs/design/decisions.md), so a ring draws the edge.
             "fixed top-[16%] left-1/2 z-50 w-[min(600px,calc(100vw-2rem))] origin-top -translate-x-1/2 overflow-hidden rounded-2xl bg-popover text-popover-foreground ring-1 ring-foreground/10 outline-none " +
             // Fast in, slower out (decisions.md, Principles); reduced motion keeps only the fade.
-            "transition-[opacity,scale] duration-[120ms] ease-out data-ending-style:duration-200 data-ending-style:opacity-0 data-ending-style:scale-[0.98] data-starting-style:opacity-0 data-starting-style:scale-[0.97] motion-reduce:scale-100!"
+            "transition-[opacity,scale] duration-(--motion-fast) ease-ezel-out data-ending-style:duration-(--motion-slow) data-ending-style:opacity-0 data-ending-style:scale-[0.98] data-starting-style:opacity-0 data-starting-style:scale-[0.97] motion-reduce:scale-100!"
           }
         >
           <DialogPrimitive.Title className="sr-only">
@@ -345,7 +342,7 @@ function PaletteBody({ target, tabs, page, inputRef, onToggleSidebar }: PaletteB
       .filter((s) => s.id !== space?.id)
       .map((s) => ({
         id: `space-${s.id}`,
-        icon: { kind: "glyph" as const, icon: spaceIcon(s.icon) },
+        icon: { kind: "space" as const, icon: s.icon },
         title: `Go to ${s.name}`,
         keywords: "space switch",
         hint: "Switch",
@@ -387,9 +384,9 @@ function PaletteBody({ target, tabs, page, inputRef, onToggleSidebar }: PaletteB
   const shownTab = pristine && shownTabId !== null ? findShown(tabs, shownTabId) : null
   const icon =
     resolved.kind === "url" && trimmed
-      ? { key: `site-${resolved.host}`, node: <Favicon src={siteIcon(resolved.host)} className="size-[18px] bg-foreground/15" /> }
+      ? { key: `site-${resolved.host}`, node: <Favicon src={siteIcon(resolved.host)} className="size-[18px]" /> }
       : pristine && shownTab
-        ? { key: "page", node: <Favicon src={shownTab.favicon} className="size-[18px] bg-foreground/15" /> }
+        ? { key: "page", node: <Favicon src={shownTab.favicon} className="size-[18px]" /> }
         : { key: "search", node: <Search className="size-[18px]" aria-hidden /> }
 
   const footerKeys = [
@@ -398,10 +395,9 @@ function PaletteBody({ target, tabs, page, inputRef, onToggleSidebar }: PaletteB
     ...(/^[a-z0-9-]+$/i.test(trimmed) ? [{ key: "Ctrl↵", label: ".com" }] : []),
     { key: "Esc", label: "Close" },
   ]
-  const SpaceIcon: LucideIcon = space ? spaceIcon(space.icon) : AppWindow
   const destination = inCurrentTab
-    ? { icon: AppWindow, label: "Opens in this tab" }
-    : { icon: SpaceIcon, label: `New tab in ${space?.name ?? "this space"}` }
+    ? { spaceIcon: null, label: "Opens in this tab" }
+    : { spaceIcon: space?.icon ?? null, label: `New tab in ${space?.name ?? "this space"}` }
 
   const hasRows = tiles.length > 0 || sections.length > 0
 
@@ -429,7 +425,7 @@ function PaletteBody({ target, tabs, page, inputRef, onToggleSidebar }: PaletteB
           viewportClassName="max-h-[min(440px,56vh)]"
         >
           {/* cmdk measures its content into --cmdk-list-height; easing it makes the panel grow and shrink smoothly. */}
-          <CommandList className="h-(--cmdk-list-height) max-h-none overflow-visible p-1 transition-[height] duration-150 ease-out motion-reduce:transition-none">
+          <CommandList className="h-(--cmdk-list-height) max-h-none overflow-visible p-1 transition-[height] duration-(--motion-base) ease-ezel-out motion-reduce:transition-none">
             {tiles.length > 0 && <SwatchTiles tiles={tiles} selectedId={selectedId} onRun={(row) => runners.get(row.id)?.(false)} />}
             <Results
               sections={sections}

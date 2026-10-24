@@ -137,11 +137,14 @@ export function trackContentCutout(
           boxOf(el),
         )
       : boxOf(el)
-    const radius = (parseFloat(getComputedStyle(el).borderTopLeftRadius) || 0) + inflate
     const rect: [number, number, number, number] | null =
       isOpaque(el) && box.right > box.left && box.bottom > box.top
         ? [box.left - inflate, box.top - inflate, box.right - box.left + inflate * 2, box.bottom - box.top + inflate * 2]
         : null
+    // At most half the hole's shorter side, as CSS draws it: `rounded-full` computes to an endless
+    // radius, and a hole with corners bigger than itself was cut as an ellipse, not a pill.
+    const css = (parseFloat(getComputedStyle(el).borderTopLeftRadius) || 0) + inflate
+    const radius = rect ? Math.min(css, rect[2] / 2, rect[3] / 2) : 0
     const key = JSON.stringify([rect, radius])
     if (key !== last) {
       last = key
@@ -216,7 +219,7 @@ export function useContentCutout(id: string, getEl: () => HTMLElement | null, in
  * True when part of `el` lies over the page and outside the sidebar card (which, peeking, covers
  * the page with its own hole). That part shows only through a hole, which can't fade.
  */
-function reachesOverPage(el: Element) {
+export function reachesOverPage(el: Element) {
   const page = document.querySelector('[data-slot="content-slot"]')?.getBoundingClientRect()
   if (!page) return false
   const r = el.getBoundingClientRect()
@@ -250,7 +253,8 @@ export function usePopupCutouts() {
         }
       }
       for (const el of popups) {
-        if (tracked.has(el)) continue
+        // Drawn over the page's picture, not the page (shared/page-cover): nothing to cut.
+        if (tracked.has(el) || el.closest("[data-over-cover]")) continue
         const used = new Set([...tracked.values()].map((t) => t.id))
         const id = POPUP_IDS.find((candidate) => !used.has(candidate))
         // More than 8 popups at once: the extra ones just stay under the page.

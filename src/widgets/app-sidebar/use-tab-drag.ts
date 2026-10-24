@@ -44,8 +44,8 @@ import {
 // (Tauri's drag-drop handler on Windows swallows HTML5 drag events). See docs/design/drag-and-drop.md.
 
 /**
- * Zen: zen.tabs.dnd-switch-space-delay. How long a dragged tab must rest on the space title to
- * spring the spaces list open, or on a space in it to switch there (macOS spring-loading).
+ * Zen: zen.tabs.dnd-switch-space-delay. How long a dragged tab must rest on a folded space's title
+ * to open it, or on a space's dot or list row to switch there (macOS spring-loading).
  */
 const SPACE_SWITCH_DELAY = 500
 /** A press must move this far before it drags, so clicks and the close button still work. */
@@ -153,14 +153,14 @@ export function useTabDrag({
   tabs,
   space,
   getSidebar,
-  onSpaceListOpen,
+  onSpringOpenSpace,
 }: {
   tabs: TabsState | null
   space: Space | undefined
   /** The sidebar card: the area a drag stays in. */
   getSidebar: () => HTMLElement | null
-  /** Opens or closes the spaces list (springs open under a resting drag, closes when it's done). */
-  onSpaceListOpen: (open: boolean) => void
+  /** Opens the shown space's folded pinned list (a drag rested on its title). */
+  onSpringOpenSpace: () => void
 }) {
   const [drag, setDrag] = useState<TabDrag | null>(null)
   const [target, setTarget] = useState<TabDropTarget | null>(null)
@@ -178,10 +178,8 @@ export function useTabDrag({
   /** The pointer, kept current while dragging (window listener below). */
   const pointer = useRef({ x: 0, y: 0 })
   const switchTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined)
-  /** What the drag rests on, waiting: the space title ("list", opens the list) or a space in it (switches). */
-  const pendingSpring = useRef<"list" | Id | null>(null)
-  /** The list was sprung open by this drag, so the drag closes it again. */
-  const springOpened = useRef(false)
+  /** What the drag rests on, waiting: a folded space's title ("header", opens it) or a space's chip (switches). */
+  const pendingSpring = useRef<"header" | Id | null>(null)
 
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: DRAG_DISTANCE } }))
 
@@ -189,12 +187,6 @@ export function useTabDrag({
     clearTimeout(switchTimer.current)
     pendingSpring.current = null
     setDropSpaceId(null)
-  }
-
-  function closeSprungList() {
-    if (!springOpened.current) return
-    springOpened.current = false
-    onSpaceListOpen(false)
   }
 
   /** What dropping now would do, from the zone under the pointer. Null = nothing (a no-op counts). */
@@ -247,17 +239,16 @@ export function useTabDrag({
       setShape(next.zone.kind === "swatches" ? "swatch" : "row")
     }
 
-    // Spring-loading: resting on the space title opens the list, resting on another space in it
-    // switches there. Swatches belong to every space, so they never switch (Zen).
+    // Spring-loading: resting on a folded space's title opens it, resting on another space's chip
+    // in the rail switches there. Swatches belong to every space, so they never switch (Zen).
     const zone = next.zone
-    const spring: "list" | Id | null =
-      data.source === "swatch" || (tabs?.spaces.length ?? 0) < 2
-        ? null
-        : zone?.kind === "spaces"
-          ? "list"
-          : zone?.kind === "space" && zone.spaceId !== latest.current.space?.id
-            ? zone.spaceId
-            : null
+    const switches = data.source !== "swatch" && (tabs?.spaces.length ?? 0) >= 2
+    const spring: "header" | Id | null =
+      zone?.kind === "spaces" && latest.current.space?.collapsed
+        ? "header"
+        : switches && zone?.kind === "space" && zone.spaceId !== latest.current.space?.id
+          ? zone.spaceId
+          : null
     if (spring === null) {
       if (pendingSpring.current !== null) clearSpaceSwitch()
       return
@@ -265,23 +256,16 @@ export function useTabDrag({
     if (pendingSpring.current === spring) return
     clearTimeout(switchTimer.current)
     pendingSpring.current = spring
-    setDropSpaceId(spring === "list" ? null : spring)
+    setDropSpaceId(spring === "header" ? null : spring)
     switchTimer.current = setTimeout(() => {
       clearSpaceSwitch()
-      if (spring === "list") {
-        springOpened.current = true
-        onSpaceListOpen(true)
-        return
-      }
-      unwrap("switch space", commands.switchSpace(spring))
-      // Switched: the list has done its job, and the new space's lists are under it.
-      closeSprungList()
+      if (spring === "header") onSpringOpenSpace()
+      else unwrap("switch space", commands.switchSpace(spring))
     }, SPACE_SWITCH_DELAY)
   }
 
   function finish() {
     clearSpaceSwitch()
-    closeSprungList()
     setTarget(null)
     setShape("row")
   }

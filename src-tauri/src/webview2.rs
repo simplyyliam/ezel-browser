@@ -10,9 +10,9 @@ use crate::{
   hotkeys::KeyPress,
 };
 use webview2_com::{
-  take_pwstr, AcceleratorKeyPressedEventHandler, BytesReceivedChangedEventHandler, CallDevToolsProtocolMethodCompletedHandler,
+  take_pwstr, AcceleratorKeyPressedEventHandler, BytesReceivedChangedEventHandler, CapturePreviewCompletedHandler, CallDevToolsProtocolMethodCompletedHandler,
   ContainsFullScreenElementChangedEventHandler, ContextMenuRequestedEventHandler, DownloadStartingEventHandler, NavigationCompletedEventHandler,
-  ProcessFailedEventHandler, StateChangedEventHandler, StatusBarTextChangedEventHandler,
+  ProcessFailedEventHandler, StateChangedEventHandler,
   FaviconChangedEventHandler, FindActiveMatchIndexChangedEventHandler, FindMatchCountChangedEventHandler, FindStartCompletedHandler,
   IsDocumentPlayingAudioChangedEventHandler,
   GetProcessExtendedInfosCompletedHandler, PermissionRequestedEventHandler, ServerCertificateErrorDetectedEventHandler, TrySuspendCompletedHandler,
@@ -32,14 +32,14 @@ use webview2_com::{
     ICoreWebView2Environment15, ICoreWebView2Find, ICoreWebView2FrameInfo2, ICoreWebView2PermissionRequestedEventArgs,
     ICoreWebView2PermissionRequestedEventArgs3, COREWEBVIEW2_PERMISSION_KIND_CAMERA, COREWEBVIEW2_PERMISSION_KIND_CLIPBOARD_READ,
     COREWEBVIEW2_PERMISSION_KIND_GEOLOCATION, COREWEBVIEW2_PERMISSION_KIND_MICROPHONE, COREWEBVIEW2_PERMISSION_STATE_ALLOW,
-    ICoreWebView2_11, ICoreWebView2_12, ICoreWebView2_28,
+    ICoreWebView2_11, ICoreWebView2_28,
     COREWEBVIEW2_CONTEXT_MENU_TARGET_KIND, COREWEBVIEW2_CONTEXT_MENU_TARGET_KIND_IMAGE,
     ICoreWebView2ProcessExtendedInfoCollection, ICoreWebView2Settings4, ICoreWebView2_14, ICoreWebView2_15, ICoreWebView2_19, ICoreWebView2_2,
     ICoreWebView2_20, ICoreWebView2_3, ICoreWebView2_8,
     COREWEBVIEW2_KEY_EVENT_KIND, COREWEBVIEW2_PERMISSION_KIND, COREWEBVIEW2_PERMISSION_KIND_NOTIFICATIONS, COREWEBVIEW2_PERMISSION_STATE,
     COREWEBVIEW2_PERMISSION_STATE_DENY,
     COREWEBVIEW2_KEY_EVENT_KIND_KEY_DOWN, COREWEBVIEW2_KEY_EVENT_KIND_SYSTEM_KEY_DOWN, COREWEBVIEW2_MEMORY_USAGE_TARGET_LEVEL_LOW,
-    COREWEBVIEW2_MEMORY_USAGE_TARGET_LEVEL_NORMAL, COREWEBVIEW2_PHYSICAL_KEY_STATUS,
+    COREWEBVIEW2_MEMORY_USAGE_TARGET_LEVEL_NORMAL, COREWEBVIEW2_PHYSICAL_KEY_STATUS, COREWEBVIEW2_CAPTURE_PREVIEW_IMAGE_FORMAT_JPEG,
   },
 };
 use windows::{
@@ -81,6 +81,46 @@ pub fn hard_reload(pw: &PlatformWebview) {
   // SAFETY: main thread, live webview; the strings outlive the call.
   unsafe {
     let _ = core.CallDevToolsProtocolMethod(&HSTRING::from("Page.reload"), &HSTRING::from(r#"{"ignoreCache":true}"#), &handler);
+  }
+}
+
+/// A picture of the page as it's drawn now (its viewport, JPEG bytes) for `f`, with WebView2's
+/// `CapturePreview`; None when it can't take one. The UI draws it in the page's place while
+/// something must sit over the page with smooth edges (the site info panel), so nothing has to be
+/// cut out of the website. Never saved.
+pub fn capture_page(pw: &PlatformWebview, f: impl FnOnce(Option<Vec<u8>>) + 'static) {
+  use windows::Win32::{
+    Foundation::HGLOBAL,
+    System::{
+      Com::{StructuredStorage::{CreateStreamOnHGlobal, GetHGlobalFromStream}, STATFLAG_NONAME, STATSTG},
+      Memory::{GlobalLock, GlobalUnlock},
+    },
+  };
+  let Some(core) = core(pw) else { return f(None) };
+  // SAFETY: a new in-memory stream that frees its memory when released.
+  let Ok(stream) = (unsafe { CreateStreamOnHGlobal(HGLOBAL::default(), true) }) else { return f(None) };
+  let written = stream.clone();
+  let handler = CapturePreviewCompletedHandler::create(Box::new(move |result| {
+    // SAFETY: WebView2 calls this on the main thread once the stream holds the whole image; the
+    // memory is locked only while it's copied.
+    let bytes = result.ok().and_then(|_| unsafe {
+      let mut stat = STATSTG::default();
+      written.Stat(&mut stat, STATFLAG_NONAME).ok()?;
+      let memory = GetHGlobalFromStream(&written).ok()?;
+      let data = GlobalLock(memory) as *const u8;
+      if data.is_null() || stat.cbSize == 0 {
+        return None;
+      }
+      let bytes = std::slice::from_raw_parts(data, stat.cbSize as usize).to_vec();
+      let _ = GlobalUnlock(memory);
+      Some(bytes)
+    });
+    f(bytes);
+    Ok(())
+  }));
+  // SAFETY: main thread, live webview; the stream outlives the call (the handler holds it).
+  unsafe {
+    let _ = core.CapturePreview(COREWEBVIEW2_CAPTURE_PREVIEW_IMAGE_FORMAT_JPEG, &stream, &handler);
   }
 }
 
@@ -664,32 +704,6 @@ pub fn set_low_memory(pw: &PlatformWebview, low: bool) {
   // SAFETY: main thread, live webview.
   unsafe {
     let _ = core.SetMemoryUsageTargetLevel(level);
-  }
-}
-
-/// Ezel draws the hovered link's address itself (the link status pill): WebView2's own status
-/// bubble is turned off, and `f` gets its text whenever it changes (empty: nothing to show).
-pub fn on_status_text(pw: &PlatformWebview, f: impl Fn(String) + 'static) {
-  let Some(core) = core(pw) else { return };
-  // SAFETY: main thread, live webview.
-  unsafe {
-    if let Ok(settings) = core.Settings() {
-      let _ = settings.SetIsStatusBarEnabled(false);
-    }
-  }
-  let Ok(core) = core.cast::<ICoreWebView2_12>() else { return };
-  let handler = StatusBarTextChangedEventHandler::create(Box::new(move |sender, _| {
-    let Some(sender) = sender.and_then(|s| s.cast::<ICoreWebView2_12>().ok()) else { return Ok(()) };
-    let mut text = PWSTR::null();
-    // SAFETY: WebView2 calls this on the main thread; take_pwstr frees the string.
-    unsafe { sender.StatusBarText(&mut text)? };
-    f(take_pwstr(text));
-    Ok(())
-  }));
-  let mut token = 0i64;
-  // SAFETY: main thread, live webview.
-  unsafe {
-    let _ = core.add_StatusBarTextChanged(&handler, &mut token);
   }
 }
 

@@ -80,6 +80,11 @@ export const commands = {
 	 *  Ezel (cookies, storage, caches), then the page reloads. Returns the site's host.
 	 */
 	clearSiteData: () => typedError<string, AppError>(__TAURI_INVOKE("clear_site_data")),
+	/**
+	 *  A picture of the shown page as it looks now (JPEG, base64; see `webview2::capture_page`): the
+	 *  site info panel draws it in the page's place while it's open. `unavailable` when none comes.
+	 */
+	capturePage: () => typedError<string, AppError>(__TAURI_INVOKE("capture_page")),
 	/**  The load meter: Ezel's memory in all and per loaded tab (approximate; see `browser::memory`). */
 	getMemory: () => typedError<MemoryReport, AppError>(__TAURI_INVOKE("get_memory")),
 	/**
@@ -140,6 +145,8 @@ export const commands = {
 	/**  `icon`: a lucide icon name. */
 	createSpace: (name: string, icon: string) => typedError<Id, AppError>(__TAURI_INVOKE("create_space", { name, icon })),
 	updateSpace: (id: Id, name: string | null, icon: string | null) => typedError<null, AppError>(__TAURI_INVOKE("update_space", { id, name, icon })),
+	/**  Folds a space's pinned list away under its title, or opens it. */
+	setSpaceCollapsed: (id: Id, collapsed: boolean) => typedError<null, AppError>(__TAURI_INVOKE("set_space_collapsed", { id, collapsed })),
 	moveSpace: (id: Id, index: number) => typedError<null, AppError>(__TAURI_INVOKE("move_space", { id, index })),
 	/**
 	 *  Deletes a space: its tabs and folders move to `move_to`'s lists, or close with it. The last
@@ -163,7 +170,6 @@ export const events = {
 	downloadsChanged: makeEvent<DownloadsState>("downloads-changed"),
 	findChanged: makeEvent<FindChanged>("find-changed"),
 	hotkeyPressed: makeEvent<HotkeyPressed>("hotkey-pressed"),
-	linkStatus: makeEvent<LinkStatus>("link-status"),
 	pageChanged: makeEvent<PageChanged>("page-changed"),
 	pageMenu: makeEvent<PageMenu>("page-menu"),
 	permissionAsked: makeEvent<PermissionAsked>("permission-asked"),
@@ -283,14 +289,6 @@ export type ImportSummary = {
 	tabs: number,
 };
 
-/**
- *  Payload of "link-status": the shown page's status text (a hovered link's address), or "" for
- *  none. Shown as text only, at most [`MAX_STATUS`] characters.
- */
-export type LinkStatus = {
-	text: string,
-};
-
 /**  What `get_memory` returns. MB, so the UI never deals in bytes. */
 export type MemoryReport = {
 	/**
@@ -403,6 +401,8 @@ export type Space = {
 	id: Id,
 	name: string,
 	icon: string,
+	/**  Its pinned list is folded away under its title. */
+	collapsed: boolean,
 	items: SpaceItem[],
 	tempTabs: Tab[],
 };

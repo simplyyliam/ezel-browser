@@ -1,19 +1,7 @@
-import * as React from "react"
-
-const MOBILE_BREAKPOINT = 768
-
+// Ezel is a desktop app: its sidebar is never shadcn's mobile Sheet. The registry hook switched to
+// it below 768px, which a narrow window (the minimum is 400px) and every minimize (a 0px-wide
+// window) crossed: the whole sidebar was torn down and rebuilt, losing its state, and menus
+// measured a sidebar that wasn't there. shadcn's SidebarProvider reads this; nothing else does.
 export function useIsMobile() {
-  const [isMobile, setIsMobile] = React.useState<boolean | undefined>(undefined)
-
-  React.useEffect(() => {
-    const mql = window.matchMedia(`(max-width: ${MOBILE_BREAKPOINT - 1}px)`)
-    const onChange = () => {
-      setIsMobile(window.innerWidth < MOBILE_BREAKPOINT)
-    }
-    mql.addEventListener("change", onChange)
-    setIsMobile(window.innerWidth < MOBILE_BREAKPOINT)
-    return () => mql.removeEventListener("change", onChange)
-  }, [])
-
-  return !!isMobile
+  return false
 }

@@ -37,9 +37,9 @@ export function RecentlyClosed({ tabs, onReopen }: RecentlyClosedProps) {
               type="button"
               title={`Reopen ${label(tab)}`}
               onClick={() => onReopen(n)}
-              className="flex h-6 max-w-40 min-w-0 cursor-pointer items-center gap-1.5 rounded-full bg-muted/60 pr-2.5 pl-1.5 text-xs text-foreground/80 outline-none transition-colors duration-150 hover:bg-muted hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring motion-reduce:transition-none"
+              className="flex h-6 max-w-40 min-w-0 cursor-pointer items-center gap-1.5 rounded-full bg-muted/60 pr-2.5 pl-1.5 text-xs text-foreground/80 outline-none transition-colors duration-(--motion-base) hover:bg-muted hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring motion-reduce:transition-none"
             >
-              <Favicon src={tab.favicon} className="size-3.5 bg-foreground/15" />
+              <Favicon src={tab.favicon} className="size-3.5" />
               <span className="min-w-0 truncate">{label(tab)}</span>
             </button>
           </li>

@@ -47,7 +47,7 @@ export function SiteButton({ host, security, open, onToggle }: SiteButtonProps) 
       aria-label={`${host}, ${SECURITY_LABEL[security]}. Site information`}
       onClick={onToggle}
       className={cn(
-        "flex h-7 min-w-0 max-w-full cursor-pointer items-center gap-1.5 rounded-md px-2 text-xs outline-none transition-colors duration-150 hover:bg-muted focus-visible:ring-2 focus-visible:ring-ring motion-reduce:transition-none",
+        "flex h-7 min-w-0 max-w-full cursor-pointer items-center gap-1.5 rounded-md px-2 text-xs outline-none transition-colors duration-(--motion-base) hover:bg-muted focus-visible:ring-2 focus-visible:ring-ring motion-reduce:transition-none",
         open && "bg-muted",
       )}
     >
@@ -79,8 +79,8 @@ type SiteInfoPanelProps = {
 const PERMISSION_ICONS: Record<SitePermission, LucideIcon> = { camera: Camera, microphone: Mic, location: MapPin, clipboard: Clipboard }
 
 /**
- * The site info panel, inside the titlebar peek under the domain (the bar grows to hold it, so
- * it's cut out of the page with the bar). Connection and certificate status, then what can be
+ * The site info panel's contents (the widget puts them in a dialog under the address, over a
+ * picture of the page, so nothing is cut out of the website). Connection and certificate status, then what can be
  * done about the site. Clearing signs people out of it, so it asks once, in place (HIG: confirm
  * what can't be undone, without an alert for a small thing).
  */
@@ -88,9 +88,9 @@ export function SiteInfoPanel({ host, security, onClearData, permissions, onRevo
   const copy = SECURITY_COPY[security]
   const [confirming, setConfirming] = useState(false)
   const action =
-    "rounded-md px-2 py-1 font-medium outline-none transition-colors duration-150 focus-visible:ring-2 focus-visible:ring-ring motion-reduce:transition-none"
+    "rounded-md px-2 py-1 font-medium outline-none transition-colors duration-(--motion-base) focus-visible:ring-2 focus-visible:ring-ring motion-reduce:transition-none"
   return (
-    <section aria-label={`About ${host}`} className="mx-auto mb-2 flex w-72 max-w-[calc(100%-1rem)] flex-col gap-3 rounded-xl bg-muted/60 p-3 text-xs">
+    <section aria-label={`About ${host}`} className="flex flex-col gap-3 p-3 text-xs">
       <div className="flex items-start gap-2">
         <SecurityIcon security={security} className="mt-px size-4 shrink-0" />
         <div className="flex min-w-0 flex-col gap-0.5">
@@ -182,7 +182,7 @@ type PermissionCardProps = {
 export function PermissionCard({ ask, onAnswer }: PermissionCardProps) {
   const Icon = PERMISSION_ICONS[ask.permission]
   const button =
-    "rounded-md px-2.5 py-1 font-medium outline-none transition-colors duration-150 focus-visible:ring-2 focus-visible:ring-ring motion-reduce:transition-none"
+    "rounded-md px-2.5 py-1 font-medium outline-none transition-colors duration-(--motion-base) focus-visible:ring-2 focus-visible:ring-ring motion-reduce:transition-none"
   return (
     <section
       role="alertdialog"

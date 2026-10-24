@@ -17,7 +17,7 @@ export function SitePermissions() {
       <DialogPortal>
         <DialogPrimitive.Popup
           data-slot="dialog-content"
-          className="fixed top-[16%] left-1/2 z-50 flex w-[min(420px,calc(100vw-2rem))] -translate-x-1/2 flex-col overflow-hidden rounded-2xl bg-popover text-popover-foreground ring-1 ring-foreground/10 outline-none transition-opacity duration-[120ms] data-ending-style:opacity-0 data-starting-style:opacity-0"
+          className="fixed top-[16%] left-1/2 z-50 flex w-[min(420px,calc(100vw-2rem))] -translate-x-1/2 flex-col overflow-hidden rounded-2xl bg-popover text-popover-foreground ring-1 ring-foreground/10 outline-none transition-opacity duration-(--motion-fast) data-ending-style:opacity-0 data-starting-style:opacity-0"
         >
           <div className="flex items-center justify-between px-4 pt-4 pb-2">
             <DialogPrimitive.Title className="text-sm font-semibold">Site Permissions</DialogPrimitive.Title>

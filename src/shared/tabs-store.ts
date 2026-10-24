@@ -1,7 +1,7 @@
 import { useSyncExternalStore } from "react"
 import { commands, events } from "./bindings"
 import { unwrap } from "./report-error"
-import type { Folder, Space, SpaceItem, Tab, TabsState } from "./types"
+import type { Folder, Id, Space, SpaceItem, Tab, TabsState } from "./types"
 
 // A read-only mirror of Rust's tab state: `get_tabs` once, then `tabs-changed` (whole state) and
 // `tab-updated` (one tab). The UI never edits it; actions are commands, and the backend's event
@@ -121,4 +121,19 @@ export function useTabs(): TabsState | null {
 /** The active space, from a `useTabs()` state. */
 export function activeSpace(tabs: TabsState): Space | undefined {
   return tabs.spaces.find((space) => space.id === tabs.activeSpaceId)
+}
+
+/**
+ * Whether a tab is still anywhere in the latest state (a space, a folder, the Swatches). A row
+ * leaving its list asks this: a tab that's gone was closed (its row collapses), one still here
+ * was moved (its row leaves at once; the new place shows it).
+ */
+export function isTabOpen(id: Id): boolean {
+  if (!state) return false
+  if (state.swatches.some((tab) => tab?.id === id)) return true
+  return state.spaces.some(
+    (space) =>
+      space.tempTabs.some((tab) => tab.id === id) ||
+      space.items.some((item) => (item.kind === "tab" ? item.tab.id === id : item.folder.tabs.some((tab) => tab.id === id))),
+  )
 }

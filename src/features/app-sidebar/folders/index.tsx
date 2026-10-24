@@ -27,6 +27,7 @@ import {
   DraggableTabItem,
   DropIndicator,
   NameField,
+  routeContextMenu,
   type MenuGroups,
   type TabRowActions,
 } from "@/shared/components"
@@ -38,6 +39,7 @@ import {
   menuLabel,
   PEEK_TRANSITION,
   rowIndicator,
+  SPRING,
   useTabDropZone,
   type Folder,
   type Id,
@@ -92,6 +94,8 @@ export function Folders({ items, spaces, spaceId, actions, folderActions, renami
       <SidebarGroupContent>
         {/* 2px between rows; the drop line fills that gap. */}
         <SidebarMenu className="gap-0.5">
+          {/* New rows grow in, closed ones collapse (DraggableTabItem); the widget keys this list by space. */}
+          <AnimatePresence initial={false}>
           {items.map((item, index) => {
             const indicator = rowIndicator(dropGap, index, items.length)
             return item.kind === "folder" ? (
@@ -115,6 +119,7 @@ export function Folders({ items, spaces, spaceId, actions, folderActions, renami
               />
             )
           })}
+          </AnimatePresence>
         </SidebarMenu>
       </SidebarGroupContent>
       <DeleteFolderAlert
@@ -143,10 +148,8 @@ type FolderItemProps = {
 
 function FolderItem({ folder, menu, folderActions, renaming, actions, indicator, drop }: FolderItemProps) {
   const reduceMotion = useReducedMotion()
-  const transition = reduceMotion ? INSTANT : PEEK_TRANSITION
   const open = !folder.collapsed
-  const Icon = open ? FolderOpen : FolderClosedIcon
-  const icon = <Icon aria-hidden />
+  const icon = <FolderIcon open={open} />
 
   return (
     // One list row with its open tabs: drops beside it go above or below the whole folder.
@@ -163,7 +166,7 @@ function FolderItem({ folder, menu, folderActions, renaming, actions, indicator,
         />
       ) : (
         <ContextMenu>
-          <ContextMenuTrigger className="contents">
+          <ContextMenuTrigger className="contents" onContextMenu={routeContextMenu}>
             <SidebarMenuButton
               size="sm"
               aria-expanded={open}
@@ -188,32 +191,51 @@ function FolderItem({ folder, menu, folderActions, renaming, actions, indicator,
         {open && (
           <motion.div
             key="tabs"
+            // Unfolds on a gentle spring (it answers the click); folds away on a plain ease, since a
+            // spring past 0 height would snap.
             initial={{ height: 0, opacity: 0 }}
-            animate={{ height: "auto", opacity: 1 }}
-            exit={{ height: 0, opacity: 0 }}
-            transition={transition}
-            className="overflow-hidden"
+            animate={{ height: "auto", opacity: 1, transition: reduceMotion ? INSTANT : SPRING }}
+            exit={{ height: 0, opacity: 0, transition: reduceMotion ? INSTANT : PEEK_TRANSITION }}
+            // Clipped while it folds, with 2px to spare so the rows' focus rings still show.
+            className="overflow-clip [overflow-clip-margin:2px]"
           >
             {/* Indented without the default tree line, as in the design. */}
             <SidebarMenuSub
               {...folderTabs(folder.id)}
               className="mx-0 translate-x-0 gap-0.5 border-l-0 pt-0.5 pb-0 pr-0 pl-3"
             >
-              {folder.tabs.map((tab, index) => (
-                <DraggableTabItem
-                  key={tab.id}
-                  sub
-                  tab={tab}
-                  source="folder"
-                  actions={actions}
-                  indicator={rowIndicator(drop ?? null, index, folder.tabs.length)}
-                />
-              ))}
+              <AnimatePresence initial={false}>
+                {folder.tabs.map((tab, index) => (
+                  <DraggableTabItem
+                    key={tab.id}
+                    sub
+                    tab={tab}
+                    source="folder"
+                    actions={actions}
+                    indicator={rowIndicator(drop ?? null, index, folder.tabs.length)}
+                  />
+                ))}
+              </AnimatePresence>
             </SidebarMenuSub>
           </motion.div>
         )}
       </AnimatePresence>
     </SidebarMenuItem>
+  )
+}
+
+/**
+ * The folder's icon opens and closes with its list: the closed and open folders sit on top of
+ * each other and swap with a quick fade and a little give. Reduced motion: the fade only.
+ */
+function FolderIcon({ open }: { open: boolean }) {
+  const glyph =
+    "col-start-1 row-start-1 transition-[opacity,scale] duration-(--motion-base) ease-ezel-out motion-reduce:scale-100!"
+  return (
+    <span aria-hidden className="grid size-4 shrink-0 place-items-center">
+      <FolderClosedIcon className={cn(glyph, open ? "scale-75 opacity-0" : "scale-100 opacity-100")} />
+      <FolderOpen className={cn(glyph, open ? "scale-100 opacity-100" : "scale-75 opacity-0")} />
+    </span>
   )
 }
 

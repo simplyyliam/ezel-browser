@@ -1,4 +1,5 @@
-import { Download, Plus, Trash2 } from "lucide-react"
+import type { ReactNode } from "react"
+import { Download, Plus } from "lucide-react"
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -9,7 +10,6 @@ import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover
 import { SidebarMenu, SidebarMenuButton, SidebarMenuItem } from "@/components/ui/sidebar"
 import { menuLabel, type Download as DownloadData } from "@/shared"
 import { DownloadsList, type DownloadActions } from "./downloads"
-import { LoadMeter, type LoadMeterData } from "./load-meter"
 
 export type { LoadMeterData } from "./load-meter"
 export type { DownloadActions } from "./downloads"
@@ -18,22 +18,18 @@ export type { DownloadActions } from "./downloads"
 const action = "h-6 w-7 justify-center bg-sidebar-foreground/5 p-0 hover:bg-sidebar-foreground/8 [&_svg]:size-3.5"
 
 type BottomActionsProps = {
-  /** False disables trash-all (no temp tabs in the active space). */
-  hasTempTabs: boolean
-  /** Closes the active space's TEMP tabs only, never pinned ones. */
-  onTrashAll: () => void
   onAddSpace: () => void
   onAddTab: () => void
   onAddFolder: () => void
-  /** The load meter's numbers; null hides it (not read yet, or unsupported here). */
-  load: LoadMeterData | null
+  /** The footer's middle: the spaces' icons (the widget composes them). */
+  center?: ReactNode
   /** This session's downloads, newest first. */
   downloads: DownloadData[]
   downloadActions: DownloadActions
 }
 
 /** Pinned to the bottom of the sidebar (render inside SidebarFooter). */
-export function BottomActions({ hasTempTabs, onTrashAll, onAddSpace, onAddTab, onAddFolder, load, downloads, downloadActions }: BottomActionsProps) {
+export function BottomActions({ onAddSpace, onAddTab, onAddFolder, center, downloads, downloadActions }: BottomActionsProps) {
   const running = downloads.some((d) => d.state === "inProgress")
   return (
     <SidebarMenu className="flex-row items-center gap-1.5">
@@ -52,20 +48,9 @@ export function BottomActions({ hasTempTabs, onTrashAll, onAddSpace, onAddTab, o
           </PopoverContent>
         </Popover>
       </SidebarMenuItem>
+      {/* Between the actions, centred: the spaces. Narrower than the space between, it scrolls. */}
+      <div className="flex min-w-0 flex-1 justify-center">{center}</div>
       <SidebarMenuItem>
-        <SidebarMenuButton
-          size="sm"
-          aria-label="Close all temporary tabs"
-          disabled={!hasTempTabs}
-          onClick={onTrashAll}
-          className={action}
-        >
-          <Trash2 aria-hidden />
-        </SidebarMenuButton>
-      </SidebarMenuItem>
-      {/* Between the actions: grows into the free space, truncates before it pushes "+" out. */}
-      {load && <LoadMeter data={load} />}
-      <SidebarMenuItem className="ml-auto">
         <DropdownMenu>
           <DropdownMenuTrigger render={<SidebarMenuButton size="sm" aria-label="Add" className={action} />}>
             <Plus aria-hidden />

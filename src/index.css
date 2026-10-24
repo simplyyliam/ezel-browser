@@ -6,6 +6,12 @@
 @custom-variant dark (&:is(.dark *));
 
 @theme {
+    /* Motion tokens (src/shared/motion.ts, docs/design/decisions.md "Motion tokens"): every
+       transition uses one of these easings and one of the --motion-* durations below. */
+    --ease-ezel-out: cubic-bezier(0.23, 1, 0.32, 1);
+    --ease-ezel-in-out: cubic-bezier(0.4, 0, 0.2, 1);
+    /* Press feedback: a quick give with a little spring back. */
+    --ease-ezel-spring: cubic-bezier(0.34, 1.56, 0.64, 1);
     /* Zen's compact-mode reveal curve (src/zen/compact-mode/sidebar.inc.css, --zen-compact-mode-func):
        a spring that overshoots ~1% and settles. Sampled from Zen's 100-stop linear(). */
     --ease-zen-peek: linear(0, 0.0388 4%, 0.1048 7%, 0.1887 10%, 0.2811 13%, 0.3757 16%, 0.467 19%, 0.5537 22%, 0.6321 25%, 0.7018 28%, 0.7627 31%, 0.8148 34%, 0.8585 37%, 0.8948 40%, 0.9242 43%, 0.9478 46%, 0.9663 49%, 0.9804 52%, 0.9908 55%, 0.9987 58%, 1.004 61%, 1.0075 64%, 1.0096 67%, 1.0106 70%, 1.0109 73%, 1.0104 77%, 1.0094 81%, 1.0077 86%, 1.0057 92%, 1.0034 100%);
@@ -13,6 +19,12 @@
     --radius-frame: 22px;
     /* A tab's speaker while it plays: each wave breathes (shared/components/tab-row/speaker-icon). */
     --animate-sound-wave: sound-wave 1.4s ease-in-out infinite;
+    /* A favicon arriving for the first time fades in over its placeholder dot (shared/components/favicon). */
+    --animate-favicon-in: favicon-in 150ms cubic-bezier(0.23, 1, 0.32, 1);
+}
+
+@keyframes favicon-in {
+    from { opacity: 0; }
 }
 
 @keyframes sound-wave {
@@ -23,6 +35,9 @@
 @theme inline {
     --font-heading: var(--font-sans);
     --font-sans: 'Inter Variable', sans-serif;
+    /* The system's colour emoji (Windows' Fluent set), never Inter's own flat glyphs: Inter has
+       some (❤ ✈ ☕ ✏), so emoji set in the UI font came out monochrome. `font-emoji`. */
+    --font-emoji: 'Segoe UI Emoji', 'Apple Color Emoji', 'Noto Color Emoji', sans-serif;
     --color-sidebar-ring: var(--sidebar-ring);
     --color-sidebar-border: var(--sidebar-border);
     --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
@@ -61,9 +76,19 @@
     --radius-2xl: calc(var(--radius) * 1.8);
     --radius-3xl: calc(var(--radius) * 2.2);
     --radius-4xl: calc(var(--radius) * 2.6);
+    /* Consistent radii (polish): a shape nested in a rounded box takes the box's radius minus the
+       padding between them, so the curves stay concentric. A menu item: rounded-lg menu, p-1. */
+    --radius-menu-item: calc(var(--radius-lg) - 0.25rem);
 }
 
 :root {
+    /* Motion durations: fast = appearing, base = the peek and state changes, slow = leaving.
+       Use as `duration-(--motion-fast)`. Same values as DURATION in src/shared/motion.ts. */
+    --motion-fast: 120ms;
+    --motion-base: 150ms;
+    --motion-slow: 300ms;
+    /* How long a hover rests before a row reveals its controls (close button). */
+    --hover-reveal: 150ms;
     --background: oklch(1 0 0);
     --foreground: oklch(0.145 0 0);
     --card: oklch(1 0 0);
@@ -155,12 +180,90 @@
   @media (prefers-reduced-motion: no-preference) {
     :is(button, [role="button"], [data-slot="sidebar-menu-button"]):not(:disabled, [data-disabled]) {
       transition-property: scale, color, background-color, opacity;
-      transition-duration: 160ms;
-      transition-timing-function: cubic-bezier(0.34, 1.56, 0.64, 1);
+      transition-duration: var(--motion-base);
+      transition-timing-function: var(--ease-ezel-spring);
     }
     :is(button, [role="button"], [data-slot="sidebar-menu-button"]):not(:disabled, [data-disabled]):active {
       scale: 0.98;
     }
+  }
+}
+
+/* Consistent radii (polish): every menu's items (shadcn's context and dropdown menus, rounded-lg
+   with p-1) follow the menu's corners. Here, not in components/ui, which stays at registry defaults. */
+:is([data-slot="context-menu-content"], [data-slot="context-menu-sub-content"], [data-slot="dropdown-menu-content"], [data-slot="dropdown-menu-sub-content"])
+  :is([data-slot$="-item"], [data-slot$="-sub-trigger"]) {
+  border-radius: var(--radius-menu-item);
+}
+
+/* Keyboard focus rings (polish): any control without its own focus style gets a soft ring that
+   follows its corners (outlines take the border radius). Controls with their own ring (shadcn's,
+   Ezel's `focus-visible:ring-2 ring-ring`) set `outline-none`, a utility, which wins over this. */
+@layer base {
+  :focus-visible {
+    outline: 2px solid color-mix(in oklab, var(--ring) 80%, transparent);
+    outline-offset: 1px;
+  }
+}
+
+/* Sleepy tabs (polish): an unloaded tab's favicon rests dimmed and greyscale; hovering or
+   keyboard-focusing the row, swatch or button it sits in wakes its colour up. */
+[data-slot="favicon"] {
+  transition: opacity var(--motion-base) var(--ease-ezel-out), filter var(--motion-base) var(--ease-ezel-out);
+}
+[data-slot="favicon"][data-sleepy] {
+  opacity: 0.55;
+  filter: grayscale(1);
+}
+:is(:hover, :focus-visible) > [data-slot="favicon"][data-sleepy] {
+  opacity: 1;
+  filter: none;
+}
+
+/* Icons that move (v0.3.1, Arc as the bar: nothing static or stale). Hovering a button gives its
+   icon one small gesture that says what it does: back nudges left, forward right, reload turns,
+   + and × turn a quarter, download dips, search leans in, link tilts, copy steps. Springy
+   (ease-ezel-spring) in, the same spring back. Keyed on lucide's own classes, so every button in
+   Ezel gets it with no component changes; a component's own transition utilities still win (base
+   layer). Pointer hover only, never under reduced motion. */
+@layer base {
+  @media (hover: hover) and (pointer: fine) and (prefers-reduced-motion: no-preference) {
+    :is(button, a, [role="button"], [role="menuitem"], [role="option"]) > svg.lucide {
+      transition-property: translate, rotate, scale;
+      transition-duration: 260ms;
+      transition-timing-function: var(--ease-ezel-spring);
+    }
+    :is(button, a, [role="button"], [role="menuitem"], [role="option"]):hover:not(:disabled, [data-disabled]) > svg {
+      &.lucide-arrow-left { translate: -1.5px 0; }
+      &.lucide-arrow-right { translate: 1.5px 0; }
+      &.lucide-rotate-cw, &.lucide-refresh-cw { rotate: 60deg; }
+      &.lucide-plus, &.lucide-x { rotate: 90deg; }
+      &.lucide-download { translate: 0 1.5px; }
+      &.lucide-search { rotate: -10deg; scale: 1.08; }
+      &.lucide-link { rotate: -14deg; }
+      &.lucide-copy { translate: -1px -1px; }
+      &.lucide-panel-left { translate: -1px 0; }
+      &.lucide-import { translate: 0 1px; }
+      &.lucide-scan-eye, &.lucide-contrast { scale: 1.12; }
+    }
+  }
+}
+
+/* The shown tab (Arc as the bar): a lit card, not a flat grey fill. A little brighter, a hairline
+   highlight on its top edge and a soft shadow under it, so it reads as lifted from the sidebar.
+   Rows only (tab rows and swatches), in both appearances. */
+@layer components {
+  [data-slot="sidebar-menu-button"][data-active] {
+    box-shadow:
+      inset 0 1px 0 0 oklch(1 0 0 / 0.07),
+      0 1px 2px 0 oklch(0 0 0 / 0.22),
+      0 0 0 0.5px oklch(0 0 0 / 0.18);
+  }
+  :root:not(.dark) [data-slot="sidebar-menu-button"][data-active] {
+    background-color: oklch(1 0 0);
+    box-shadow:
+      0 1px 2px 0 oklch(0 0 0 / 0.08),
+      0 0 0 0.5px oklch(0 0 0 / 0.08);
   }
 }
 

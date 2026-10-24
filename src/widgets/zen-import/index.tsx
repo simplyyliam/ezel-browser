@@ -13,7 +13,7 @@ type Step =
   | { kind: "importing" }
 
 const button =
-  "rounded-lg px-3 py-1.5 text-sm font-medium outline-none transition-colors duration-150 focus-visible:ring-2 focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-40 motion-reduce:transition-none"
+  "rounded-lg px-3 py-1.5 text-sm font-medium outline-none transition-colors duration-(--motion-base) focus-visible:ring-2 focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-40 motion-reduce:transition-none"
 
 /**
  * Import from Zen: finds Zen's profile, shows what it holds, and imports the spaces people choose
@@ -27,7 +27,7 @@ export function ZenImport() {
       <DialogPortal>
         <DialogPrimitive.Popup
           data-slot="dialog-content"
-          className="fixed top-[16%] left-1/2 z-50 flex w-[min(420px,calc(100vw-2rem))] -translate-x-1/2 flex-col overflow-hidden rounded-2xl bg-popover text-popover-foreground ring-1 ring-foreground/10 outline-none transition-opacity duration-[120ms] data-ending-style:opacity-0 data-starting-style:opacity-0"
+          className="fixed top-[16%] left-1/2 z-50 flex w-[min(420px,calc(100vw-2rem))] -translate-x-1/2 flex-col overflow-hidden rounded-2xl bg-popover text-popover-foreground ring-1 ring-foreground/10 outline-none transition-opacity duration-(--motion-fast) data-ending-style:opacity-0 data-starting-style:opacity-0"
         >
           {/* Keyed by each open: it looks for Zen afresh every time. */}
           {open && <ImportFlow key={String(open)} />}
